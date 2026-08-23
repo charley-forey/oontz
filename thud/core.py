@@ -18,6 +18,7 @@ import sounddevice as sd
 
 from .contracts import (SR, SEED, Snapshot, TrackView, VOICES, FX, COMMANDS,
                         BAR_HOOKS, load_modules)
+from . import song as songmod
 from .voices import svf, note_hz, rng, v_hat, v_perc, v_bass303, v_stab
 
 TRACK_ORDER = ["kick", "hat", "oh", "clap", "snare", "perc", "bass", "stab"]
@@ -73,6 +74,12 @@ class State:
         self.blip_i = 0
         self.ab = [None, None]
         self.master_fx = []
+        self.song = None                             # a Song, or None for jam mode
+        self.songbar = 0                             # absolute bar in the song
+        self.mode = "studio"                         # studio | deck
+        self.section = None                          # name of the section playing
+        self.follow = True                           # transport advances through the song
+        self.loop_section = False
 
     @property
     def n(self):
@@ -198,6 +205,24 @@ def apply_fx(x, chain, bpm):
     return x
 
 
+def render_state(d):
+    """Render one bar from a resolved state dict (what Song.state_at returns).
+
+    A tiny shim over render_bar so the song timeline and the live jam share one
+    renderer - that is what keeps an offline render identical to what you heard.
+    """
+    tmp = State.__new__(State)
+    tmp.bpm = d.get("bpm", ST.bpm)
+    tmp.swing = d.get("swing", ST.swing)
+    tmp.tracks = d.get("tracks", {})
+    tmp.order = d.get("order", list(tmp.tracks))
+    tmp.master_fx = d.get("master_fx", [])
+    tmp.rms = {}
+    out = render_bar(tmp)
+    ST.rms = tmp.rms                                  # meters follow what is playing
+    return out
+
+
 def render_bar(st=None):
     st = st or ST
     n = st.n
@@ -273,11 +298,19 @@ def _schedule():
         if not playing():
             continue
         try:
-            idx = ST.bars + 1
-            for hook in BAR_HOOKS:                   # arrange.py drives automation here
-                for line in hook(idx) or ():
-                    do(line, log=False)
-            ST.next = render_bar()
+            if ST.song is not None and ST.follow:
+                nxt = ST.songbar + 1
+                if ST.loop_section and ST.song.sections:
+                    _n, sec, within, _i = ST.song.section_at(ST.songbar)
+                    if sec and within + 1 >= sec.bars:
+                        nxt = ST.songbar - within     # back to the top of this section
+                ST.next = render_state(ST.song.state_at(nxt))
+            else:
+                idx = ST.bars + 1
+                for hook in BAR_HOOKS:               # arrange.py drives automation here
+                    for line in hook(idx) or ():
+                        do(line, log=False)
+                ST.next = render_bar()
         except Exception:
             ST.next = None                           # never let a bad hook kill the clock
 
@@ -352,6 +385,14 @@ def _callback(out, frames, _t, _status):
     _tap(seg, frames)
     if end >= n:                                     # bar boundary
         ST.bars += 1
+        if ST.song is not None and ST.follow:
+            total = ST.song.total_bars() or 1
+            if ST.loop_section:
+                _nm, sec, within, _ix = ST.song.section_at(ST.songbar)
+                ST.songbar = (ST.songbar - within if sec and within + 1 >= sec.bars
+                              else ST.songbar + 1)
+            else:
+                ST.songbar = (ST.songbar + 1) % total
         nxt = ST.pending if ST.pending is not None else ST.next
         if nxt is not None:
             ST.bar, ST.pending, ST.next, ST.pos = nxt, None, None, 0
@@ -521,6 +562,165 @@ def _fx_cmd(a):
     return None
 
 
+# ------------------------------------------------------------------- song
+
+SONGDIR = "songs"
+
+
+def current_section():
+    """The section under the playhead - what a live edit should target."""
+    if ST.song is None:
+        return None, None
+    name, sec, _within, _i = ST.song.section_at(ST.songbar)
+    return name, sec
+
+
+def _sync_section():
+    """Push the live track state back into the section being edited."""
+    _name, sec = current_section()
+    if sec is not None:
+        sec.tracks = copy.deepcopy(ST.tracks)
+        sec.order = list(ST.order)
+        sec.master_fx = copy.deepcopy(ST.master_fx)
+
+
+def _load_section(bar):
+    """Pull a section's state into the live editor."""
+    if ST.song is None:
+        return
+    d = ST.song.state_at(bar)
+    ST.tracks = d["tracks"] or ST.tracks
+    ST.order = d["order"] or ST.order
+    ST.master_fx = d["master_fx"]
+    ST.bpm, ST.swing = d["bpm"], d["swing"]
+    ST.section = d["section"]
+    ST.focus = min(ST.focus, max(0, len(ST.order) - 1))
+
+
+def _song_cmd(a):
+    """song new|info|save|load|render|bars|key"""
+    sub = a[0] if a else "info"
+    if sub == "new":
+        name = a[1] if len(a) > 1 else "untitled"
+        ST.song = songmod.from_state(name, ST.tracks, ST.order, ST.bpm, ST.swing,
+                                     ST.master_fx, bars=16, role="loop")
+        ST.songbar, ST.section = 0, name
+        return "new song %r - one section, `sec add drop 16` to grow it" % name
+    if ST.song is None:
+        return "no song loaded  (`song new <name>`, or `compose <style>`)"
+    sg = ST.song
+    if sub == "info":
+        secs = "  ".join("%s:%d" % (n, sg.sections[n].bars) for n in sg.order)
+        return "%s  %g BPM  %s %s  %d bars  %s  |  %s" % (
+            sg.name, sg.bpm, sg.key, sg.scale, sg.total_bars(),
+            _mmss(sg.seconds()), secs)
+    if sub == "save":
+        os.makedirs(SONGDIR, exist_ok=True)
+        _sync_section()
+        p = a[1] if len(a) > 1 else "%s/%s.song" % (SONGDIR, sg.name)
+        return "saved " + sg.save(p if p.endswith(".song") else p + ".song")
+    if sub == "load":
+        p = a[1]
+        p = p if p.endswith(".song") else "%s/%s.song" % (SONGDIR, p)
+        ST.song = songmod.Song.load(p)
+        ST.songbar = 0
+        _load_section(0)
+        refresh()
+        return "loaded %s - %d bars, %s" % (ST.song.name, ST.song.total_bars(),
+                                            _mmss(ST.song.seconds()))
+    if sub == "render":
+        p = a[1] if len(a) > 1 else "%s.wav" % sg.name
+        return render_song(p)
+    if sub == "key" and len(a) > 2:
+        sg.key, sg.scale = a[1], a[2]
+        return None
+    return "song new|info|save|load|render|key"
+
+
+def _sec_cmd(a):
+    """sec add|copy|del|len|goto|role|list - editing the arrangement itself."""
+    if ST.song is None:
+        return "no song  (`song new <name>` first)"
+    sg, sub = ST.song, (a[0] if a else "list")
+    if sub == "list":
+        cur = ST.section
+        return "  ".join(("[%s:%d]" if n == cur else "%s:%d") % (n, sg.sections[n].bars)
+                         for n in sg.order)
+    if sub == "add":
+        name = a[1]
+        bars = int(a[2]) if len(a) > 2 else 16
+        _sync_section()
+        base = sg.sections.get(ST.section)
+        sec = base.copy(name) if base else songmod.Section(name, bars)
+        sec.bars, sec.role = bars, name.rstrip("0123456789")
+        sec.energy = songmod.ROLES.get(sec.role, 0.5)
+        sg.sections[name] = sec
+        sg.order.append(name)
+        return "added %s (%d bars) - now %d bars total" % (name, bars, sg.total_bars())
+    if sub == "copy":
+        src, dst = a[1], a[2]
+        sg.sections[dst] = sg.sections[src].copy(dst)
+        sg.order.append(dst)
+        return "copied %s -> %s" % (src, dst)
+    if sub in ("del", "rm"):
+        n = a[1]
+        sg.order = [x for x in sg.order if x != n]
+        sg.sections.pop(n, None)
+        return "removed " + n
+    if sub == "len":
+        sg.sections[a[1] if len(a) > 2 else ST.section].bars = int(a[-1])
+        return None
+    if sub == "goto":
+        return _goto_cmd([a[1]])
+    if sub == "role":
+        sec = sg.sections[ST.section]
+        sec.role = a[1]
+        sec.energy = songmod.ROLES.get(a[1], sec.energy)
+        return None
+    if sub == "order":
+        sg.order = list(a[1:])
+        return "order: " + " ".join(sg.order)
+    return "sec add|copy|del|len|goto|role|order|list"
+
+
+def _goto_cmd(a):
+    """goto <bar|section> - scrub anywhere, instantly."""
+    if ST.song is None:
+        return "no song"
+    t = a[0] if a else "0"
+    if t in ST.song.sections:
+        bar, _sec = ST.song.bar_span(ST.song.order.index(t))
+    else:
+        try:
+            bar = int(t)
+        except ValueError:
+            return "goto <bar number|section name>"
+    _sync_section()
+    ST.songbar = max(0, bar) % max(1, ST.song.total_bars())
+    _load_section(ST.songbar)
+    refresh()
+    return "bar %d  ·  %s" % (ST.songbar, ST.section)
+
+
+def _mmss(sec):
+    return "%d:%02d" % (int(sec) // 60, int(sec) % 60)
+
+
+def render_song(path, on_progress=None):
+    """The whole song, offline, at full quality. Deterministic."""
+    if ST.song is None:
+        return "no song to render"
+    _sync_section()
+    data = songmod.render(ST.song, render_state, on_progress=on_progress)
+    with wave.open(path, "wb") as w:
+        w.setnchannels(2)
+        w.setsampwidth(2)
+        w.setframerate(SR)
+        w.writeframes((np.clip(data, -1, 1) * 32767).astype("<i2").tobytes())
+    return "rendered %s  %d bars  %s" % (path, ST.song.total_bars(),
+                                         _mmss(len(data) / SR))
+
+
 def _voice_cmd(a):
     """`voice bass reese` - point a track at any registered voice."""
     tr = track_arg(a[0])
@@ -607,6 +807,11 @@ CMDS = {
     "stop":      (lambda a: stop(), None, "stop"),
     "rec":       (lambda a: REC.toggle(), "rc", "record a take"),
     "view":      (lambda a: setattr(ST, "view", a[0]) or ("view " + a[0]), "vw", "switch panel"),
+    "song":      (_song_cmd, "sg", "new|info|save|load|render|key"),
+    "sec":       (_sec_cmd, "se", "add|copy|del|len|goto|role|order|list"),
+    "goto":      (_goto_cmd, "gt", "scrub to a bar or section"),
+    "loopsec":   (lambda a: setattr(ST, "loop_section", not ST.loop_section)
+                  or ("loop section: %s" % ("on" if ST.loop_section else "off")), "lp", "loop this section"),
     "voice":     (_voice_cmd, "vc", "point a track at a voice"),
     "track":     (_track_cmd, "tk", "add <name> [voice] | del <name>"),
     "voices":    (_voices_cmd, None, "list every registered voice"),
@@ -624,7 +829,8 @@ CMDS = {
     "variation": (lambda a: generate("variation", a), "v", "mutate a pattern"),
 }
 NO_LOG = {"play", "stop", "rec", "save", "load", "render", "undo", "redo",
-          "ab", "songs", "open", "view", "voices", "fxlist"}
+          "ab", "songs", "open", "view", "voices", "fxlist",
+          "song", "sec", "goto", "loopsec"}
 # How a command is keyed in the session log, which is what a .thud file is. One entry
 # per thing that can be independently set, so a later edit replaces the earlier one.
 KEYED = {"gain", "pan", "tune", "filter", "sidechain", "humanize", "mute", "solo", "voice"}

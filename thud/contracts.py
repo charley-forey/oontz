@@ -27,6 +27,29 @@ Registries
         help_page(Snapshot, w, h) -> list[str]
     ask(prompt, Snapshot) -> list[str]                    ai.py
 
+The song model (song.py, owned by core - read it, do not duplicate it)
+    Song    name, bpm, key, scale, sections{}, order[]
+            total_bars() section_at(bar) state_at(bar) beat_grid() phrase_marks()
+            energy_curve() seconds() fingerprint() save/load
+    Section name, bars, tracks{}, order[], master_fx[], bpm?, swing?,
+            automation[], role, energy
+    state_at(bar) is PURE and is the only way to ask what the song sounds like at
+    a point in time. Automation interpolates inside it. Offline render asks for
+    every bar in turn, so what you render is what you heard, to the sample.
+    beat_grid() is EXACT - we composed the music, so no beat detection is involved.
+
+Panels (layout.py)
+    Panel(name, render, min_w, min_h, want_w, want_h, priority, grow, region)
+    render is f(Snapshot, w, h) -> list[str], each line exactly w visible columns.
+    Panels must degrade INTERNALLY: the solver may hand you 40 columns or 180.
+    Regions stack top to bottom: top, upper, main, lower, bottom.
+
+Keys (keymap.py)
+    Every key is declared once with keymap.bind(mode, key, action, label, cat, help).
+    Dispatch, the legend, the overlay and the on-screen keyboard are generated from
+    that table, so a displayed key can never disagree with what the key does.
+    Never hardcode a key anywhere else.
+
 Views and display state
     A view is a pure function of (Snapshot, w, h). The one sanctioned exception is
     DISPLAY state - peak-hold decay, a clip latch, a scroll offset - which by
@@ -51,7 +74,7 @@ SEED = 1312
 TAU = 6.283185307179586
 CHANNELS = 2
 
-VERSION = "2.0-M1"
+VERSION = "3.0"
 
 
 @dataclass(frozen=True)
@@ -111,6 +134,13 @@ FX = {}
 VIEWS = {}
 COMMANDS = {}
 
+# v3 registries.
+#   PANELS[mode] -> list[layout.Panel]        ui_studio.py, ui_deck.py
+#   DECKS        -> the deck engine singleton, if deck.py is present
+#   ANALYSERS    -> name -> f(Song) -> dict   library.py, harmony.py
+PANELS = {"studio": [], "deck": []}
+ANALYSERS = {}
+
 # Called by the scheduler once per bar, before rendering bar N. Each hook gets the
 # bar index and returns command strings to apply for that bar. This is how
 # arrange.py drives automation without touching core.
@@ -123,7 +153,10 @@ COLLISIONS = []
 # Optional modules. Missing ones are skipped, so the instrument runs with any
 # subset of them present.
 OPTIONAL = ("drums", "synths", "fx", "viz_spectrum", "viz_scope",
-            "arrange", "dj", "gen", "teach", "ai")
+            "arrange", "dj", "gen", "teach", "ai",
+            # v3
+            "harmony", "compose", "waveform", "theme", "library", "deck",
+            "mixer", "ui_studio", "ui_deck", "keyboard_view", "director", "qa")
 
 
 def _ident(fn):
