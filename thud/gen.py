@@ -423,12 +423,13 @@ def style_cmd(state, args):
     return _style_cmds(STYLES[name])
 
 
-from .contracts import COMMANDS
-COMMANDS.update({
+REGISTERED = {
     "euc": euc_cmd, "melody": melody_cmd, "groove": groove_cmd,
     "style": style_cmd, "density": density_cmd, "variation": variation_cmd,
     "fillpat": fill_cmd,          # not "fill" - arrange.py owns that verb
-})
+}
+from .contracts import COMMANDS
+COMMANDS.update(REGISTERED)
 
 # ---------------------------------------------------------------------- demo
 
@@ -452,6 +453,18 @@ def demo():
     import numpy as np
     from . import core
     from .voices import note_hz
+    from .contracts import COLLISIONS
+
+    # -- registry: we don't own "fill" (arrange.py's section macro does) ----
+    assert "fill" not in REGISTERED and "fillpat" in REGISTERED, REGISTERED
+    assert COLLISIONS == [], COLLISIONS
+
+    # -- style: no name, or a bad one, is a listing, not an error -----------
+    for bad in ([], ["nope"]):
+        out = style_cmd(core.ST, bad)
+        assert isinstance(out, str) and not out.startswith("?"), out
+        for name in STYLES:
+            assert name in out, (bad, out)
 
     # -- euclid: exact known results, then a full sweep ---------------------
     assert euclid(4, 16) == "x...x...x...x...", euclid(4, 16)
@@ -526,6 +539,15 @@ def demo():
 
 
 if __name__ == "__main__":
+    # `python -m thud.gen` executes this file under the name "__main__"; it is
+    # never given the name "thud.gen" in sys.modules. demo() below imports
+    # core, whose load_modules() then imports "thud.gen" for real - a second,
+    # separate execution of everything above, registering a second set of
+    # (behaviorally identical but not identical-by-id) functions and tripping
+    # the collision detector against ourselves. Alias the module we're already
+    # running under its real name so that import is a no-op.
+    import sys
+    sys.modules.setdefault("thud.gen", sys.modules[__name__])
     results = demo()
     print("gen.py: all checks pass\n")
     for name, (bpm, rms, peak, active, _bar) in sorted(results.items()):

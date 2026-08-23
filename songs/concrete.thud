@@ -15,6 +15,6 @@ filter hat hp 8500
 oh ....x.......x...
 gain oh 0.6
 clap ....x.......x...
-bass b1! c2 . . e2! a1~ f1 . . . g1 a1 . a1 b1 .
+bass g1! . f1 a1 c2 e2 d2! . e2 f2 . a1 . b1 a1 b1
 filter bass lp 420 res 0.8
 sidechain bass 0.7

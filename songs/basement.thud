@@ -15,6 +15,6 @@ tune hat 9000
 oh ..x...x...x...x.
 gain oh 0.7
 clap ....x.......x...
-bass b1 c2 . a1 . b1 c2 d2 b1 a1~ . g1 b1! c2! e2 .
+bass a1! b1 d2! a1 . f#1 g1 a1 f#1! g1 . . . a1 . .
 filter bass lp 700 res 0.5
 sidechain bass 0.5

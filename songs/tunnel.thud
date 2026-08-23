@@ -14,6 +14,6 @@ hat x....x....x.....
 gain hat 0.5
 perc .x..x..x..x...x.
 tune perc 350
-bass a1! . g1 a1~ . c2 . a1 . . . c2 . . . a1
+bass a1! f1 . a1 . . . f1 g1! . a1 . . . . a2
 filter bass lp 500 res 0.7
 sidechain bass 0.6
