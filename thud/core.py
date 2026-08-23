@@ -61,6 +61,7 @@ class State:
         self.name = "untitled.thud"
         self.log = {}
         self.rms = {}
+        self.bands = {}          # track -> per-band energy, measured not guessed
         self.focus = 0
         self.view = "perform"
         self.echo = ""
@@ -206,6 +207,36 @@ def apply_fx(x, chain, bpm):
     return x
 
 
+BANDS_HZ = [(20, 60), (60, 250), (250, 800), (800, 2500), (2500, 8000), (8000, 20000)]
+_BAND_BINS = {}
+
+
+def band_energy(buf, n=8192):
+    """Real per-band energy for one track's bar.
+
+    Sums to very nearly 1 - not exactly, because the top band stops at 20kHz and
+    Nyquist is 22.05k, so a sliver of content sits outside every band.
+
+    The frequency view used to guess this from a table of voice names, which was
+    wrong the moment you pointed a track at a different voice or filtered it.
+    One rfft over a slice is cheap enough to do per track per bar.
+    """
+    x = buf[:, 0] if getattr(buf, "ndim", 1) == 2 else buf
+    if len(x) < 64:
+        return [0.0] * len(BANDS_HZ)
+    m = min(len(x), n)
+    seg = np.asarray(x[:m], dtype=np.float64)
+    if not seg.any():
+        return [0.0] * len(BANDS_HZ)
+    sp = np.abs(np.fft.rfft(seg * np.hanning(m)))
+    key = m
+    if key not in _BAND_BINS:
+        f = np.fft.rfftfreq(m, 1.0 / SR)
+        _BAND_BINS[key] = [(f >= lo) & (f < hi) for lo, hi in BANDS_HZ]
+    tot = sp.sum() + 1e-12
+    return [float(sp[mask].sum() / tot) for mask in _BAND_BINS[key]]
+
+
 def render_state(d):
     """Render one bar from a resolved state dict (what Song.state_at returns).
 
@@ -218,9 +249,9 @@ def render_state(d):
     tmp.tracks = d.get("tracks", {})
     tmp.order = d.get("order", list(tmp.tracks))
     tmp.master_fx = d.get("master_fx", [])
-    tmp.rms = {}
+    tmp.rms, tmp.bands = {}, {}
     out = render_bar(tmp)
-    ST.rms = tmp.rms                                  # meters follow what is playing
+    ST.rms, ST.bands = tmp.rms, tmp.bands                                  # meters follow what is playing
     return out
 
 
@@ -260,6 +291,7 @@ def render_bar(st=None):
         if tr["fx"]:
             buf = stereo(apply_fx(buf, tr["fx"], st.bpm))
         st.rms[name] = float(np.sqrt((buf ** 2).mean()))
+        st.bands[name] = band_energy(buf)
         mix += buf
     if st.master_fx:
         mix = stereo(apply_fx(mix, st.master_fx, st.bpm))
@@ -1063,7 +1095,7 @@ def snapshot(**over):
             name=name, pat=t["pat"], notes=tuple(t["notes"]), gain=t["gain"],
             pan=t["pan"], sc=t["sc"], filt=t["filt"] or "", fc=t["fc"], res=t["res"],
             tune=t["tune"], hum=t["hum"], mute=t["mute"], solo=t["solo"],
-            rms=ST.rms.get(name, 0.0),
+            rms=ST.rms.get(name, 0.0), bands=tuple(ST.bands.get(name, ())),
             active=bool(t["pat"].strip(".-")) and not t["mute"] and (t["solo"] or not soloed)))
     n = ST.n
     scope = np.concatenate((ST.scope[ST.scope_i:], ST.scope[:ST.scope_i]))

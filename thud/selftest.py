@@ -135,6 +135,17 @@ def selftest():
     assert np.array_equal(want, got), "save/load did not round-trip"
     os.remove(p)
 
+    # -- per-track band energy is measured, not guessed ------------------
+    do("open industrial")
+    render_bar()
+    kb, hb = ST.bands.get("kick"), ST.bands.get("hat")
+    assert kb and hb, "no per-track band energy"
+    # not exactly 1: the top band stops at 20kHz and Nyquist is 22.05k
+    assert 0.97 <= sum(kb) <= 1.0, "bands should very nearly sum to 1: %.4f" % sum(kb)
+    assert sum(kb[:2]) > 0.5, "kick is not mostly sub+bass: %s" % (kb,)
+    assert sum(hb[4:]) > 0.5, "hat is not mostly presence+air: %s" % (hb,)
+    assert sum(kb[:2]) > sum(hb[:2]), "kick should be lower than the hat"
+
     # -- fx chains, and everything survives a save --------------------
     if FX:
         eff = "drive" if "drive" in FX else sorted(FX)[0]

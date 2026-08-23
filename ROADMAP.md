@@ -12,8 +12,8 @@ no loop.
 
 ## Now
 
-- [ ] **Per-track spectra** — `freq` view approximates band energy from a voice-name
-      table. Render tracks separately once per bar and use the real numbers.
+- [x] **Per-track spectra** — done. `core.band_energy` measures each track's real band
+      energy from its own bar buffer and puts it on the Snapshot as `TrackView.bands`.
 - [ ] **Automation recording** — sweep a filter by hand while playing and have the
       gesture captured as a `ramp` you can replay. The engine already stores
       automation; this is the capture path.
@@ -55,10 +55,25 @@ no loop.
 - `arrange.py`'s `song` and `variation` verbs are shadowed by core's and unreachable.
 - v2 `.thud` files have no duration, so `library.autobuild` under-fills with them.
 
+## Web
+
+- [x] **oontz.music live** — landing terminal, makes techno in the page, on Railway.
+- [x] **API live** — auth, song storage, gallery, AI proxy. Verified end to end.
+- [ ] **oontz.sh — the web instrument.** The big one: port the DSP to WebAudio. The
+      pure logic (song, layout, keymap, harmony, compose) translates almost as-is.
+- [ ] **Gallery on oontz.music** — read `/gallery`, play a track in the page.
+- [ ] **Move the landing page to Vercel** when the free-tier deploy cap resets.
+- [ ] **Wire RESEND_API_KEY and ANTHROPIC_API_KEY** so email and the AI helper work.
+
 ## Cycle log
 
 Append one line per completed cycle: what changed, what it measured, what it learned.
 
+- 2026-08-23 — cycle 1: per-track band energy is measured from each track's own bar
+  buffer rather than guessed from a voice-name table. Measured on `industrial`: kick
+  96% in sub+bass, hat 85% in presence+air. Learned that the guess was wrong the
+  moment a track was repointed at a different voice, which the FREQ view could never
+  have shown.
 - 2026-08-23 — v3 shipped: song timeline, layout solver, keymap table, compose,
   deck, mixer, two pages, copilot. 20 modules. Deck browser went 7 fps → 58 fps
   after caching the library index.

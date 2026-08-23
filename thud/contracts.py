@@ -94,6 +94,7 @@ class TrackView:
     mute: bool = False
     solo: bool = False
     rms: float = 0.0               # of the current bar, per track
+    bands: tuple = ()              # MEASURED energy per BANDS entry, sums to 1
     active: bool = False
 
 
