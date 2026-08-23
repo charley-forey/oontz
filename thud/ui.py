@@ -195,14 +195,42 @@ def panel(s, w, h):
 
 
 def build(s, w, h):
+    """The page. Uses the v3 panel system when it is present, else the v2 page."""
     if s.overlay == "help":
         return overlay_page(s, w, h)
+    page = _panel_page(s, w, h)
+    if page is not None:
+        return page
     head = [header(s, w), master_bar(s, w), rule(w)]
     head += [track_row(t, i, s, w) for i, t in enumerate(s.tracks)]
     head.append(rule(w))
     tail = [rule(w), legend(s, w), status(s, w), cmdline(s, w)]
     rows = head + panel(s, w, h - len(head) - len(tail)) + tail
     return rows[:h] if len(rows) >= h else rows + [" " * w] * (h - len(rows))
+
+
+def _panel_page(s, w, h):
+    """Solve and compose the registered panels for the current mode.
+
+    Returns None if the mode's panels are not available, so the instrument still
+    runs with any subset of the v3 modules present.
+    """
+    try:
+        from .contracts import PANELS
+        from .layout import compose as lcompose
+        mode = getattr(ST, "mode", "studio")
+        if not PANELS.get(mode):
+            return None
+        if mode == "deck":
+            from . import ui_deck as mod
+        else:
+            from . import ui_studio as mod
+        placed = mod.layout_for(s, w, h)
+        if not placed:
+            return None
+        return lcompose(placed, s, w, h)
+    except Exception:
+        return None                                  # never lose the page to a panel bug
 
 
 def overlay_page(s, w, h):
