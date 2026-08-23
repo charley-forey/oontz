@@ -61,14 +61,37 @@ no loop.
 - [x] **API live** — auth, song storage, gallery, AI proxy. Verified end to end.
 - [ ] **oontz.sh — the web instrument.** The big one: port the DSP to WebAudio. The
       pure logic (song, layout, keymap, harmony, compose) translates almost as-is.
-- [ ] **Gallery on oontz.music** — read `/gallery`, play a track in the page.
+- [x] **Gallery on oontz.music** — reads the live `/gallery`.
+- [ ] **Play a gallery track in the landing page** — oontz.js can already interpret a
+      .song; wire the browser engine to a fetched track.
 - [ ] **Move the landing page to Vercel** when the free-tier deploy cap resets.
-- [ ] **Wire RESEND_API_KEY and ANTHROPIC_API_KEY** so email and the AI helper work.
+- [x] **RESEND_API_KEY wired** — email sends. Two bugs on the way: the failure was
+      swallowed (looked like "no key"), and the real cause was Cloudflare 1010
+      blocking urllib's default User-Agent.
+- [x] **Persistent volume** — 1GB at /data. Before it, every redeploy wiped all
+      accounts and songs.
+- [ ] **ANTHROPIC_API_KEY** — still needed. The key pasted for it was a duplicate of
+      the Resend key (`re_…`); Anthropic keys start with `sk-ant-`.
+- [ ] **Verify a sending domain in Resend** so mail comes from oontz.sh rather than
+      onboarding@resend.dev, which only delivers to the account owner.
+
+## Copy
+
+- [x] **oontz.music voice** — dry, self-aware, story-shaped. In `copy.js`, apart from
+      the machinery, because copy changes far more often than code.
+- [ ] **oontz.sh voice** — the flip side: unhinged, funny, still competent. Same facts,
+      opposite register. Write it as `copy.js` in the app so both sides stay separable.
 
 ## Cycle log
 
 Append one line per completed cycle: what changed, what it measured, what it learned.
 
+- 2026-08-23 — cycle 2: theory.py. Eight genres, per-element frequency roles, and
+  arrangement/mixing/DJ rules as checkable claims with reasons. A composed track
+  grades 92/100; the same track broken into two drops with a 12-bar section grades
+  0/100 and says why. The point is that generation can now be graded rather than
+  trusted. Learned that the QA gate is worth its runtime: it caught a genuine
+  out-of-bounds crash in dj.scratch that 10,000 earlier calls had missed.
 - 2026-08-23 — cycle 1: per-track band energy is measured from each track's own bar
   buffer rather than guessed from a voice-name table. Measured on `industrial`: kick
   96% in sub+bass, hat 85% in presence+air. Learned that the guess was wrong the
