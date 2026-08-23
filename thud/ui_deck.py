@@ -13,6 +13,9 @@ from .term import fit, vlen, DIM, OFF, INV
 from . import theme as T
 
 
+_WCACHE = {}
+
+
 def _decks():
     try:
         from .deck import DECKS
@@ -34,48 +37,13 @@ def _mmss(sec):
     return "%d:%02d" % (sec // 60, sec % 60)
 
 
-def _wave(buf, w, pos_frac, marks=(), h=1):
-    """Overview waveform.
-
-    Height comes from RMS and colour from peak. Peak alone pins almost every
-    column to full on dance music and the arrangement disappears; RMS shows the
-    intro and the break as the quiet passages they actually are.
-    """
-    if buf is None or len(buf) < 2 or w < 4:
+def _wave(buf, w, pos_frac, marks=(), h=1, cache=None):
+    """Delegates to waveform.py, with a local fallback if it is absent."""
+    try:
+        from . import waveform
+        return waveform.overview(buf, w, h, pos_frac, marks, cache=cache)
+    except ImportError:
         return [T.c("muted", "-" * w) for _ in range(h)]
-    mono = buf[:, 0] if buf.ndim == 2 else buf
-    n = len(mono)
-    step = max(1, n // w)
-    body = np.zeros(w)
-    tops = np.zeros(w)
-    for i in range(w):
-        seg = mono[i * step:min(n, (i + 1) * step)]
-        if len(seg):
-            body[i] = float(np.sqrt(np.mean(seg.astype(np.float64) ** 2)))
-            tops[i] = float(np.abs(seg).max())
-    mx = body.max() or 1.0
-    head = int(pos_frac * (w - 1))
-    mark_cols = {int(m[0] / float(n) * (w - 1)): m[1] for m in marks} if marks else {}
-    rows = []
-    for r in range(h):
-        line = []
-        for i in range(w):
-            lvl = body[i] / mx
-            need = (h - r) / float(h)
-            if lvl >= need:
-                kind = "danger" if tops[i] > 0.85 else ("warn" if tops[i] > 0.5 else "accent")
-                ch = T.c(kind, "#" if T._S["ascii"] else "█")
-            elif lvl >= need - (0.5 / h):
-                ch = T.c("accent", "▄")
-            elif i in mark_cols and r == h - 1:
-                ch = T.c("accent2", "|" if T._S["ascii"] else "│")
-            else:
-                ch = DIM + ("." if T._S["ascii"] else "·") + OFF
-            if i == head:
-                ch = INV + ch + OFF
-            line.append(ch)
-        rows.append("".join(line))
-    return rows
 
 
 def _deck_panel(which):
@@ -105,7 +73,15 @@ def _deck_panel(which):
             T.c("text_dim", "  %s" % d.section_at_pos()),
         ]
         wave_h = max(1, min(4, h - 2))
-        body = _wave(d.buf, max(8, w - 4), pos, d.marks, wave_h)
+        ww = max(8, w - 4)
+        key = (id(d.buf), ww)
+        if _WCACHE.get("key") != key:                # analyse once per load and width
+            try:
+                from . import waveform
+                _WCACHE["key"], _WCACHE["val"] = key, waveform.analyse(d.buf, ww)
+            except ImportError:
+                _WCACHE["key"], _WCACHE["val"] = key, None
+        body = _wave(d.buf, ww, pos, d.marks, wave_h, _WCACHE.get("val"))
         beat = d.beat_phase()
         foot = "  " + T.c("text_dim", "beat %d" % d.beat()) + "  " + \
                T.meter(beat, max(6, min(20, w - 30)), col) + \
@@ -161,43 +137,29 @@ def beatmatch(s, w, h):
 
 
 def browser(s, w, h):
-    """The library, with a compatibility read against what is playing."""
+    """The library, scored against what is playing. Reads library.py's cache."""
     try:
-        import glob, os
-        from . import song as sm
-    except Exception:
-        return [" " * w] * h
+        from . import library as lib
+    except ImportError:
+        return [fit(T.c("text_dim", "  library not loaded"), w)] + [" " * w] * (h - 1)
     D = _decks()
     ref = None
     if D is not None:
-        ref = D.a.song if D.a.n > 1 else (D.b.song if D.b.n > 1 else None)
-    rows = [T.c("text_dim", "  %-18s %6s %6s %7s  %s" %
-                ("song", "bpm", "key", "length", "match"))]
-    try:
-        from . import harmony as hm
-    except Exception:
-        hm = None
-    for p in sorted(glob.glob("songs/*.song"))[:max(0, h - 1)]:
-        try:
-            sg = sm.Song.load(p)
-        except Exception:
-            continue
-        cam = hm.camelot(sg.key, sg.scale) if hm else ""
+        title = D.a.title if D.a.n > 1 else (D.b.title if D.b.n > 1 else "")
+        ref = lib.get(title) if title else None
+    rows = [T.c("text_dim", "  %-16s %6s %5s %6s  %s" %
+                ("song", "bpm", "key", "length", "mixes with what is playing"))]
+    for e in lib.all_songs()[:max(0, h - 1)]:
         note = ""
-        if ref is not None and hm is not None and sg.fingerprint() != ref.fingerprint():
-            kd = hm.key_distance(sg.key, sg.scale, ref.key, ref.scale)
-            bd = abs(sg.bpm - ref.bpm) / max(1.0, ref.bpm) * 100
-            score = max(0.0, 1.0 - kd * 0.25 - min(1.0, bd / 8.0) * 0.5)
+        if ref is not None and e["path"] != ref["path"]:
+            score, why = lib.compatibility(ref, e)
             kind = "ok" if score > 0.7 else ("warn" if score > 0.4 else "danger")
-            note = T.c(kind, "%3d%%" % int(score * 100)) + \
-                T.c("text_dim", "  %s, %+.0f BPM" % (
-                    "same key" if kd == 0 else ("compatible" if kd <= 1 else "clashes"),
-                    sg.bpm - ref.bpm))
-        rows.append("  %-18s %6.1f %6s %7s  %s" % (
-            os.path.basename(p)[:-5][:18], sg.bpm, cam or sg.key,
-            _mmss(sg.seconds()), note))
+            note = T.c(kind, "%3d%%" % int(score * 100)) +                 T.c("text_dim", "  " + "; ".join(why[:2]))
+        rows.append("  %-16s %6.1f %5s %6s  %s" % (
+            e["name"][:16], e["bpm"], e.get("camelot") or e.get("key", ""),
+            "%d:%02d" % (int(e["seconds"]) // 60, int(e["seconds"]) % 60), note))
     if len(rows) == 1:
-        rows.append(T.c("text_dim", "  no .song files yet - `song save` one in STUDIO"))
+        rows.append(T.c("text_dim", "  nothing indexed - `song save` one in STUDIO"))
     return [fit(l, w) for l in (rows + [""] * h)[:h]]
 
 

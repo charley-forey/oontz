@@ -157,7 +157,8 @@ def selftest():
         for r in rows:
             assert ui.vlen(r) == W, "row is %d cols, want %d: %r" % (ui.vlen(r), W, r[:40])
         hp = ui.build(core.snapshot(overlay="help"), W, H)
-        assert any("every key" in ui.ANSI.sub("", r) for r in hp), "help overlay empty"
+        flat = ui.ANSI.sub("", " ".join(hp))
+        assert "keys" in flat and "play / stop" in flat, "help overlay is not the keymap"
 
     # -- a long track name must not break row alignment ----------------
     do("track add verylongname kick")
@@ -206,6 +207,34 @@ def selftest():
         do("track del reesetest")
     assert not core.is_pitched(ST.tracks["kick"]), "kick should not be pitched"
     assert core.is_pitched(ST.tracks["bass"]), "bass should be pitched"
+
+    # -- the key table and the dispatcher must agree, both directions ----
+    import re as _re
+    from . import keymap as km
+    src = open(os.path.join(os.path.dirname(__file__), "ui.py"), encoding="utf-8").read()
+    quoted = _re.compile('k == ' + chr(34) + '([^' + chr(34) + ']+)' + chr(34))
+    dispatched = set()
+    for lit in quoted.findall(src):
+        try:
+            dispatched.add(lit.encode().decode("unicode_escape"))
+        except UnicodeDecodeError:
+            dispatched.add(lit)
+    dispatched |= set(km.STEP_KEYS) | set("12345678")
+    try:
+        dispatched |= set(ui.PERF_KEYS)
+    except AttributeError:
+        pass
+    declared = km.handled_keys("studio")
+    assert not km.duplicates(), "duplicate key bindings: %s" % (km.duplicates(),)
+    undeclared = sorted(dispatched - declared - {"q", "quit", "exit"})
+    assert not undeclared, "ui handles keys the table never declares: %r" % undeclared
+    for kb in km.for_mode("studio"):                 # every label names a real key
+        assert kb.label and kb.cat in km.CATS, kb
+    from . import keyboard_view as kv
+    for W in (60, 100, 140):
+        assert ui.vlen(kv.legend_bar(core.snapshot(), W)) == W
+        for line in kv.keyboard_panel(core.snapshot(), W, 8):
+            assert ui.vlen(line) == W, "keyboard row is %d cols, want %d" % (ui.vlen(line), W)
 
     # -- recorder writes a real wav of the right length ------------------
     core.REC.start()

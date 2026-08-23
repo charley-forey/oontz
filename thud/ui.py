@@ -112,7 +112,12 @@ def track_row(t, i, s, w):
 
 
 def legend(s, w):
-    """Context-sensitive: only the keys that do something right now."""
+    """Generated from the key table, so a shown key always does what it says."""
+    try:
+        from . import keyboard_view as kv
+        return fit(kv.legend_bar(s, w), w)
+    except Exception:
+        pass
     try:
         from . import teach
         return fit(teach.legend(s, w), w)
@@ -234,7 +239,12 @@ def _panel_page(s, w, h):
 
 
 def overlay_page(s, w, h):
-    """teach.py owns this when present; the built-in map is the fallback."""
+    """keyboard_view generates this from the key table, so it cannot drift."""
+    try:
+        from . import keyboard_view as kv
+        return [fit(l, w) for l in kv.cheatsheet(s, w, h, _overlay_page[0])][:h]
+    except Exception:
+        pass
     try:
         from . import teach
         return [fit(l, w) for l in teach.help_page(s, w, h)][:h]
@@ -255,6 +265,7 @@ _held = {"key": None, "t": 0.0}
 
 _cmd = {"buf": "", "on": False}
 _overlay = [""]
+_overlay_page = [0]
 _taps = []
 
 
@@ -308,7 +319,10 @@ def perf_key(k):
 def on_key(k, s):
     """Returns False to quit."""
     if _overlay[0]:
-        _overlay[0] = ""
+        if k == "?":                                 # page through a long cheatsheet
+            _overlay_page[0] += 1
+        else:
+            _overlay[0], _overlay_page[0] = "", 0
         return True
 
     if _cmd["on"]:
