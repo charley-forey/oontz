@@ -385,8 +385,13 @@ def demo():
         seq_in = np.concatenate([b[engage - 1:engage], blended_in])
         click_max = max(click_max, worst_delta(seq_in))
 
+        # Real DJ use releases a rate effect once it's settled near its target rate,
+        # not mid-swoop - a click-guard is amplitude-only, it can't paper over two
+        # streams still moving at very different speeds. Warm up long enough for
+        # that (4 decay constants) before testing the release boundary.
+        warm = int(4 * kw["decay"] * SR) // F if "decay" in kw else 4
         pos, prev_last = mid_pos, wet_head[-1]
-        for _ in range(4):                                             # run it a while, then release
+        for _ in range(max(1, warm)):                                   # run it a while, then release
             seg, pos = apply(name, b, pos, F, **kw)
             prev_last = seg[-1]                    # true last sample before the release block
         # wet_next is the block the effect is producing AT the moment of release; dry

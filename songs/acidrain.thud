@@ -12,6 +12,6 @@ humanize stab 4
 kick x...x...x...x...
 hat x..x..x.x..x..x.
 clap ....x.......x...
-bass a#1! a1! c2 c3 a#2! a1 f1 . g1 f1 . g1 a1 a#1 . g1!
+bass a1 g1~! a#1 a1 f1~ g1 f1 e1 . . d1 a1 g1! a1 . f1
 filter bass lp 340 res 0.94
 sidechain bass 0.7

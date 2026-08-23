@@ -101,7 +101,7 @@ def legend(s, w):
     else:
         items = [("1-8", "track"), (STEP_KEYS[:4] + "..", "steps"), ("spc", "play"),
                  ("[ ]", "cutoff" if core.is_pitched(ST.tracks[t.name]) else "filter"),
-                 ("z x", "mute solo"), ("n", "vary"), ("R", "rec"),
+                 ("z x", "mute solo"), ("/", "roll"), ("\\", "spin"), ("R", "rec"),
                  (":", "cmd"), ("?", "all keys")]
     return fit("  " + c(238, " · ").join(c(117, k) + " " + c(245, v) for k, v in items), w)
 
@@ -193,6 +193,15 @@ def overlay_page(s, w, h):
 
 # ------------------------------------------------------------------- input
 
+# Hold-to-perform. The OS waits ~300ms before it starts repeating a held key, so the
+# release window has to outlast that gap or the effect stutters out mid-hold.
+# ponytail: 450ms suits this keyboard; it is the one number worth tuning by feel.
+HOLD_MS = 450
+PERF_KEYS = {"/": ("roll", {"length_beats": 0.25}), "?": ("roll", {"length_beats": 0.0625}),
+             "v": ("stutter", {}), "\\": ("spinback", {}), "`": ("tapestop", {}),
+             "c": ("reverse", {}), "b": ("brake", {})}
+_held = {"key": None, "t": 0.0}
+
 _cmd = {"buf": "", "on": False}
 _overlay = [""]
 _taps = []
@@ -216,6 +225,33 @@ def bump(attr, d, lo, hi, fmt):
     setattr(ST, attr, max(lo, min(hi, getattr(ST, attr) + d)))
     core.refresh()
     echo(fmt % getattr(ST, attr))
+
+
+def hold_tick():
+    """Release a performance effect once its key stops repeating."""
+    if _held["key"] and (time.time() - _held["t"]) * 1000 > HOLD_MS:
+        _held["key"] = None
+        core.perform()
+        echo("released")
+
+
+def perf_key(k):
+    """Engage a dj.py effect for as long as the key is held. Returns True if handled."""
+    if k not in PERF_KEYS or not core.playing():
+        return False
+    try:
+        from . import dj
+    except ImportError:
+        return False
+    name, params = PERF_KEYS[k]
+    fn = dj.PERFORM.get(name)
+    if fn is None:
+        return False
+    if _held["key"] != k:
+        core.perform(fn, bpm=ST.bpm, **params) if "bpm" in core._params_of(fn) else core.perform(fn, **params)
+        echo(name)
+    _held["key"], _held["t"] = k, time.time()
+    return True
 
 
 def on_key(k, s):
@@ -244,7 +280,10 @@ def on_key(k, s):
             _cmd["buf"] += k
         return True
 
-    t = s.tracks[ST.focus]
+    if perf_key(k):
+        return True
+
+    t = s.tracks[min(ST.focus, len(s.tracks) - 1)]
     tr = ST.tracks[t.name]
 
     if k == ":":
@@ -361,6 +400,7 @@ def run():
         while True:
             w, h = shutil_size()
             k = read_key()
+            hold_tick()
             s0 = core.snapshot(mode="cmd" if _cmd["on"] else "play",
                                cmdline=_cmd["buf"], complete=complete(_cmd["buf"]),
                                overlay=_overlay[0])

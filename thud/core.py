@@ -290,11 +290,19 @@ def playing():
     return _stream is not None and _stream.active
 
 
+def playhead():
+    """ST.pos as a plain sample index. Decaying dj effects park (ptr, elapsed) there."""
+    p = ST.pos
+    return float(p[0] if isinstance(p, tuple) else p)
+
+
 PERF = {"fn": None, "params": {}}                    # live performance effect, from dj.py
 
 
 def perform(fn=None, **params):
     """Engage a live effect (dj.py function) or, with no args, release it."""
+    if fn is None and PERF["fn"] is not None:
+        ST.pos = int(playhead()) % max(1, len(ST.bar))    # hand a clean index back
     PERF["fn"], PERF["params"] = fn, params
 
 
@@ -326,6 +334,7 @@ def _callback(out, frames, _t, _status):
             return
         except Exception:
             PERF["fn"] = None                        # a broken effect must not kill audio
+    i = int(i[0] if isinstance(i, tuple) else i) % n
     end = i + frames
     seg = b[i:end] if end <= n else np.concatenate((b[i:], b[:end - n]))
 
@@ -793,7 +802,7 @@ def snapshot(**over):
     scope_lr = np.concatenate((ST.scope_lr[ST.scope_i:], ST.scope_lr[:ST.scope_i]))
     return Snapshot(
         bpm=ST.bpm, swing=ST.swing, bar=ST.bars,
-        step=int(ST.pos / n * 16) if playing() else -1,
+        step=int(playhead() / n * 16) if playing() else -1,
         playing=playing(), name=ST.name, tracks=tuple(tv), focus=ST.focus,
         view=ST.view, echo=ST.echo if time.time() - ST.echo_at < 1.2 else "",
         recording=REC.on, rec_secs=REC.secs, rec_name=os.path.basename(REC.path),
