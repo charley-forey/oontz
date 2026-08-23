@@ -78,6 +78,7 @@ class State:
         self.songbar = 0                             # absolute bar in the song
         self.mode = "studio"                         # studio | deck
         self.section = None                          # name of the section playing
+        self.edit_section = None                     # the section the editor actually holds
         self.follow = True                           # transport advances through the song
         self.loop_section = False
 
@@ -576,9 +577,15 @@ def current_section():
 
 
 def _sync_section():
-    """Push the live track state back into the section being edited."""
-    _name, sec = current_section()
-    if sec is not None:
+    """Push the live track state back into the section being edited.
+
+    Only writes when the editor is actually holding THAT section. Without this
+    guard, assigning ST.song without loading a section first silently overwrites
+    it with whatever unrelated state the editor happened to contain - which
+    rendered a composed intro as pure silence before it was caught.
+    """
+    name, sec = current_section()
+    if sec is not None and ST.edit_section == name:
         sec.tracks = copy.deepcopy(ST.tracks)
         sec.order = list(ST.order)
         sec.master_fx = copy.deepcopy(ST.master_fx)
@@ -593,7 +600,7 @@ def _load_section(bar):
     ST.order = d["order"] or ST.order
     ST.master_fx = d["master_fx"]
     ST.bpm, ST.swing = d["bpm"], d["swing"]
-    ST.section = d["section"]
+    ST.section = ST.edit_section = d["section"]
     ST.focus = min(ST.focus, max(0, len(ST.order) - 1))
 
 
@@ -604,7 +611,7 @@ def _song_cmd(a):
         name = a[1] if len(a) > 1 else "untitled"
         ST.song = songmod.from_state(name, ST.tracks, ST.order, ST.bpm, ST.swing,
                                      ST.master_fx, bars=16, role="loop")
-        ST.songbar, ST.section = 0, name
+        ST.songbar, ST.section, ST.edit_section = 0, name, name
         return "new song %r - one section, `sec add drop 16` to grow it" % name
     if ST.song is None:
         return "no song loaded  (`song new <name>`, or `compose <style>`)"
@@ -704,6 +711,17 @@ def _goto_cmd(a):
 
 def _mmss(sec):
     return "%d:%02d" % (int(sec) // 60, int(sec) % 60)
+
+
+def set_song(sg, bar=0):
+    """Attach a Song and point the editor at it. Use this rather than assigning
+    ST.song directly, so the editor never clobbers a section it does not hold."""
+    ST.song = sg
+    ST.songbar = bar
+    ST.edit_section = None
+    _load_section(bar)
+    refresh()
+    return sg
 
 
 def render_song(path, on_progress=None):
