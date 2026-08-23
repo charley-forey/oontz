@@ -59,8 +59,11 @@ no loop.
 
 - [x] **oontz.music live** — landing terminal, makes techno in the page, on Railway.
 - [x] **API live** — auth, song storage, gallery, AI proxy. Verified end to end.
-- [ ] **oontz.sh — the web instrument.** The big one: port the DSP to WebAudio. The
-      pure logic (song, layout, keymap, harmony, compose) translates almost as-is.
+- [x] **oontz.sh shipped** — WebAudio voice bank, the song model and the composer all
+      ported. `go` makes a whole arranged song in the browser.
+- [ ] **Deck mode in the browser** — the DJ half is desktop-only so far.
+- [ ] **Keyboard-as-controller in the browser** — step pads, held-key filter sweeps,
+      loop rolls. The web app is command-driven only right now.
 - [x] **Gallery on oontz.music** — reads the live `/gallery`.
 - [ ] **Play a gallery track in the landing page** — oontz.js can already interpret a
       .song; wire the browser engine to a fetched track.
@@ -79,13 +82,30 @@ no loop.
 
 - [x] **oontz.music voice** — dry, self-aware, story-shaped. In `copy.js`, apart from
       the machinery, because copy changes far more often than code.
-- [ ] **oontz.sh voice** — the flip side: unhinged, funny, still competent. Same facts,
-      opposite register. Write it as `copy.js` in the app so both sides stay separable.
+- [x] **oontz.sh voice** — written, with the rules it follows stated in the file so it
+      stays consistent: a joke must carry information, punch at the software and never
+      the user, deadpan beats zany.
+
+## Known risk: the two composers can drift
+
+`thud/compose.py` and `web/app/compose.js` implement the same arrangement logic
+independently. The JS one now solves the drop window directly; the Python one still
+nudges and carries the same 14%-drop-in-techno fault the grader caught. Port the fix
+back, then add a check that both produce the same shape for the same seed.
 
 ## Cycle log
 
 Append one line per completed cycle: what changed, what it measured, what it learned.
 
+- 2026-08-23 — cycle 3: the browser composer. The grader immediately convicted the
+  generator - theory says techno drops at 20-40%, the generator dropped at 14% and
+  scored itself 68/100. Two fixes failed first: nudging fought itself (grow the intro,
+  the length goes out; trim the length, the drop leaves the window), and proportional
+  scaling broke phrase alignment on rounding. Solving it directly works - decide the
+  pre-drop bar count up front, because that IS what the window specifies. 144 songs
+  across 8 styles x 6 curves x 3 durations, 0 failures, mean score 82.6. Learned that
+  the grader is worth more than the generator: it found a real fault I would have
+  shipped without noticing.
 - 2026-08-23 — cycle 2: theory.py. Eight genres, per-element frequency roles, and
   arrangement/mixing/DJ rules as checkable claims with reasons. A composed track
   grades 92/100; the same track broken into two drops with a 12-bar section grades
