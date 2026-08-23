@@ -60,6 +60,7 @@
   <div id="bar"><span id="ps1">oontz&nbsp;&gt;</span><input id="in" autocomplete="off"
     autocapitalize="off" spellcheck="false" aria-label="terminal input"></div>
 </div>
+<script src="copy.js"></script>
 <script>
 "use strict";
 const OUT = document.getElementById('out'), IN = document.getElementById('in');
@@ -195,6 +196,21 @@ function frame(){
 frame();
 
 /* ---------------------------------------------------------------- shell */
+const CP = window.OONTZ_COPY || {};
+
+/* Render one copy block. {t:title} {s:sentence} {c:command,d:note} {} = blank */
+function block(rows){
+  line();
+  (rows||[]).forEach(function(r){
+    if(!r || (!r.t && !r.s && !r.c)) return line();
+    if(r.t) return w(`<span class="${r.cls||'b'}">${esc(r.t)}</span>`);
+    if(r.c) return w(`  <span class="a">${esc(r.c)}</span>`.padEnd(0) +
+      `   <span class="dim">${esc(r.d||'')}</span>`);
+    w(`<span class="${r.cls||''}">${esc(r.s)}</span>`);
+  });
+  line();
+}
+
 const LOGO = [
 "   ▄▄▄   ▄▄▄  ▄▄▄▄▄ ▄▄▄▄▄ ▄▄▄▄▄▄",
 "  █   █ █   █ █   █ █   █    ▄▀ ",
@@ -202,92 +218,51 @@ const LOGO = [
 "  █   █ █   █ █   █ █   █ ▄▀    ",
 "   ▀▀▀   ▀▀▀  ▀   ▀ ▀   ▀ ▀▀▀▀▀▀"];
 
-const HELP = [
-  ["demo",      "hear it — a 4-bar loop, right here in this page"],
-  ["stop",      "silence"],
-  ["kick x...x...x...x...", "change a pattern. x is a hit, . is a rest"],
-  ["bpm 145",   "change the tempo"],
-  ["what",      "what oontz actually is"],
-  ["why",       "why a command line, of all things"],
-  ["open",      "go to the instrument at oontz.sh"],
-  ["gallery",   "tracks other people made"],
-  ["free",      "the catch (there isn't one)"],
-  ["help",      "this"],
-];
-
 const CMDS = {
-  help(){ line(); for(const [k,v] of HELP)
-      w(`  <span class="k">${esc(k)}</span><span class="dim">${esc(v)}</span>`); line(); },
-
-  async what(){ line();
-    await type("oontz is an instrument that lives in a terminal.", 'b');
-    line();
-    line("You type patterns. It makes techno. Nothing is sampled — every kick,");
-    line("hat and bassline is synthesized from arithmetic, live, on your machine.");
-    line();
-    w(`  <span class="a">kick x...x...x...x...</span>   <span class="dim">four to the floor</span>`);
-    w(`  <span class="a">hat  ..x...x...x...x.</span>   <span class="dim">offbeat hats</span>`);
-    w(`  <span class="a">bass a1 . a1~ c2</span>        <span class="dim">~ slides between notes</span>`);
-    line();
-    line("A whole track is a text file. That is the point — you can read it, diff it,");
-    line("commit it, and send it to someone as a few kilobytes.");
-    line();
-  },
-
-  async why(){ line();
-    await type("Because text is the best interface anyone has built for music.", 'b');
-    line();
-    line("A DAW makes you drag rectangles with a mouse. A pattern is a sentence.");
-    line("You can search it, version it, generate it, explain it, and share it in a");
-    line("chat message. And because a song is text and the engine is deterministic,");
-    w(`<span class="ok">sharing a track costs kilobytes, not megabytes — and what you share is</span>`);
-    w(`<span class="ok">the source, so anyone who hears it can open it and take it apart.</span>`);
-    line();
-    line("You share the recipe, not the cake. Nothing else in music works this way.");
-    line();
-  },
-
+  help(){ line();
+    (CP.help||[]).forEach(function(kv){
+      w(`  <span class="k">${esc(kv[0])}</span><span class="dim">${esc(kv[1])}</span>`); });
+    line(); },
+  what(){ block(CP.what); },
+  why(){ block(CP.why); },
+  theory(){ block(CP.theory); },
+  free(){ block(CP.free); },
   demo(){ line();
-    w(`<span class="a">▸ playing.</span> <span class="dim">try: <span class="a">kick x...x..x.x...x</span> · <span class="a">bpm 150</span> · <span class="a">hat ..x.x.x...x.x.x.</span> · <span class="a">stop</span></span>`);
+    w(`<span class="a">▸ playing.</span> <span class="dim">now change it: <span class="a">kick x...x..x.x...x</span> · <span class="a">hat ..x.x.x...x.x.x.</span> · <span class="a">bpm 150</span></span>`);
     start(); },
-
   stop(){ stop(); line("▸ stopped.", 'dim'); },
-
-  bpm(a){ const v=parseFloat(a[0]); if(!isFinite(v)||v<60||v>220) return line("bpm 60-220", 'w');
+  bpm(a){ const v=parseFloat(a[0]);
+    if(!isFinite(v)||v<60||v>220) return line(CP.err_bpm||"bpm 60-220", 'w');
     bpm=v; if(playing){ clearInterval(timer); timer=setInterval(tick,60/bpm/4*1000); }
     line(`▸ ${bpm} BPM`, 'dim'); },
-
-  async open(){ line();
-    await type("opening the instrument…", 'a');
-    line();
-    w(`  <span class="b">oontz.sh</span> <span class="dim">— the full thing: song arrangement, two DJ decks,</span>`);
-    w(`  <span class="dim">  an AI that helps you build a track, and session recording.</span>`);
-    line();
+  open(){ block(CP.open);
     w(`  <a href="https://oontz.sh" target="_blank" rel="noopener">https://oontz.sh →</a>`);
-    line();
+    line(); },
+  async gallery(){ block(CP.gallery_head);
+    const d = w('<span class="dim">  loading…</span>');
+    try{
+      const r = await fetch(API + '/gallery?limit_n=12');
+      const j = await r.json();
+      d.remove();
+      if(!j.songs || !j.songs.length) return block(CP.gallery_empty);
+      w(`  <span class="dim">${'track'.padEnd(20)}${'bpm'.padStart(5)}  ${'key'.padEnd(5)}${'len'.padStart(6)}  by</span>`);
+      j.songs.forEach(function(sg){
+        const mm = Math.floor((sg.seconds||0)/60), ss = String(Math.floor((sg.seconds||0)%60)).padStart(2,'0');
+        w(`  <span class="b">${esc(String(sg.title).slice(0,20).padEnd(20))}</span>`+
+          `<span class="a">${String(Math.round(sg.bpm)).padStart(5)}</span>  `+
+          `<span class="w">${esc(String(sg.kkey||'').slice(0,5).padEnd(5))}</span>`+
+          `<span class="dim">${(mm+':'+ss).padStart(6)}  ${esc(sg.by||'')}</span>`);
+      });
+      line();
+      w(`  <span class="dim">each of those is a few KB of text. open them at </span><a href="https://oontz.sh" target="_blank" rel="noopener">oontz.sh</a>`);
+      line();
+    }catch(e){ d.remove(); block(CP.gallery_empty); }
   },
-
-  gallery(){ line();
-    line("Tracks people made and published. Each one is a few KB of text —");
-    line("open any of them and you get the arrangement, not just the audio.");
-    line();
-    w(`<span class="dim">  the gallery goes live with the instrument. </span><a href="https://oontz.sh" target="_blank" rel="noopener">oontz.sh</a>`);
-    line(); },
-
-  free(){ line();
-    w(`<span class="b">It is free. All of it.</span>`);
-    line();
-    line("The audio runs on your machine, not a server — so there is no bill for me");
-    line("to pass on to you. Songs are text, so storing them costs almost nothing.");
-    line();
-    line("An account (just an email) only buys you saved songs and publishing.");
-    line("You never need one to play.");
-    line(); },
-
   clear(){ OUT.innerHTML=''; gridEl=null; },
 };
-const ALIAS={ '?':'help','ls':'help','play':'demo','start':'demo','about':'what',
-  'sh':'open','app':'open','quit':'stop','exit':'stop','cls':'clear' };
+const API = "https://api-production-bd3d8.up.railway.app";
+const ALIAS={'?':'help','ls':'help','play':'demo','start':'demo','about':'what',
+  'sh':'open','app':'open','quit':'stop','exit':'stop','cls':'clear','music':'theory'};
 
 function run(raw){
   const s=raw.trim(); if(!s) return;
@@ -307,20 +282,13 @@ addEventListener('click', ()=>IN.focus());
 
 /* -------------------------------------------------------------- boot */
 (async function boot(){
-  for(const l of LOGO) w(`<span class="a">${esc(l)}</span>`, 'big');
-  line();
-  await type("techno from a command line.", 'b', 14);
-  line();
-  await sleep(120);
-  w(`<span class="dim">  Every sound is synthesized. A song is a text file. It is free.</span>`);
-  line();
-  w(`  <span class="k">demo</span><span class="dim">hear it, right now, in this page</span>`);
-  w(`  <span class="k">what</span><span class="dim">what this actually is</span>`);
-  w(`  <span class="k">open</span><span class="dim">go to the instrument</span>`);
-  w(`  <span class="k">help</span><span class="dim">everything else</span>`);
-  line();
-  IN.focus();
-})();
+ for(const l of LOGO)w(`<span class="a">${esc(l)}</span>`,'big');line();
+ await type(CP.tagline||"techno from a command line.",'b',14);line();await sleep(120);
+ (CP.boot||[]).forEach(function(t){ w(`<span class="dim">  ${esc(t)}</span>`); });
+ line();
+ (CP.menu||[]).forEach(function(kv){
+   w(`  <span class="k">${esc(kv[0])}</span><span class="dim">${esc(kv[1])}</span>`); });
+ line();IN.focus();})();
 </script>
 </body>
 </html>
