@@ -105,6 +105,17 @@ def advice(snap):
         if sec is not None and sec.role == "build":
             return ("this build is static",
                     "press `:` then `ramp bass.fc 300 4000 over %d` to open it up" % sec.bars)
+    try:                                       # a measured rule beats a heuristic
+        from . import theory
+        if sg is not None:
+            crit = theory.critique(sg, {t.name: t.bands for t in live if t.bands},
+                                   (sg.meta or {}).get("style"))
+            worst = [m for sev, _i, m in crit if sev == "bad"]
+            if worst:
+                return ("theory says: " + worst[0].split(".")[0].lower(),
+                        "press `:` then `grade` for the full verdict")
+    except Exception:
+        pass
     if snap.peak > 0.98:
         return ("master is clipping", "press `:` then `gain kick 0.8`")
     if not snap.recording:

@@ -146,6 +146,21 @@ def selftest():
     assert sum(hb[4:]) > 0.5, "hat is not mostly presence+air: %s" % (hb,)
     assert sum(kb[:2]) > sum(hb[:2]), "kick should be lower than the hat"
 
+    # -- the theory grader must tell a good song from a bad one ---------
+    try:
+        from . import theory, compose
+        good = compose.compose_song("hardtechno", 4.0, seed=7)
+        gs = theory.score(theory.critique(good, None, "hardtechno"))
+        bad = compose.compose_song("hardtechno", 4.0, seed=7)
+        bad.order = [n for n in bad.order if bad.sections[n].role == "drop"][:2]
+        bad.sections[bad.order[0]].bars = 12          # breaks phrase alignment
+        bs = theory.score(theory.critique(bad, None, "hardtechno"))
+        assert gs >= 70, "a well-formed song scored only %d" % gs
+        assert bs < gs - 20, "grader cannot separate good (%d) from bad (%d)" % (gs, bs)
+        assert theory.advice(theory.critique(bad, None, "hardtechno")), "no advice given"
+    except ImportError:
+        pass
+
     # -- fx chains, and everything survives a save --------------------
     if FX:
         eff = "drive" if "drive" in FX else sorted(FX)[0]
