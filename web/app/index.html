@@ -1,0 +1,321 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>oontz.sh — make techno in a terminal</title>
+<meta name="description" content="A terminal instrument for making and mixing techno. Whole songs, two DJ decks, an AI that grades your arrangement. Free, runs in your browser.">
+<style>
+  :root{
+    --bg:#07090b; --line:#18212b; --dim:#46545f; --fg:#c6d2dc; --bright:#f4f9fc;
+    --accent:#22e0d0; --accent2:#ff4fa3; --warn:#ffb020; --hot:#ff3b3b; --ok:#4ade80;
+    --mono:ui-monospace,"SF Mono",Menlo,Consolas,"DejaVu Sans Mono",monospace;
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{margin:0;background:var(--bg);color:var(--fg);font:14px/1.5 var(--mono);overflow:hidden}
+  #bg{position:fixed;inset:0;z-index:0;opacity:.55}
+  #scan{position:fixed;inset:0;z-index:3;pointer-events:none;
+    background:repeating-linear-gradient(180deg,rgba(0,0,0,0) 0 2px,rgba(0,0,0,.3) 2px 4px);
+    mix-blend-mode:multiply}
+  #vig{position:fixed;inset:0;z-index:3;pointer-events:none;
+    background:radial-gradient(ellipse at 50% 45%,transparent 38%,rgba(0,0,0,.8) 100%)}
+  #wrap{position:relative;z-index:2;height:100%;display:flex;flex-direction:column;
+    max-width:1180px;margin:0 auto;padding:14px 18px}
+  #hud{border-bottom:1px solid var(--line);padding-bottom:6px;margin-bottom:8px;
+    font-size:13px;min-height:1.5em}
+  #out{flex:1;overflow-y:auto;white-space:pre-wrap;word-break:break-word;
+    scrollbar-width:thin;scrollbar-color:var(--line) transparent}
+  #out::-webkit-scrollbar{width:8px}
+  #out::-webkit-scrollbar-thumb{background:var(--line);border-radius:4px}
+  #bar{display:flex;align-items:center;gap:8px;border-top:1px solid var(--line);
+    padding-top:9px;margin-top:6px}
+  #ps1{color:var(--accent2);white-space:nowrap}
+  #in{flex:1;background:none;border:0;outline:0;color:var(--bright);font:inherit;
+    caret-color:var(--accent2)}
+  .dim{color:var(--dim)} .b{color:var(--bright)} .a{color:var(--accent)}
+  .a2{color:var(--accent2)} .w{color:var(--warn)} .ok{color:var(--ok)} .hot{color:var(--hot)}
+  .k{color:var(--accent);min-width:22ch;display:inline-block}
+  a{color:var(--accent);border-bottom:1px solid rgba(34,224,208,.3);text-decoration:none}
+  a:hover{color:var(--bright)}
+  .big{font-size:min(2.4vw,15px);line-height:1.05;letter-spacing:.5px}
+  .grid{font-size:13px;letter-spacing:1px}
+  @media (max-width:640px){body{font-size:12px}#wrap{padding:10px}.k{min-width:12ch}}
+  @media (prefers-reduced-motion:reduce){#bg{display:none}}
+</style>
+</head>
+<body>
+<canvas id="bg"></canvas><div id="scan"></div><div id="vig"></div>
+<div id="wrap">
+  <div id="hud"></div>
+  <div id="out"></div>
+  <div id="bar"><span id="ps1">oontz.sh&nbsp;&gt;</span><input id="in" autocomplete="off"
+    autocapitalize="off" spellcheck="false" aria-label="terminal input"></div>
+</div>
+<script src="copy.js"></script>
+<script src="oontz.js"></script>
+<script src="compose.js"></script>
+<script>
+"use strict";
+var API = "https://api-production-bd3d8.up.railway.app";
+var CP = window.OONTZ_COPY || {}, CO = window.OONTZ_COMPOSE, OZ = window.oontz;
+var OUT = document.getElementById('out'), IN = document.getElementById('in'),
+    HUD = document.getElementById('hud');
+var esc = function(s){ return String(s).replace(/[&<>]/g, function(c){
+  return {'&':'&amp;','<':'&lt;','>':'&gt;'}[c]; }); };
+function w(html, cls){ var d=document.createElement('div'); if(cls)d.className=cls;
+  d.innerHTML=html; OUT.appendChild(d); OUT.scrollTop=OUT.scrollHeight; return d; }
+function line(s, cls){ return w(esc(s===undefined?'':s), cls); }
+var sleep = function(ms){ return new Promise(function(r){ setTimeout(r,ms); }); };
+async function type(s, cls, sp){ var d=w('',cls);
+  for(var i=0;i<s.length;i++){ d.innerHTML+=esc(s[i]); OUT.scrollTop=OUT.scrollHeight;
+    if(s[i]!==' ') await sleep(sp||9); } return d; }
+function block(rows){ line();
+  (rows||[]).forEach(function(r){
+    if(!r || (!r.t && !r.s && !r.c)) return line();
+    if(r.t) return w('<span class="'+(r.cls||'b')+'">'+esc(r.t)+'</span>');
+    if(r.c) return w('  <span class="a">'+esc(r.c)+'</span>'+
+      '   <span class="dim">'+esc(r.d||'')+'</span>');
+    w('<span class="'+(r.cls||'')+'">'+esc(r.s)+'</span>');
+  }); line(); }
+
+/* ------------------------------------------------------------- the engine */
+var E = new OZ.Engine();
+var song = null, gridEl = null, token = localStorage.getItem('oontz_token') || '';
+
+E.onbar = function(){ draw(); };
+E.onstep = function(){ draw(); };
+
+function mmss(s){ s = Math.max(0, Math.floor(s||0));
+  return Math.floor(s/60)+':'+String(s%60).padStart(2,'0'); }
+function songSeconds(sg){ if(!sg) return 0;
+  return OZ.totalBars(sg) * 240 / (sg.bpm||138); }
+
+function draw(){
+  var i = E.step % 16;
+  /* HUD: where we are in the whole song */
+  if(song){
+    var at = OZ.sectionAt(song, E.songbar), total = OZ.totalBars(song);
+    var cells = '', acc = 0, w0 = Math.max(20, Math.min(90, Math.floor(innerWidth/14)));
+    song.order.forEach(function(n){
+      var s = song.sections[n]; if(!s) return;
+      var span = Math.max(1, Math.round(s.bars/total*w0));
+      var col = {intro:'--dim', build:'--warn', drop:'--hot', break:'--accent',
+                 verse:'--ok', outro:'--dim'}[s.role] || '--fg';
+      var gl = s.energy>0.8?'█':(s.energy>0.5?'▓':'▒');
+      for(var k=0;k<span;k++){ acc++;
+        var here = at && n===at.name && Math.abs(acc - Math.round((E.songbar+1)/total*w0))<1;
+        cells += '<span style="color:var('+col+')'+(here?';background:var('+col+');color:#000':'')+'">'+gl+'</span>'; }
+    });
+    HUD.innerHTML = '<span class="a2">'+esc(song.name)+'</span> <span class="dim">'+
+      Math.round(song.bpm)+' BPM · '+esc(song.key+' '+song.scale)+' · bar '+
+      (E.songbar+1)+'/'+total+' · '+mmss(songSeconds(song))+' · </span>'+
+      '<span class="b">'+esc(at?at.name:'')+'</span><br>'+cells;
+  }
+  if(!gridEl) gridEl = w('','grid');
+  var h = '';
+  (E.order||[]).forEach(function(n){
+    var tr = E.tracks[n]; if(!tr || !tr.pat) return;
+    if(!tr.pat.replace(/[.\-]/g,'')) return;
+    var col = {kick:'--hot', hat:'--accent', oh:'--accent', clap:'--accent2',
+               snare:'--warn', perc:'--ok', bass:'--warn', rumble:'--dim',
+               pad:'--accent', riser:'--a2'}[n] || '--fg';
+    var cells = '';
+    for(var q=0;q<16;q++){
+      var ch = tr.pat[q % tr.pat.length] || '.';
+      var on = ch !== '.' && ch !== '-';
+      var cur = q === i && E.playing;
+      cells += '<span style="color:var('+(on?col:'--dim')+')'+
+        (cur?';background:var('+(on?col:'--line')+');color:#000':'')+'">'+
+        (on?'█':'·')+'</span>' + (q%4===3?' ':'');
+    }
+    h += '<div><span class="dim">  '+n.padEnd(7)+'</span>'+cells+'</div>';
+  });
+  gridEl.innerHTML = h;
+  OUT.scrollTop = OUT.scrollHeight;
+}
+
+/* ------------------------------------------------------- psychedelic bg */
+var cv=document.getElementById('bg'), cx=cv.getContext('2d'), W=0,H=0,tt=0;
+function size(){ W=cv.width=innerWidth*devicePixelRatio; H=cv.height=innerHeight*devicePixelRatio;
+  cv.style.width=innerWidth+'px'; cv.style.height=innerHeight+'px'; }
+size(); addEventListener('resize', function(){ size(); draw(); });
+var reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+function frame(){ requestAnimationFrame(frame); if(reduce) return;
+  var spec = E.spectrum();
+  tt += E.playing ? .022 : .006;
+  cx.fillStyle='rgba(7,9,11,.17)'; cx.fillRect(0,0,W,H);
+  var cxx=W/2, cyy=H/2, R=Math.min(W,H)*.44;
+  var bass=0, air=0;
+  if(spec){ for(var b=1;b<12;b++) bass+=spec[b]; bass/=11*255;
+            for(var a2=300;a2<520;a2++) air+=spec[a2]; air/=220*255; }
+  for(var r=0;r<6;r++){
+    var p=(tt*.45+r/6)%1, rad=R*p*(1+bass*.35);
+    cx.beginPath();
+    for(var a=0;a<=72;a++){
+      var th=a/72*Math.PI*2;
+      var wob=1+Math.sin(th*(3+r)+tt*2.2)*(.10+air*.5);
+      var x=cxx+Math.cos(th)*rad*wob, y=cyy+Math.sin(th)*rad*wob*.44;
+      a?cx.lineTo(x,y):cx.moveTo(x,y);
+    }
+    cx.closePath();
+    cx.strokeStyle='hsla('+((tt*45+r*38)%360)+',85%,'+(55+bass*20)+'%,'+
+      ((1-p)*(.16+bass*.35))+')';
+    cx.lineWidth=(1.2+bass*4)*devicePixelRatio; cx.stroke();
+  }
+}
+frame();
+
+/* ------------------------------------------------------------- commands */
+var LOGO = ["  ▄▄▄   ▄▄▄  ▄▄▄▄▄ ▄▄▄▄▄ ▄▄▄▄▄▄     ▄▄▄ ▄▄▄▄▄▄▄",
+            " █   █ █   █ █   █ █   █    ▄▀     █      █   ",
+            " █   █ █   █ █   █ █   █  ▄▀    ▄▄▄█▄▄    █   ",
+            " █   █ █   █ █   █ █   █ ▄▀        █ █    █   ",
+            "  ▀▀▀   ▀▀▀  ▀   ▀ ▀   ▀ ▀▀▀▀▀▀ ▀▀▀▀ ▀    ▀   "];
+
+function loadSong(sg, why){
+  song = sg; E.loadSong(sg); E.play();
+  var crit = CO.critique(sg), sc = CO.score(crit);
+  line();
+  w('<span class="a2">▸ '+esc(sg.name)+'</span> <span class="dim">'+
+    OZ.totalBars(sg)+' bars · '+mmss(songSeconds(sg))+' · '+Math.round(sg.bpm)+
+    ' BPM · '+esc(sg.key+' '+sg.scale)+' · '+sg.order.length+' sections</span>');
+  w('<span class="dim">  '+esc(sg.order.join(' → '))+'</span>');
+  w('<span class="'+(sc>75?'ok':(sc>45?'w':'hot'))+'">  theory says '+sc+'/100</span>'+
+    '<span class="dim">   type <span class="a">grade</span> for the full verdict</span>');
+  if(why) w('<span class="dim">  '+esc(why)+'</span>');
+  line();
+  draw();
+}
+
+var CMDS = {
+  help: function(){ line();
+    (CP.help||[]).forEach(function(kv){
+      w('  <span class="k">'+esc(kv[0])+'</span><span class="dim">'+esc(kv[1])+'</span>'); });
+    line(); },
+  what: function(){ block(CP.what); },
+  theory: function(){ block(CP.theory); },
+  decks: function(){ block(CP.decks); },
+  keys: function(){ block(CP.keys); },
+  ai: function(){ block(CP.ai); },
+  share: function(){ block(CP.share); },
+  free: function(){ block(CP.free); },
+  go: function(){ CMDS.compose(['hardtechno','5']); },
+  compose: function(a){
+    var style=(a[0]||'hardtechno').toLowerCase();
+    var mins=parseFloat(a[1])||5, curve=(a[2]||'classic').toLowerCase();
+    if(!CO.GENRES[style]) return line('styles: '+Object.keys(CO.GENRES).join(' '),'w');
+    loadSong(CO.compose(style, Math.max(1,Math.min(12,mins)), curve),
+             CO.GENRES[style].note);
+  },
+  styles: function(){ line();
+    Object.keys(CO.GENRES).forEach(function(k){
+      var G=CO.GENRES[k];
+      w('  <span class="k">'+esc(k)+'</span><span class="dim">'+G.bpm+' BPM · '+
+        esc(G.note)+'</span>'); }); line(); },
+  curves: function(){ line();
+    Object.keys(CO.TEMPLATES).forEach(function(k){
+      w('  <span class="k">'+esc(k)+'</span><span class="dim">'+
+        esc(CO.TEMPLATES[k].join(' → '))+'</span>'); }); line(); },
+  grade: function(){ if(!song) return line(CP.err_nosong,'w');
+    var crit=CO.critique(song), sc=CO.score(crit); line();
+    w('<span class="b">'+esc(song.name)+' — '+sc+'/100</span>'); line();
+    crit.forEach(function(c){
+      var m={good:['ok','  ✓ '],warn:['w','  ! '],bad:['hot','  ✗ ']}[c[0]];
+      w('<span class="'+m[0]+'">'+m[1]+esc(c[1])+'</span>'); });
+    line(); },
+  play: function(){ if(!song) return line(CP.err_nosong,'w'); E.play(); line('▸ playing','dim'); },
+  stop: function(){ E.stop(); line('▸ stopped','dim'); },
+  bpm: function(a){ var v=parseFloat(a[0]);
+    if(!isFinite(v)||v<60||v>220) return line(CP.err_bpm,'w');
+    E.setBpm(v); if(song) song.bpm=v; line('▸ '+v+' BPM','dim'); },
+  gallery: async function(){ line();
+    w('<span class="b">what people published.</span> <span class="dim">each is a few KB of text.</span>');
+    var d=w('<span class="dim">  loading…</span>');
+    try{
+      var r=await fetch(API+'/gallery?limit_n=15'), j=await r.json(); d.remove();
+      if(!j.songs||!j.songs.length){ line();
+        return w('<span class="dim">  nobody has published anything yet. be the first. type <span class="a">go</span> then <span class="a">publish</span>.</span>'); }
+      GAL = j.songs;
+      j.songs.forEach(function(sg,i){
+        w('  <span class="a">'+String(i+1).padStart(2)+'</span>  <span class="b">'+
+          esc(String(sg.title).slice(0,22).padEnd(22))+'</span><span class="dim">'+
+          String(Math.round(sg.bpm)).padStart(4)+' BPM  '+
+          esc(String(sg.kkey||'').padEnd(9))+mmss(sg.seconds)+'  '+esc(sg.by||'')+'</span>');
+      });
+      line(); w('<span class="dim">  <span class="a">open 3</span> to load one. you get the arrangement, not just the audio.</span>'); line();
+    }catch(e){ d.remove(); line('  gallery unreachable right now','w'); } },
+  open: async function(a){
+    var n=parseInt(a[0],10);
+    if(!GAL.length) return line('type `gallery` first','w');
+    var it=GAL[n-1]; if(!it) return line('no such number','w');
+    try{ var r=await fetch(API+'/songs/'+it.id), j=await r.json();
+      loadSong(j.data, 'by '+(j.by||'someone')+' · '+j.plays+' plays');
+    }catch(e){ line('could not load that one','w'); } },
+  login: async function(a){
+    var em=(a[0]||'').trim();
+    if(!em || em.indexOf('@')<0) return line('login you@example.com','w');
+    try{ var r=await fetch(API+'/auth/request',{method:'POST',
+        headers:{'content-type':'application/json'}, body:JSON.stringify({email:em})});
+      var j=await r.json();
+      if(j.sent) line('▸ check your email. the link signs you in.','ok');
+      else if(j.link){ line('▸ mail is off on this deploy, here is your link:','w');
+        w('  <a href="'+j.link+'">'+esc(j.link)+'</a>'); }
+      else line('▸ could not send that: '+(j.why||'unknown'),'w');
+    }catch(e){ line('auth unreachable','w'); } },
+  publish: async function(){
+    if(!song) return line(CP.err_nosong,'w');
+    if(!token) return line('you need an account to publish. `login you@example.com`','w');
+    try{ var r=await fetch(API+'/songs',{method:'POST',
+        headers:{'content-type':'application/json','authorization':'Bearer '+token},
+        body:JSON.stringify({title:song.name, data:song, public:true})});
+      var j=await r.json();
+      if(j.id) w('<span class="ok">▸ published.</span> <span class="dim">'+esc(j.url||'')+'</span>');
+      else line('▸ '+(j.error||'could not publish'),'w');
+    }catch(e){ line('could not reach the server','w'); } },
+  clear: function(){ OUT.innerHTML=''; gridEl=null; }
+};
+var GAL = [];
+var ALIAS = {'?':'help','ls':'help','start':'go','make':'go','song':'go','q':'stop',
+  'exit':'stop','quit':'stop','cls':'clear','about':'what','dj':'decks','keymap':'keys',
+  'critique':'grade','score':'grade','signin':'login','account':'login'};
+
+function run(raw){
+  var s=(raw||'').trim(); if(!s) return;
+  w('<span class="a2">oontz.sh &gt;</span> '+esc(s));
+  var parts=s.split(/\s+/), v0=parts[0], args=parts.slice(1);
+  var v=ALIAS[v0.toLowerCase()]||v0.toLowerCase();
+  if(E.tracks && E.tracks[v]){
+    var pat=args[0]||'';
+    if(!/^[xXoO.\-]+$/.test(pat)) return line(CP.err_pattern,'w');
+    E.setPattern(v,pat); if(!E.playing) E.play(); draw();
+    return line('▸ '+v+' '+pat,'dim'); }
+  if(CMDS[v]) return CMDS[v](args);
+  line(CP.err_cmd?CP.err_cmd(v0):v0+': no', 'w');
+}
+
+IN.addEventListener('keydown', function(e){
+  if(e.key==='Enter'){ var v=IN.value; IN.value=''; run(v); } });
+addEventListener('click', function(){ IN.focus(); });
+
+/* magic-link return: #token=... */
+(function(){ var m=(location.hash||'').match(/token=([^&]+)/);
+  if(m){ token=m[1]; localStorage.setItem('oontz_token',token);
+    history.replaceState(null,'',location.pathname); } })();
+
+(async function boot(){
+  LOGO.forEach(function(l){ w('<span class="a2">'+esc(l)+'</span>','big'); });
+  line();
+  await type(CP.tagline||'techno from a command line.','b',13);
+  line();
+  (CP.boot||[]).forEach(function(t){ w('<span class="dim">  '+esc(t)+'</span>'); });
+  line();
+  (CP.menu||[]).forEach(function(kv){
+    w('  <span class="k">'+esc(kv[0])+'</span><span class="dim">'+esc(kv[1])+'</span>'); });
+  line();
+  if(token) w('<span class="dim">  signed in. <span class="a">publish</span> puts a track in the gallery.</span>');
+  IN.focus();
+})();
+</script>
+</body>
+</html>
