@@ -152,6 +152,28 @@ def selftest():
     assert ST.tracks["hat"]["mute"] is True
     ui.on_key("z", core.snapshot())
 
+    # -- dynamic tracks and voice assignment ----------------------------
+    from .contracts import VOICES
+    n0 = len(ST.order)
+    assert do("track add rumbletest rumble") is None, "track add failed"
+    assert ST.order[-1] == "rumbletest" and len(ST.order) == n0 + 1
+    do("rumbletest x...............")
+    render_bar()
+    assert ST.rms["rumbletest"] > 0.0, "added track made no sound"
+    assert do("track add x nosuchvoice").startswith("no voice")
+    assert do("voice rumbletest nosuchvoice").startswith("no voice")
+    assert do("track del kick").startswith("can only"), "removed a builtin track"
+    do("track del rumbletest")
+    assert "rumbletest" not in ST.tracks and len(ST.order) == n0
+    if "reese" in VOICES:                        # pitched-ness follows the voice
+        do("track add reesetest reese")
+        assert core.is_pitched(ST.tracks["reesetest"]), "reese track is not pitched"
+        do("reesetest a1 . c2 .")
+        assert ST.tracks["reesetest"]["pat"] == "x.x."
+        do("track del reesetest")
+    assert not core.is_pitched(ST.tracks["kick"]), "kick should not be pitched"
+    assert core.is_pitched(ST.tracks["bass"]), "bass should be pitched"
+
     # -- recorder writes a real wav of the right length ------------------
     core.REC.start()
     blk = np.zeros((512, 2), np.float32)
@@ -164,8 +186,13 @@ def selftest():
         assert f.getnframes() == 20 * 512, "recorded %d frames, want %d" % (f.getnframes(), 20 * 512)
         assert f.getframerate() == SR
     assert os.path.exists(core.REC.path[:-4] + ".thud"), "take did not save its .thud"
-    os.remove(core.REC.path)
-    os.remove(core.REC.path[:-4] + ".thud")
+    for f in (core.REC.path, core.REC.path[:-4] + ".thud"):
+        for _ in range(20):                      # the writer thread may still hold the
+            try:                                 # handle for a moment on Windows
+                os.remove(f)
+                break
+            except PermissionError:
+                time.sleep(0.05)
     try:
         os.rmdir("takes")
     except OSError:

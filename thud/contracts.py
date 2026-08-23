@@ -94,3 +94,28 @@ VOICES = {}
 FX = {}
 VIEWS = {}
 COMMANDS = {}
+
+# Called by the scheduler once per bar, before rendering bar N. Each hook gets the
+# bar index and returns command strings to apply for that bar. This is how
+# arrange.py drives automation without touching core.
+BAR_HOOKS = []
+
+# Optional modules. Missing ones are skipped, so the instrument runs with any
+# subset of them present.
+OPTIONAL = ("drums", "synths", "fx", "viz_spectrum", "viz_scope",
+            "arrange", "dj", "gen", "teach", "ai")
+
+
+def load_modules(pkg=__name__.rsplit(".", 1)[0]):
+    """Import every optional module so it can fill the registries above."""
+    import importlib
+    loaded, failed = [], {}
+    for m in OPTIONAL:
+        try:
+            importlib.import_module("%s.%s" % (pkg, m))
+            loaded.append(m)
+        except ImportError:
+            pass                                  # not written yet, that is fine
+        except Exception as e:                    # written but broken: say so, keep going
+            failed[m] = "%s: %s" % (type(e).__name__, e)
+    return loaded, failed

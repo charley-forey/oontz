@@ -126,7 +126,7 @@ def v_perc(accent=False, tune=320.0):
 
 
 @functools.lru_cache(maxsize=1024)
-def v_bass303(hz, dur, accent=False, slide_from=0.0, cutoff=350.0, res=0.8):
+def v_bass303(hz, dur=0.2, accent=False, slide_from=0.0, cutoff=350.0, res=0.8):
     """Saw -> resonant lowpass with an envelope-swept cutoff. That's the 303."""
     n = max(64, int(SR * dur))
     t = np.arange(n) / SR
@@ -142,7 +142,7 @@ def v_bass303(hz, dur, accent=False, slide_from=0.0, cutoff=350.0, res=0.8):
 
 
 @functools.lru_cache(maxsize=512)
-def v_stab(hz, dur, accent=False, cutoff=2200.0, res=0.35):
+def v_stab(hz, dur=0.4, accent=False, cutoff=2200.0, res=0.35):
     n = max(64, int(SR * dur))
     x = np.zeros(n)
     for semi in (0, 3, 7):                                 # minor triad

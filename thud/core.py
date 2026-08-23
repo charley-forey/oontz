@@ -5,15 +5,18 @@ re-renders off-thread and swaps the array in on the next bar boundary.
 """
 import os
 import copy
+import inspect
 import time
 import wave
 import random
 import threading
+import functools
 import collections
 import numpy as np
 import sounddevice as sd
 
-from .contracts import SR, SEED, Snapshot, TrackView, VOICES, COMMANDS
+from .contracts import (SR, SEED, Snapshot, TrackView, VOICES, COMMANDS,
+                        BAR_HOOKS, load_modules)
 from .voices import svf, note_hz, rng, v_hat, v_perc, v_bass303, v_stab
 
 TRACK_ORDER = ["kick", "hat", "oh", "clap", "snare", "perc", "bass", "stab"]
@@ -22,10 +25,16 @@ DEFAULT_TUNE = {"hat": 8000.0, "oh": 8000.0, "perc": 320.0}
 SCOPE_N = 4096
 
 
-def new_track(name):
-    return {"pat": "." * 16, "notes": [], "gain": 1.0, "pan": 0.0, "sc": 0.0,
-            "hum": 0.0, "filt": None, "fc": 0.0, "res": 0.6,
+def new_track(name, voice_name=None):
+    return {"voice": voice_name or name, "pat": "." * 16, "notes": [], "gain": 1.0,
+            "pan": 0.0, "sc": 0.0, "hum": 0.0, "filt": None, "fc": 0.0, "res": 0.6,
             "tune": DEFAULT_TUNE.get(name, 0.0), "mute": False, "solo": False}
+
+
+def is_pitched(tr):
+    """A track is pitched if its voice asks for a frequency. Works for any voice."""
+    fn = VOICES.get(tr["voice"])
+    return bool(fn) and bool({"hz", "freq"} & _params_of(fn))
 
 
 def stereo(x):
@@ -38,9 +47,11 @@ class State:
     def __init__(self):
         self.bpm = 132.0
         self.swing = 0.0
+        self.order = list(TRACK_ORDER)
         self.tracks = {n: new_track(n) for n in TRACK_ORDER}
         self.bar = np.zeros((self.n, 2), np.float32)
         self.pending = None
+        self.next = None                             # bar N+1, rendered ahead
         self.pos = 0
         self.bars = 0
         self.drops = 0
@@ -105,20 +116,39 @@ def hits(name, tr, n, swing):
         yield i, int(p) % n, c.isupper()
 
 
+@functools.lru_cache(maxsize=256)
+def _params_of(fn):
+    """Which arguments this voice actually accepts. Cached; signatures are static."""
+    try:
+        return frozenset(inspect.signature(fn).parameters)
+    except (TypeError, ValueError):
+        return frozenset(("accent",))
+
+
 def voice(name, tr, accent, hz=0.0, dur=0.2, slide=0.0):
-    if name == "bass":
-        return v_bass303(hz, dur, accent, slide, tr["fc"] or 350.0, tr["res"])
-    if name == "stab":
-        return v_stab(hz, dur, accent, tr["fc"] or 2200.0, tr["res"])
-    if name == "oh":
-        x = v_hat(accent, 0.3, tr["tune"] or 8000.0)
-    elif name == "hat":
-        x = v_hat(accent, 0.03, tr["tune"] or 8000.0)
-    elif name == "perc":
-        x = v_perc(accent, tr["tune"] or 320.0)
-    else:
-        x = VOICES[name](accent)
-    if tr["filt"]:
+    """Render one hit.
+
+    Voices declare what they want by parameter name and core supplies whatever the
+    track has: a voice with a `tune` argument gets the track's tune, one with
+    `cutoff` gets its filter frequency. That way a new voice from any module is
+    playable without core knowing anything about it.
+    """
+    fn = VOICES.get(tr["voice"], VOICES.get(name))
+    if fn is None:
+        return np.zeros(1)
+    want = _params_of(fn)
+    kw = {}
+    have = {"accent": accent, "hz": hz, "freq": hz, "dur": dur,
+            "slide_from": slide, "slide": slide, "tune": tr["tune"],
+            "cutoff": tr["fc"], "fc": tr["fc"], "res": tr["res"],
+            "decay": tr.get("decay", 0.0)}
+    for k, v in have.items():
+        if k in want and v:            # falsy means "not set" - leave the voice default
+            kw[k] = v
+    if tr["voice"] == "oh" and "decay" in want and "decay" not in kw:
+        kw["decay"] = 0.3              # open hat is the hat voice held longer
+    x = fn(**kw)
+    if tr["filt"] and not is_pitched(tr):
         x = svf(x, tr["fc"], tr["res"], tr["filt"])
     return x
 
@@ -153,7 +183,8 @@ def render_bar(st=None):
     soloed = [k for k, t in st.tracks.items() if t["solo"]]
     kicks = [p for _, p, _ in hits("kick", st.tracks["kick"], n, st.swing)]
     duck = duck_env(n, kicks)
-    for name, tr in st.tracks.items():
+    for name in st.order:
+        tr = st.tracks[name]
         st.rms[name] = 0.0
         if not tr["pat"].strip(".-"):
             continue
@@ -165,7 +196,7 @@ def render_bar(st=None):
         prev = 0.0
         for i, p, acc in hits(name, tr, n, st.swing):
             hz = slide = 0.0
-            if name in PITCHED:
+            if is_pitched(tr):
                 tok = tr["notes"][i] if i < len(tr["notes"]) else "."
                 hz = note_hz(tok.rstrip("~!"))
                 slide = prev if tok.rstrip("!").endswith("~") else 0.0
@@ -182,16 +213,47 @@ def render_bar(st=None):
 
 
 _batch = False
+_want = threading.Event()
+_sched = None
 
 
 def refresh():
+    """A live edit. Takes effect at the next bar line, or immediately when stopped."""
     if _batch:
         return
     bar = render_bar()
     if playing():
         ST.pending = bar
+        ST.next = None                               # the lookahead is now stale
+        _want.set()
     else:
         ST.bar, ST.pos = bar, 0
+
+
+def _schedule():
+    """Keep bar N+1 rendered, so automation and arrangement can change every bar.
+
+    Runs off the audio thread. Cold render is ~0.2s against a 1.8s bar, so there is
+    room; if a render ever overruns, the callback reuses the current bar and counts
+    a drop rather than glitching.
+
+    ponytail: BAR_HOOKS commands mutate ST from this thread. State is small dicts and
+    the GIL makes each write atomic; add a lock if hooks ever grow beyond parameter
+    changes.
+    """
+    while True:
+        _want.wait()
+        _want.clear()
+        if not playing():
+            continue
+        try:
+            idx = ST.bars + 1
+            for hook in BAR_HOOKS:                   # arrange.py drives automation here
+                for line in hook(idx) or ():
+                    do(line, log=False)
+            ST.next = render_bar()
+        except Exception:
+            ST.next = None                           # never let a bad hook kill the clock
 
 # ------------------------------------------------------------------- engine
 
@@ -202,9 +264,40 @@ def playing():
     return _stream is not None and _stream.active
 
 
+PERF = {"fn": None, "params": {}}                    # live performance effect, from dj.py
+
+
+def perform(fn=None, **params):
+    """Engage a live effect (dj.py function) or, with no args, release it."""
+    PERF["fn"], PERF["params"] = fn, params
+
+
+def _tap(seg, frames):
+    """Feed the visual ring and the recorder. Called from the audio thread."""
+    mono = seg.mean(axis=1)
+    j = ST.scope_i
+    k = min(frames, SCOPE_N - j)
+    ST.scope[j:j + k] = mono[:k]
+    if k < frames:
+        ST.scope[:frames - k] = mono[k:]
+    ST.scope_i = (j + frames) % SCOPE_N
+    if REC.on:
+        REC.q.append(seg.copy())                     # ponytail: deque append is atomic in
+                                                     # CPython and this is a 2KB copy. Use a
+                                                     # preallocated ring if takes run for hours.
+
+
 def _callback(out, frames, _t, _status):
     b, i = ST.bar, ST.pos
     n = len(b)
+    if PERF["fn"] is not None:                       # live FX: pointer math, no re-render
+        try:
+            seg, ST.pos = PERF["fn"](b, i, frames, **PERF["params"])
+            out[:] = seg
+            _tap(seg, frames)
+            return
+        except Exception:
+            PERF["fn"] = None                        # a broken effect must not kill audio
     end = i + frames
     seg = b[i:end] if end <= n else np.concatenate((b[i:], b[:end - n]))
 
@@ -219,34 +312,30 @@ def _callback(out, frames, _t, _status):
 
     out[:] = seg
     ST.pos = end % n
-
-    mono = seg.mean(axis=1)                              # ring for the visuals
-    j = ST.scope_i
-    k = min(frames, SCOPE_N - j)
-    ST.scope[j:j + k] = mono[:k]
-    if k < frames:
-        ST.scope[:frames - k] = mono[k:]
-    ST.scope_i = (j + frames) % SCOPE_N
-
-    if REC.on:
-        REC.q.append(seg.copy())                         # ponytail: deque append is
-                                                         # atomic in CPython; a 2KB copy
-                                                         # per block. Swap for a preallocated
-                                                         # ring if takes ever run for hours.
-    if end >= n:
+    _tap(seg, frames)
+    if end >= n:                                     # bar boundary
         ST.bars += 1
-        if ST.pending is not None:
-            ST.bar, ST.pending, ST.pos = ST.pending, None, 0
+        nxt = ST.pending if ST.pending is not None else ST.next
+        if nxt is not None:
+            ST.bar, ST.pending, ST.next, ST.pos = nxt, None, None, 0
+        else:
+            ST.drops += 1                            # render overran; reuse this bar
+        _want.set()
 
 
 def play():
-    global _stream
+    global _stream, _sched
+    if _sched is None:
+        _sched = threading.Thread(target=_schedule, daemon=True)
+        _sched.start()
     if _stream is None:
         _stream = sd.OutputStream(samplerate=SR, channels=2, dtype="float32",
                                   blocksize=512, callback=_callback)
     if not _stream.active:
-        ST.bar, ST.pos, ST.bars = render_bar(), 0, 0
+        ST.bar, ST.pos, ST.bars, ST.drops = render_bar(), 0, 0, 0
+        ST.next = None
         _stream.start()
+        _want.set()
 
 
 def stop():
@@ -367,6 +456,41 @@ def _render(a):
     return "rendered %s  %d bars  %.1fs" % (a[0], bars, len(data) / SR)
 
 
+def _voice_cmd(a):
+    """`voice bass reese` - point a track at any registered voice."""
+    tr = track_arg(a[0])
+    if a[1] not in VOICES:
+        return "no voice %r  (try `voices`)" % a[1]
+    tr["voice"] = a[1]
+    return None
+
+
+def _track_cmd(a):
+    """`track add rumble [voice]` / `track del rumble`. Tracks are not fixed at 8."""
+    if a[0] == "add":
+        name = a[1]
+        if name in ST.tracks:
+            return "track %s already exists" % name
+        v = a[2] if len(a) > 2 else name
+        if v not in VOICES:
+            return "no voice %r  (try `voices`)" % v
+        ST.tracks[name] = new_track(name, v)
+        ST.order.append(name)
+        return None
+    if a[0] in ("del", "rm"):
+        if a[1] not in ST.tracks or a[1] in TRACK_ORDER:
+            return "can only remove tracks you added"
+        del ST.tracks[a[1]]
+        ST.order.remove(a[1])
+        ST.focus = min(ST.focus, len(ST.order) - 1)
+        return None
+    return "track add <name> [voice] | track del <name>"
+
+
+def _voices_cmd(a):
+    return "  ".join(sorted(VOICES))
+
+
 def _songs(a):
     """The starter songbook. Templates to learn from and build on."""
     import glob
@@ -383,6 +507,7 @@ def _open(a):
     if not os.path.exists(p):
         return "no song %r — try `songs`" % n
     ST.tracks = {t: new_track(t) for t in TRACK_ORDER}
+    ST.order = list(TRACK_ORDER)
     ST.log.clear()
     return load(p)
 
@@ -416,6 +541,10 @@ CMDS = {
     "play":      (lambda a: toggle_play(), "p", "start/stop"),
     "stop":      (lambda a: stop(), None, "stop"),
     "rec":       (lambda a: REC.toggle(), "rc", "record a take"),
+    "view":      (lambda a: setattr(ST, "view", a[0]) or ("view " + a[0]), "vw", "switch panel"),
+    "voice":     (_voice_cmd, "vc", "point a track at a voice"),
+    "track":     (_track_cmd, "tk", "add <name> [voice] | del <name>"),
+    "voices":    (_voices_cmd, None, "list every registered voice"),
     "songs":     (_songs, "ls", "list the starter songbook"),
     "open":      (_open, "o", "load a song by name"),
     "save":      (lambda a: save(a[0]), "s", "write .thud"),
@@ -428,7 +557,7 @@ CMDS = {
     "variation": (lambda a: generate("variation", a), "v", "mutate a pattern"),
 }
 NO_LOG = {"play", "stop", "rec", "save", "load", "render", "undo", "redo",
-          "ab", "songs", "open"}
+          "ab", "songs", "open", "view", "voices"}
 KEYED = {"gain", "tune", "filter", "sidechain", "humanize", "mute", "solo"}
 ALIAS = {a: n for n, (_, a, _) in CMDS.items() if a}
 ALIAS.update({"k": "kick", "h": "hat", "b": "bass", "c": "clap", "st": "stab",
@@ -439,7 +568,7 @@ def complete(text):
     """Longest common prefix of matching command names, for Tab."""
     if not text or " " in text:
         return ""
-    pool = sorted(set(list(CMDS) + TRACK_ORDER + list(ALIAS)))
+    pool = sorted(set(list(CMDS) + list(ST.tracks) + list(VOICES) + list(ALIAS)))
     hits_ = [c for c in pool if c.startswith(text)]
     if not hits_:
         return ""
@@ -461,8 +590,11 @@ def do(line, log=True):
     if log and verb not in NO_LOG:
         ST.mark()
 
-    if verb in TRACK_ORDER:
-        (set_notes if verb in PITCHED else lambda n, a: set_pattern(n, a[0]))(verb, args)
+    if verb in ST.tracks:
+        if is_pitched(ST.tracks[verb]):
+            set_notes(verb, args)
+        else:
+            set_pattern(verb, args[0])
     elif verb in CMDS:
         out = CMDS[verb][0](args)
         if verb in NO_LOG:
@@ -515,7 +647,7 @@ def generate(verb, args):
     """Writes the *result* as a plain command, so .thud files stay literal."""
     r = random.Random()
     if verb == "variation":
-        name = args[0] if args else TRACK_ORDER[ST.focus]
+        name = args[0] if args else ST.order[ST.focus]
         pat = list(ST.tracks[name]["pat"])
         for _ in range(2):
             i = r.randrange(len(pat))
@@ -549,11 +681,14 @@ def generate(verb, args):
 # -------------------------------------------------------------- snapshot
 
 
+MODULES, MODULE_ERRORS = load_modules()
+
+
 def snapshot(**over):
     """Immutable view of the world for one frame. Views only ever read this."""
     soloed = any(t["solo"] for t in ST.tracks.values())
     tv = []
-    for name in TRACK_ORDER:
+    for name in ST.order:
         t = ST.tracks[name]
         tv.append(TrackView(
             name=name, pat=t["pat"], notes=tuple(t["notes"]), gain=t["gain"],

@@ -12,6 +12,7 @@ import dataclasses
 
 from . import core
 from .core import ST, do, echo, complete, CMDS, TRACK_ORDER, REC
+from .contracts import VIEWS
 
 if os.name == "nt":
     import msvcrt
@@ -89,12 +90,17 @@ def track_row(t, i, s, w):
 
 def legend(s, w):
     """Context-sensitive: only the keys that do something right now."""
+    try:
+        from . import teach
+        return fit(teach.legend(s, w), w)
+    except Exception:
+        pass
     t = s.tracks[s.focus]
     if s.mode == "cmd":
         items = [("Tab", "complete"), ("Enter", "run"), ("Esc", "back"), ("?", "keys")]
     else:
         items = [("1-8", "track"), (STEP_KEYS[:4] + "..", "steps"), ("spc", "play"),
-                 ("[ ]", "cutoff" if t.name in core.PITCHED else "filter"),
+                 ("[ ]", "cutoff" if core.is_pitched(ST.tracks[t.name]) else "filter"),
                  ("z x", "mute solo"), ("n", "vary"), ("R", "rec"),
                  (":", "cmd"), ("?", "all keys")]
     return fit("  " + c(238, " · ").join(c(117, k) + " " + c(245, v) for k, v in items), w)
@@ -142,20 +148,48 @@ def help_page(w, h):
 # ------------------------------------------------------------------ frame
 
 
+def rule(w):
+    return fit(c(238, "├" + "─" * (w - 2) + "┤"), w)
+
+
+def views():
+    """perform (the grid alone) plus whatever view modules have registered."""
+    return ["perform"] + sorted(VIEWS)
+
+
+def panel(s, w, h):
+    """The middle region: whichever view is selected, or empty space."""
+    if h <= 0:
+        return []
+    fn = VIEWS.get(s.view)
+    if fn is None:
+        return [" " * w] * h
+    try:
+        lines = list(fn(s, w, h))[:h]
+    except Exception as e:                           # a broken view must not kill the page
+        lines = [fit("  " + c(196, "view %r: %s: %s" % (s.view, type(e).__name__, e)), w)]
+    return lines + [" " * w] * (h - len(lines))
+
+
 def build(s, w, h):
     if s.overlay == "help":
+        return overlay_page(s, w, h)
+    head = [header(s, w), master_bar(s, w), rule(w)]
+    head += [track_row(t, i, s, w) for i, t in enumerate(s.tracks)]
+    head.append(rule(w))
+    tail = [rule(w), legend(s, w), status(s, w), cmdline(s, w)]
+    rows = head + panel(s, w, h - len(head) - len(tail)) + tail
+    return rows[:h] if len(rows) >= h else rows + [" " * w] * (h - len(rows))
+
+
+def overlay_page(s, w, h):
+    """teach.py owns this when present; the built-in map is the fallback."""
+    try:
+        from . import teach
+        return [fit(l, w) for l in teach.help_page(s, w, h)][:h]
+    except Exception:
         return help_page(w, h)
-    rows = [header(s, w), master_bar(s, w), fit(c(238, "├" + "─" * (w - 2) + "┤"), w)]
-    for i, t in enumerate(s.tracks):
-        rows.append(track_row(t, i, s, w))
-    while len(rows) < h - 4:
-        rows.append(" " * w)
-    rows = rows[:h - 4]
-    rows.append(fit(c(238, "├" + "─" * (w - 2) + "┤"), w))
-    rows.append(legend(s, w))
-    rows.append(status(s, w))
-    rows.append(cmdline(s, w))
-    return rows[:h]
+
 
 # ------------------------------------------------------------------- input
 
@@ -166,7 +200,7 @@ _taps = []
 
 def sweep(t, mult):
     tr = ST.tracks[t.name]
-    if t.name in core.PITCHED:
+    if core.is_pitched(tr):
         tr["fc"] = max(40.0, min(18000.0, (tr["fc"] or 350.0) * mult))
         core.refresh()
         return echo("%s cutoff %d Hz" % (t.name, tr["fc"]))
@@ -221,14 +255,15 @@ def on_key(k, s):
         return False
     elif k in "12345678":
         ST.focus = int(k) - 1
-        echo("focus %s" % TRACK_ORDER[ST.focus])
-    elif k in STEP_KEYS:
+        ST.focus = min(ST.focus, len(ST.order) - 1)
+        echo("focus %s" % ST.order[ST.focus])
+    elif k in STEP_KEYS and ST.focus < len(ST.order):
         i = STEP_KEYS.index(k)
         pat = list(tr["pat"].ljust(16, ".")[:16])
         pat[i] = {".": "x", "x": "X", "X": "."}[pat[i] if pat[i] in ".xX" else "."]
         ST.mark()
         tr["pat"] = "".join(pat)
-        if t.name in core.PITCHED:                       # keep notes aligned
+        if core.is_pitched(tr):                          # keep notes aligned
             notes = (list(tr["notes"]) + ["."] * 16)[:16]
             notes[i] = "." if pat[i] == "." else (notes[i] if notes[i] != "." else "a1")
             if pat[i] == "X" and not notes[i].endswith("!"):
@@ -295,7 +330,13 @@ def on_key(k, s):
 
 
 def hint(s):
-    """Minimal M1 teaching line. teach.py (A9) replaces this wholesale."""
+    """teach.py owns this when present; these are the fallbacks."""
+    try:
+        from . import teach
+        h = teach.hint(s)
+        return h if h is not None else ""
+    except Exception:
+        pass
     if not any(t.active for t in s.tracks):
         return "empty — press : then `open warehouse` (or `songs` to see all 5)"
     if not s.playing:
