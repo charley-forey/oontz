@@ -232,7 +232,9 @@ def render_bar(st=None):
     kicks = [p for _, p, _ in hits("kick", st.tracks["kick"], n, st.swing)]
     duck = duck_env(n, kicks)
     for name in st.order:
-        tr = st.tracks[name]
+        tr = st.tracks.get(name)
+        if tr is None:                               # order/tracks desync: skip it
+            continue
         st.rms[name] = 0.0
         if not tr["pat"].strip(".-"):
             continue
@@ -918,13 +920,21 @@ def do(line, log=True):
         else:
             set_pattern(verb, args[0])
     elif verb in CMDS:
-        out = CMDS[verb][0](args)
+        try:
+            out = CMDS[verb][0](args)
+        except (IndexError, ValueError, KeyError, TypeError) as e:
+            # A typo at the prompt must never raise. Show what the verb wants.
+            return "? %s %s   (%s)" % (verb, CMDS[verb][2],
+                                       str(e) or type(e).__name__)
         if verb in NO_LOG:
             return out
         if out:
             return out
     elif verb in COMMANDS and verb not in CMDS:
-        out = COMMANDS[verb](ST, args)
+        try:
+            out = COMMANDS[verb](ST, args)
+        except (IndexError, ValueError, KeyError, TypeError) as e:
+            return "? %s   (%s)" % (verb, str(e) or type(e).__name__)
         if isinstance(out, (list, tuple)):               # expanded to primitives
             bad = []
             for cmd in out:
@@ -1046,7 +1056,9 @@ def snapshot(**over):
     soloed = any(t["solo"] for t in ST.tracks.values())
     tv = []
     for name in ST.order:
-        t = ST.tracks[name]
+        t = ST.tracks.get(name)
+        if t is None:
+            continue
         tv.append(TrackView(
             name=name, pat=t["pat"], notes=tuple(t["notes"]), gain=t["gain"],
             pan=t["pan"], sc=t["sc"], filt=t["filt"] or "", fc=t["fc"], res=t["res"],

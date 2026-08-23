@@ -1,0 +1,11 @@
+# thud session
+bpm 132
+swing 0
+kick x..xx...x.x.x...
+hat x.x...x.x.x.x.xX
+oh ......x.......x.
+clap ....x.......x...
+bass a1! . a1~ . c2 . a1 . g1! . a1~ . c2 . d2 .
+sidechain bass 0.7
+sidechain stab 0.5
+perc ..x.x.....x...xx

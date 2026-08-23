@@ -156,7 +156,8 @@ OPTIONAL = ("drums", "synths", "fx", "viz_spectrum", "viz_scope",
             "arrange", "dj", "gen", "teach", "ai",
             # v3
             "harmony", "compose", "waveform", "theme", "library", "deck",
-            "mixer", "ui_studio", "ui_deck", "keyboard_view", "director", "qa")
+            "mixer", "ui_studio", "ui_deck", "keyboard_view", "director",
+            "copilot", "library", "qa")
 
 
 def _ident(fn):

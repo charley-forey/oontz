@@ -173,6 +173,25 @@
   "sections": 1,
   "tags": []
  },
+ "hardtechno-classic.song": {
+  "bars": 192,
+  "bpm": 150.0,
+  "camelot": "4A",
+  "fingerprint": "7d02b0faa1a99a95",
+  "format": "song",
+  "key": "f",
+  "mean_energy": 0.58,
+  "mtime": 1787521237.0079854,
+  "name": "hardtechno-classic",
+  "path": "songs\\hardtechno-classic.song",
+  "peak_energy": 0.96,
+  "plays": 0,
+  "rating": 0,
+  "scale": "minor",
+  "seconds": 307.2,
+  "sections": 11,
+  "tags": []
+ },
  "horizon.thud": {
   "bars": 0,
   "bpm": 138.0,

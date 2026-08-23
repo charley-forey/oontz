@@ -211,8 +211,11 @@ def _apply_automation(st, a, within, bars):
     'swing', or 'track.param' such as 'bass.fc'.
     """
     target, lo, hi = a[0], float(a[1]), float(a[2])
-    start = int(a[3]) if len(a) > 3 else 0
-    length = int(a[4]) if len(a) > 4 and a[4] else max(1, bars - start)
+    start = max(0, min(int(a[3]) if len(a) > 3 else 0, max(0, bars - 1)))
+    length = int(a[4]) if len(a) > 4 and a[4] else (bars - start)
+    length = max(1, min(length, bars - start))   # clamp: a ramp cannot outlive
+                                                 # its section, or its endpoint
+                                                 # would land in the next one
     curve = CURVES.get(a[5] if len(a) > 5 else "linear", CURVES["linear"])
 
     if within < start:

@@ -589,7 +589,10 @@ def name_cmd(state, args):
 
 
 COMMANDS.update({
-    "ask": ask_cmd, "arrange": arrange_cmd,
+    # `askraw` not `ask`: copilot.py owns `ask` because it PROPOSES rather than
+    # applies, which is the safer default. This one still returns the raw result
+    # for anything that wants it.
+    "askraw": ask_cmd, "arrange": arrange_cmd,
     "crit": crit_cmd, "explain": explain_cmd, "name": name_cmd,
 })
 
