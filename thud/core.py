@@ -1,0 +1,565 @@
+"""State, sequencer, audio engine, recording, undo, and the command table.
+
+The audio callback slices a pre-rendered bar and does nothing else. Editing
+re-renders off-thread and swaps the array in on the next bar boundary.
+"""
+import os
+import copy
+import time
+import wave
+import random
+import threading
+import collections
+import numpy as np
+import sounddevice as sd
+
+from .contracts import SR, SEED, Snapshot, TrackView, VOICES, COMMANDS
+from .voices import svf, note_hz, rng, v_hat, v_perc, v_bass303, v_stab
+
+TRACK_ORDER = ["kick", "hat", "oh", "clap", "snare", "perc", "bass", "stab"]
+PITCHED = ("bass", "stab")
+DEFAULT_TUNE = {"hat": 8000.0, "oh": 8000.0, "perc": 320.0}
+SCOPE_N = 4096
+
+
+def new_track(name):
+    return {"pat": "." * 16, "notes": [], "gain": 1.0, "sc": 0.0, "hum": 0.0,
+            "filt": None, "fc": 0.0, "res": 0.6, "tune": DEFAULT_TUNE.get(name, 0.0),
+            "mute": False, "solo": False}
+
+
+class State:
+    def __init__(self):
+        self.bpm = 132.0
+        self.swing = 0.0
+        self.tracks = {n: new_track(n) for n in TRACK_ORDER}
+        self.bar = np.zeros(self.n, np.float32)
+        self.pending = None
+        self.pos = 0
+        self.bars = 0
+        self.drops = 0
+        self.name = "untitled.thud"
+        self.log = {}
+        self.rms = {}
+        self.focus = 0
+        self.view = "perform"
+        self.echo = ""
+        self.echo_at = 0.0
+        self.undo = collections.deque(maxlen=64)
+        self.redo = collections.deque(maxlen=64)
+        self.scope = np.zeros(SCOPE_N, np.float32)
+        self.scope_i = 0
+        self.blip = None
+        self.blip_i = 0
+        self.ab = [None, None]
+
+    @property
+    def n(self):
+        return round(SR * 240.0 / self.bpm)          # one 4/4 bar
+
+    # -- undo ------------------------------------------------------------
+    def mark(self):
+        self.undo.append((self.bpm, self.swing, copy.deepcopy(self.tracks)))
+        self.redo.clear()
+
+    def _restore(self, snap):
+        self.bpm, self.swing, self.tracks = snap[0], snap[1], snap[2]
+        refresh()
+
+    def undo_one(self):
+        if not self.undo:
+            return "nothing to undo"
+        self.redo.append((self.bpm, self.swing, copy.deepcopy(self.tracks)))
+        self._restore(self.undo.pop())
+        return "undo"
+
+    def redo_one(self):
+        if not self.redo:
+            return "nothing to redo"
+        self.undo.append((self.bpm, self.swing, copy.deepcopy(self.tracks)))
+        self._restore(self.redo.pop())
+        return "redo"
+
+
+ST = State()
+
+# ---------------------------------------------------------------- sequencer
+
+
+def hits(name, tr, n, swing):
+    """Yield (step, sample_pos, accent) for every hit in the pattern."""
+    pat = tr["pat"]
+    L = len(pat) or 16
+    step = n / L
+    jit = rng(name).uniform(-1, 1, L) * tr["hum"] * SR / 1000.0
+    for i, c in enumerate(pat):
+        if c in ".-":
+            continue
+        p = i * step + (swing / 100.0 * step if i % 2 else 0.0) + jit[i]
+        yield i, int(p) % n, c.isupper()
+
+
+def voice(name, tr, accent, hz=0.0, dur=0.2, slide=0.0):
+    if name == "bass":
+        return v_bass303(hz, dur, accent, slide, tr["fc"] or 350.0, tr["res"])
+    if name == "stab":
+        return v_stab(hz, dur, accent, tr["fc"] or 2200.0, tr["res"])
+    if name == "oh":
+        x = v_hat(accent, 0.3, tr["tune"] or 8000.0)
+    elif name == "hat":
+        x = v_hat(accent, 0.03, tr["tune"] or 8000.0)
+    elif name == "perc":
+        x = v_perc(accent, tr["tune"] or 320.0)
+    else:
+        x = VOICES[name](accent)
+    if tr["filt"]:
+        x = svf(x, tr["fc"], tr["res"], tr["filt"])
+    return x
+
+
+def add_wrap(buf, v, pos):
+    n, m = len(buf), len(v)
+    if m > n:
+        v, m = v[:n], n
+    if pos + m <= n:
+        buf[pos:pos + m] += v
+    else:
+        buf[pos:] += v[:n - pos]
+        buf[:pos + m - n] += v[n - pos:]                 # tail wraps the loop
+
+
+def duck_env(n, kick_positions):
+    d = np.ones(n)
+    if not kick_positions:
+        return d
+    t = np.arange(n)
+    for p in kick_positions:
+        d = np.minimum(d, 1.0 - np.exp(-((t - p) % n) / SR / 0.12))
+    return d
+
+
+def render_bar(st=None):
+    st = st or ST
+    n = st.n
+    mix = np.zeros(n)
+    soloed = [k for k, t in st.tracks.items() if t["solo"]]
+    kicks = [p for _, p, _ in hits("kick", st.tracks["kick"], n, st.swing)]
+    duck = duck_env(n, kicks)
+    for name, tr in st.tracks.items():
+        st.rms[name] = 0.0
+        if not tr["pat"].strip(".-"):
+            continue
+        if tr["mute"] or (soloed and name not in soloed):
+            continue
+        buf = np.zeros(n)
+        L = len(tr["pat"])
+        dur = round(n / L / SR, 3)
+        prev = 0.0
+        for i, p, acc in hits(name, tr, n, st.swing):
+            hz = slide = 0.0
+            if name in PITCHED:
+                tok = tr["notes"][i] if i < len(tr["notes"]) else "."
+                hz = note_hz(tok.rstrip("~!"))
+                slide = prev if tok.rstrip("!").endswith("~") else 0.0
+                prev = hz
+            add_wrap(buf, voice(name, tr, acc, hz, dur, slide), p)
+        if tr["sc"] and name != "kick":
+            buf *= 1.0 - tr["sc"] * (1.0 - duck)
+        buf *= tr["gain"]
+        st.rms[name] = float(np.sqrt((buf ** 2).mean()))
+        mix += buf
+    return (np.tanh(mix * 1.1) * 0.95).astype(np.float32)    # soft limiter
+
+
+_batch = False
+
+
+def refresh():
+    if _batch:
+        return
+    bar = render_bar()
+    if playing():
+        ST.pending = bar
+    else:
+        ST.bar, ST.pos = bar, 0
+
+# ------------------------------------------------------------------- engine
+
+_stream = None
+
+
+def playing():
+    return _stream is not None and _stream.active
+
+
+def _callback(out, frames, _t, _status):
+    b, i = ST.bar, ST.pos
+    n = len(b)
+    end = i + frames
+    seg = b[i:end] if end <= n else np.concatenate((b[i:], b[:end - n]))
+
+    if ST.blip is not None:                              # video/audio sync mark
+        bl = ST.blip
+        k = min(frames, len(bl) - ST.blip_i)
+        seg = seg.copy()
+        seg[:k] += bl[ST.blip_i:ST.blip_i + k]
+        ST.blip_i += k
+        if ST.blip_i >= len(bl):
+            ST.blip = None
+
+    out[:, 0] = seg
+    out[:, 1] = seg
+    ST.pos = end % n
+
+    j = ST.scope_i                                       # ring for the visuals
+    k = min(frames, SCOPE_N - j)
+    ST.scope[j:j + k] = seg[:k]
+    if k < frames:
+        ST.scope[:frames - k] = seg[k:]
+    ST.scope_i = (j + frames) % SCOPE_N
+
+    if REC.on:
+        REC.q.append(seg.copy())                         # ponytail: deque append is
+                                                         # atomic in CPython; a 2KB copy
+                                                         # per block. Swap for a preallocated
+                                                         # ring if takes ever run for hours.
+    if end >= n:
+        ST.bars += 1
+        if ST.pending is not None:
+            ST.bar, ST.pending, ST.pos = ST.pending, None, 0
+
+
+def play():
+    global _stream
+    if _stream is None:
+        _stream = sd.OutputStream(samplerate=SR, channels=2, dtype="float32",
+                                  blocksize=512, callback=_callback)
+    if not _stream.active:
+        ST.bar, ST.pos, ST.bars = render_bar(), 0, 0
+        _stream.start()
+
+
+def stop():
+    if playing():
+        _stream.stop()
+
+
+def toggle_play():
+    stop() if playing() else play()
+    return "playing" if playing() else "stopped"
+
+# ---------------------------------------------------------------- recording
+
+
+class Recorder:
+    """Taps the master in the callback. Captures exactly what was heard."""
+
+    def __init__(self):
+        self.on = False
+        self.q = collections.deque()
+        self.path = ""
+        self.t0 = 0.0
+        self.frames = 0
+        self._w = None
+        self._th = None
+
+    def start(self):
+        os.makedirs("takes", exist_ok=True)
+        i = 1
+        while os.path.exists("takes/take_%03d.wav" % i):
+            i += 1
+        self.path = "takes/take_%03d.wav" % i
+        self._w = wave.open(self.path, "wb")
+        self._w.setnchannels(1)
+        self._w.setsampwidth(2)
+        self._w.setframerate(SR)
+        self.q.clear()
+        self.frames = 0
+        self.t0 = time.time()
+        self.on = True
+        self._th = threading.Thread(target=self._drain, daemon=True)
+        self._th.start()
+        t = np.arange(int(SR * 0.05)) / SR                # 1kHz sync blip
+        ST.blip = (np.sin(2 * np.pi * 1000 * t) * np.exp(-t / 0.012) * 0.5).astype(np.float32)
+        ST.blip_i = 0
+        return self.path
+
+    def _drain(self):
+        while self.on or self.q:
+            if self.q:
+                b = self.q.popleft()
+                self.frames += len(b)
+                self._w.writeframes((np.clip(b, -1, 1) * 32767).astype("<i2").tobytes())
+            else:
+                time.sleep(0.02)
+        self._w.close()
+
+    def stop(self):
+        self.on = False
+        if self._th:
+            self._th.join(timeout=2)
+        base = self.path[:-4]
+        save(base + ".thud")
+        ST.name = os.path.basename(self.path)
+        return "%s  %.1fs" % (self.path, self.frames / SR)
+
+    def toggle(self):
+        return "REC " + (self.stop() if self.on else self.start())
+
+    @property
+    def secs(self):
+        return (time.time() - self.t0) if self.on else 0.0
+
+
+REC = Recorder()
+
+# ---------------------------------------------------------------------- dsl
+
+
+def set_pattern(name, pat):
+    if not pat or any(c not in "xX.-" for c in pat):
+        raise ValueError("pattern uses x X . - only")
+    ST.tracks[name]["pat"] = pat
+
+
+def set_notes(name, toks):
+    for t in toks:
+        if t not in (".", "-"):
+            note_hz(t.rstrip("~!"))                       # validate now, not in audio
+    ST.tracks[name]["notes"] = list(toks)
+    ST.tracks[name]["pat"] = "".join(
+        "." if t in (".", "-") else ("X" if t.endswith("!") else "x") for t in toks)
+
+
+def track_arg(a):
+    if a in ST.tracks:
+        return ST.tracks[a]
+    raise ValueError("no track %r" % a)
+
+
+def _filter(a):
+    tr = track_arg(a[0])
+    tr["filt"] = None if a[1] == "off" else a[1]
+    if a[1] != "off":
+        tr["fc"] = float(a[2])
+        if "res" in a:
+            tr["res"] = float(a[a.index("res") + 1])
+
+
+def _render(a):
+    bars = int(a[a.index("--bars") + 1]) if "--bars" in a else 8
+    data = np.tile(render_bar(), bars)
+    with wave.open(a[0], "wb") as w:
+        w.setnchannels(1)
+        w.setsampwidth(2)
+        w.setframerate(SR)
+        w.writeframes((np.clip(data, -1, 1) * 32767).astype("<i2").tobytes())
+    return "rendered %s  %d bars  %.1fs" % (a[0], bars, len(data) / SR)
+
+
+def _songs(a):
+    """The starter songbook. Templates to learn from and build on."""
+    import glob
+    out = []
+    for f in sorted(glob.glob("songs/*.thud")):
+        first = open(f, encoding="utf-8").readline().lstrip("# ").strip()
+        out.append("%-14s %s" % (os.path.basename(f)[:-5], first))
+    return "  ·  ".join(out) if out else "no songs/ directory"
+
+
+def _open(a):
+    n = a[0] if a else ""
+    p = n if n.endswith(".thud") else "songs/%s.thud" % n
+    if not os.path.exists(p):
+        return "no song %r — try `songs`" % n
+    ST.tracks = {t: new_track(t) for t in TRACK_ORDER}
+    ST.log.clear()
+    return load(p)
+
+
+def _ab(a):
+    """Two full state slots. A/B what you can't hear the difference on."""
+    slot = 0 if (a and a[0].lower() == "a") else 1
+    cur = (ST.bpm, ST.swing, copy.deepcopy(ST.tracks))
+    if ST.ab[slot] is None:
+        ST.ab[slot] = cur
+        return "stored in %s" % "AB"[slot]
+    ST.ab[slot], other = cur, ST.ab[slot]
+    ST.mark()
+    ST.bpm, ST.swing, ST.tracks = other
+    refresh()
+    return "recalled %s" % "AB"[slot]
+
+
+# name -> (handler, short alias, one-line help). Both forms always work.
+CMDS = {
+    "bpm":       (lambda a: setattr(ST, "bpm", float(a[0])), "t", "set tempo"),
+    "swing":     (lambda a: setattr(ST, "swing", max(0.0, min(50.0, float(a[0])))), "sw", "shuffle odd 16ths"),
+    "gain":      (lambda a: track_arg(a[0]).__setitem__("gain", float(a[1])), "g", "track level"),
+    "tune":      (lambda a: track_arg(a[0]).__setitem__("tune", float(a[1])), "tn", "voice pitch/tone"),
+    "filter":    (_filter, "f", "lp|hp|bp FC [res R] | off"),
+    "sidechain": (lambda a: track_arg(a[0]).__setitem__("sc", float(a[1])), "sc", "duck against kick"),
+    "humanize":  (lambda a: track_arg(a[0]).__setitem__("hum", float(a[1])), "hz", "timing jitter, ms"),
+    "mute":      (lambda a: track_arg(a[0]).__setitem__("mute", not track_arg(a[0])["mute"]), "m", "toggle mute"),
+    "solo":      (lambda a: track_arg(a[0]).__setitem__("solo", not track_arg(a[0])["solo"]), "so", "toggle solo"),
+    "play":      (lambda a: toggle_play(), "p", "start/stop"),
+    "stop":      (lambda a: stop(), None, "stop"),
+    "rec":       (lambda a: REC.toggle(), "rc", "record a take"),
+    "songs":     (_songs, "ls", "list the starter songbook"),
+    "open":      (_open, "o", "load a song by name"),
+    "save":      (lambda a: save(a[0]), "s", "write .thud"),
+    "load":      (lambda a: load(a[0]), "l", "read .thud"),
+    "render":    (_render, "rn", "offline wav"),
+    "ab":        (_ab, None, "A/B compare slots"),
+    "undo":      (lambda a: ST.undo_one(), "u", "step back"),
+    "redo":      (lambda a: ST.redo_one(), None, "step forward"),
+    "gen":       (lambda a: generate("gen", a), None, "acid|techno|minimal"),
+    "variation": (lambda a: generate("variation", a), "v", "mutate a pattern"),
+}
+NO_LOG = {"play", "stop", "rec", "save", "load", "render", "undo", "redo",
+          "ab", "songs", "open"}
+KEYED = {"gain", "tune", "filter", "sidechain", "humanize", "mute", "solo"}
+ALIAS = {a: n for n, (_, a, _) in CMDS.items() if a}
+ALIAS.update({"k": "kick", "h": "hat", "b": "bass", "c": "clap", "st": "stab",
+              "sn": "snare", "pc": "perc"})
+
+
+def complete(text):
+    """Longest common prefix of matching command names, for Tab."""
+    if not text or " " in text:
+        return ""
+    pool = sorted(set(list(CMDS) + TRACK_ORDER + list(ALIAS)))
+    hits_ = [c for c in pool if c.startswith(text)]
+    if not hits_:
+        return ""
+    out = hits_[0]
+    for h in hits_[1:]:
+        while not h.startswith(out):
+            out = out[:-1]
+    return out[len(text):]
+
+
+def do(line, log=True):
+    """Parse and apply one command. Returns a string to print, or None."""
+    parts = line.split()
+    if not parts or parts[0].startswith("#"):
+        return None
+    verb, args = parts[0].lower(), parts[1:]
+    verb = ALIAS.get(verb, verb)
+
+    if log and verb not in NO_LOG:
+        ST.mark()
+
+    if verb in TRACK_ORDER:
+        (set_notes if verb in PITCHED else lambda n, a: set_pattern(n, a[0]))(verb, args)
+    elif verb in CMDS:
+        out = CMDS[verb][0](args)
+        if verb in NO_LOG:
+            return out
+        if out:
+            return out
+    else:
+        return "? %s   (: then Tab to complete, or ? for keys)" % parts[0]
+
+    if log:
+        key = (verb, args[0]) if verb in KEYED else verb
+        ST.log[key] = line.strip()
+        refresh()
+    return None
+
+# ------------------------------------------------------------ save / load
+
+
+def save(path):
+    ST.name = os.path.basename(path)
+    with open(path, "w", encoding="utf-8") as f:
+        f.write("# thud session\n")
+        f.write("bpm %g\nswing %g\n" % (ST.bpm, ST.swing))
+        for k, v in ST.log.items():
+            if (k[0] if isinstance(k, tuple) else k) not in ("bpm", "swing"):
+                f.write(v + "\n")
+    return "saved %s (%d commands)" % (path, len(ST.log))
+
+
+def load(path):
+    global _batch
+    _batch = True
+    try:
+        for line in open(path, encoding="utf-8"):
+            if line.strip() and not line.startswith("#"):
+                do(line)
+    finally:
+        _batch = False
+    ST.name = os.path.basename(path)
+    refresh()
+    return "loaded " + path
+
+# ------------------------------------------------------------- generative
+
+SCALE = [0, 2, 3, 5, 7, 10]
+NAMES = ["c", "c#", "d", "d#", "e", "f", "f#", "g", "g#", "a", "a#", "b"]
+
+
+def generate(verb, args):
+    """Writes the *result* as a plain command, so .thud files stay literal."""
+    r = random.Random()
+    if verb == "variation":
+        name = args[0] if args else TRACK_ORDER[ST.focus]
+        pat = list(ST.tracks[name]["pat"])
+        for _ in range(2):
+            i = r.randrange(len(pat))
+            pat[i] = "." if pat[i] != "." else r.choice("xxX")
+        return do("%s %s" % (name, "".join(pat)))
+    kind = args[0] if args else "techno"
+    if kind == "acid":
+        base = NAMES.index(r.choice(["a", "c", "d", "f"]))
+        toks = []
+        for _ in range(16):
+            if r.random() < 0.28:
+                toks.append(".")
+                continue
+            semi = base + r.choice(SCALE + [12, 12, 0, 0])
+            t = NAMES[semi % 12] + str(1 + semi // 12)
+            toks.append(t + ("~" if r.random() < 0.25 else "") + ("!" if r.random() < 0.3 else ""))
+        do("bass " + " ".join(toks))
+        return "acid line"
+    if kind == "minimal":
+        for c in ("kick x...x...x...x...", "hat ..x...x...x...x.",
+                  "clap ....x.......x...", "sidechain bass 0.6"):
+            do(c)
+        return "minimal"
+    for c in ("kick X...x...X...x..x", "hat ..x...x...x.x.x.", "oh ......x.......x.",
+              "clap ....x.......x...",
+              "bass a1! . a1~ . c2 . a1 . g1! . a1~ . c2 . d2 .",
+              "sidechain bass 0.7", "sidechain stab 0.5"):
+        do(c)
+    return "techno"
+
+# -------------------------------------------------------------- snapshot
+
+
+def snapshot(**over):
+    """Immutable view of the world for one frame. Views only ever read this."""
+    soloed = any(t["solo"] for t in ST.tracks.values())
+    tv = []
+    for name in TRACK_ORDER:
+        t = ST.tracks[name]
+        tv.append(TrackView(
+            name=name, pat=t["pat"], notes=tuple(t["notes"]), gain=t["gain"],
+            sc=t["sc"], filt=t["filt"] or "", fc=t["fc"], res=t["res"],
+            tune=t["tune"], hum=t["hum"], mute=t["mute"], solo=t["solo"],
+            rms=ST.rms.get(name, 0.0),
+            active=bool(t["pat"].strip(".-")) and not t["mute"] and (t["solo"] or not soloed)))
+    n = ST.n
+    scope = np.concatenate((ST.scope[ST.scope_i:], ST.scope[:ST.scope_i]))
+    return Snapshot(
+        bpm=ST.bpm, swing=ST.swing, bar=ST.bars,
+        step=int(ST.pos / n * 16) if playing() else -1,
+        playing=playing(), name=ST.name, tracks=tuple(tv), focus=ST.focus,
+        view=ST.view, echo=ST.echo if time.time() - ST.echo_at < 1.2 else "",
+        recording=REC.on, rec_secs=REC.secs, rec_name=os.path.basename(REC.path),
+        scope=scope, peak=float(np.abs(scope).max()), drops=ST.drops, **over)
+
+
+def echo(msg):
+    ST.echo, ST.echo_at = msg, time.time()

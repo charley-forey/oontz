@@ -1,0 +1,13 @@
+# thud session
+bpm 132
+swing 14
+kick X...x...X...x..x
+hat ..x...x...x.x.x.
+oh ......x.......x.
+clap ....x.......x...
+bass a#1~! . a#1! . f2! . c2~! d#2 f1! f1~ . f1 . f1 . g1!
+sidechain bass 0.7
+sidechain stab 0.5
+filter bass lp 380 res 0.8
+humanize hat 3
+stab a2 . . . . . . .

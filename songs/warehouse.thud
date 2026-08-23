@@ -1,0 +1,10 @@
+# warehouse - driving techno, the default starting point
+bpm 132
+swing 6
+kick X...x...X...x..x
+hat ..x...x...x.x.x.
+oh ......x.......x.
+clap ....x.......x...
+bass a1! . a1~ . c2 . a1 . g1! . a1~ . c2 . d2 .
+filter bass lp 420 res 0.8
+sidechain bass 0.7

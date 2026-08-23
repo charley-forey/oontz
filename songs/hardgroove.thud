@@ -1,0 +1,13 @@
+# hardgroove - hard techno, fast and relentless
+bpm 148
+kick X...X...X...X..X
+hat x.x.x.x.x.x.x.x.
+oh ....x.......x...
+clap ....X.......X...
+perc ..x..x..x..x..x.
+tune perc 520
+bass a1! a1 a1~ a1 a1! a1 c2! a1
+filter bass lp 260 res 0.9
+filter hat hp 9500
+sidechain bass 0.85
+sidechain perc 0.4

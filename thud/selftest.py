@@ -1,0 +1,162 @@
+"""One runnable check. asserts only - no framework, no fixtures.
+
+Covers the M1 surface: voices, sequencer, DSL, undo, aliases, completion, the
+page renderer, and the recorder. Run: python -m thud test
+"""
+import os
+import time
+import wave
+import numpy as np
+
+from .contracts import SR, Snapshot
+from . import core, ui
+from .core import ST, State, do, render_bar, hits, new_track
+from .voices import (v_kick, v_hat, v_clap, v_snare, v_perc, v_bass303, v_stab,
+                     note_hz)
+
+
+def selftest():
+    st = State()
+
+    # -- sequencer -------------------------------------------------------
+    st.tracks["kick"]["pat"] = "x..X"
+    h = list(hits("kick", st.tracks["kick"], 1000, 0))
+    assert [(i, a) for i, _, a in h] == [(0, False), (3, True)], h
+    assert [p for _, p, _ in h] == [0, 750], h
+    sw = [p for _, p, _ in hits("hat", {**new_track("hat"), "pat": "xxxx"}, 1000, 25)]
+    assert sw == [0, 312, 500, 812], sw
+
+    st.tracks["kick"]["pat"] = "x...x...x...x..."
+    a, b = render_bar(st), render_bar(st)
+    assert len(a) == round(SR * 240 / st.bpm) == st.n, len(a)
+    assert np.array_equal(a, b), "render is not deterministic"
+
+    # -- spectra ---------------------------------------------------------
+    def peak_hz(x):
+        m = np.abs(np.fft.rfft(x * np.hanning(len(x))))
+        return np.fft.rfftfreq(len(x), 1 / SR)[int(np.argmax(m))]
+
+    def centroid(x):
+        m = np.abs(np.fft.rfft(x))
+        return float((m * np.fft.rfftfreq(len(x), 1 / SR)).sum() / m.sum())
+
+    k = peak_hz(v_kick())
+    assert 40 <= k <= 90, "kick fundamental at %.1fHz, want 40-90" % k
+    cen = centroid(v_hat())
+    assert cen > 8000, "hat centroid %.0fHz, want >8k" % cen
+    assert centroid(v_clap()) > 900, "clap too dull"
+    assert peak_hz(v_bass303(note_hz("a1"), 0.2)) < 200, "303 not bassy"
+
+    for nm, v in (("kick", v_kick()), ("hat", v_hat()), ("clap", v_clap()),
+                  ("snare", v_snare()), ("perc", v_perc()),
+                  ("bass", v_bass303(55.0, 0.2)), ("stab", v_stab(220.0, 0.4))):
+        assert np.max(np.abs(v)) <= 1.0, "%s peaks at %.2f" % (nm, np.max(np.abs(v)))
+    assert np.max(np.abs(a)) <= 1.0, "master clips"
+
+    # -- sidechain -------------------------------------------------------
+    st.tracks["bass"].update(notes=["a1"] * 4, pat="xxxx")
+    st.tracks["kick"].update(pat="x...", gain=0.0)
+    dry = render_bar(st)
+    st.tracks["bass"]["sc"] = 0.7
+    wet = render_bar(st)
+    w = slice(int(SR * 0.005), int(SR * 0.025))
+    db = 20 * np.log10(np.sqrt((wet[w] ** 2).mean()) / np.sqrt((dry[w] ** 2).mean()))
+    assert db <= -6.0, "sidechain only ducks %.1fdB, want >=6" % -db
+
+    # -- mute / solo -----------------------------------------------------
+    st.tracks["kick"]["gain"] = 1.0
+    st.tracks["kick"]["mute"] = True
+    render_bar(st)
+    assert st.rms["kick"] == 0.0, "mute did not silence kick"
+    st.tracks["kick"]["mute"] = False
+    st.tracks["bass"]["solo"] = True
+    render_bar(st)
+    assert st.rms["kick"] == 0.0, "solo did not silence kick"
+    assert st.rms["bass"] > 0.0, "solo silenced the soloed track"
+
+    # -- notes -----------------------------------------------------------
+    assert abs(note_hz("a1") - 55.0) < 0.01
+    assert abs(note_hz("c2") - 65.406) < 0.01
+    assert abs(note_hz("f#2") - 92.499) < 0.01
+
+    # -- dsl, aliases, completion ---------------------------------------
+    do("bpm 140")
+    assert ST.bpm == 140.0
+    do("t 132")                                   # alias for bpm
+    assert ST.bpm == 132.0
+    do("k x...x...x...x...")                      # alias for kick
+    assert ST.tracks["kick"]["pat"] == "x...x...x...x..."
+    assert do("nonsense").startswith("?")
+    assert core.complete("sid") == "echain"
+    assert core.complete("zzz") == ""
+
+    # -- undo / redo -----------------------------------------------------
+    before = ST.tracks["kick"]["pat"]
+    do("kick X...............")
+    assert ST.tracks["kick"]["pat"] == "X..............."
+    ST.undo_one()
+    assert ST.tracks["kick"]["pat"] == before, "undo did not restore"
+    ST.redo_one()
+    assert ST.tracks["kick"]["pat"] == "X..............."
+    ST.undo_one()
+
+    # -- save / load round-trip -----------------------------------------
+    do("gen techno")
+    do("sidechain bass 0.7")
+    p = "_selftest.thud"
+    do("save " + p)
+    want = render_bar()
+    ST.tracks = {n: new_track(n) for n in core.TRACK_ORDER}
+    do("load " + p)
+    got = render_bar()
+    assert np.array_equal(want, got), "save/load did not round-trip"
+    os.remove(p)
+
+    # -- page renders, every line fits exactly ---------------------------
+    snap = core.snapshot(mode="play", hint="x", cmdline="", complete="")
+    for W, H in ((80, 24), (120, 40), (60, 16)):
+        rows = ui.build(snap, W, H)
+        assert len(rows) == H, "page is %d rows, want %d" % (len(rows), H)
+        for r in rows:
+            assert ui.vlen(r) == W, "row is %d cols, want %d: %r" % (ui.vlen(r), W, r[:40])
+        hp = ui.build(core.snapshot(overlay="help"), W, H)
+        assert any("every key" in ui.ANSI.sub("", r) for r in hp), "help overlay empty"
+
+    # -- keys drive state ------------------------------------------------
+    ST.focus = 0
+    ui.on_key("2", snap)
+    assert ST.focus == 1, "digit key did not move focus"
+    pat0 = ST.tracks["hat"]["pat"]
+    ui.on_key("q", core.snapshot())
+    assert ST.tracks["hat"]["pat"] != pat0, "step key did not toggle a step"
+    assert ST.tracks["hat"]["pat"][0] in "xX"
+    fc0 = ST.tracks["hat"]["fc"] or 8000.0
+    ui.on_key("]", core.snapshot())
+    assert ST.tracks["hat"]["fc"] > fc0, "] did not raise cutoff"
+    bpm0 = ST.bpm
+    ui.on_key("=", core.snapshot())
+    assert ST.bpm == bpm0 + 1
+    ui.on_key("z", core.snapshot())
+    assert ST.tracks["hat"]["mute"] is True
+    ui.on_key("z", core.snapshot())
+
+    # -- recorder writes a real wav of the right length ------------------
+    core.REC.start()
+    blk = np.zeros(512, np.float32)
+    for _ in range(20):
+        core.REC.q.append(blk.copy())
+    time.sleep(0.4)
+    core.REC.stop()
+    with wave.open(core.REC.path) as f:
+        assert f.getnframes() == 20 * 512, "recorded %d frames, want %d" % (f.getnframes(), 20 * 512)
+        assert f.getframerate() == SR
+    assert os.path.exists(core.REC.path[:-4] + ".thud"), "take did not save its .thud"
+    os.remove(core.REC.path)
+    os.remove(core.REC.path[:-4] + ".thud")
+    try:
+        os.rmdir("takes")
+    except OSError:
+        pass
+
+    return ("all checks pass  ·  kick %.0fHz  ·  hat centroid %.0fHz  ·  duck %.1fdB"
+            "  ·  page + keys + undo + rec ok" % (k, cen, -db))

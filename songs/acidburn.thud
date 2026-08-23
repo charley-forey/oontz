@@ -1,0 +1,9 @@
+# acidburn - 303 led, the filter is the song
+bpm 138
+swing 4
+kick x...x...x...x...
+hat ..x...x...x...x.
+clap ....x.......x...
+bass a1! c2 a1~ e2 a1 c2! a1~ g1 a1! c2 d2~ a1 c2 a1! g1~ a1
+filter bass lp 340 res 0.94
+sidechain bass 0.7

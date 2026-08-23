@@ -1,0 +1,11 @@
+# minimal - space is the instrument
+bpm 126
+swing 16
+kick x...x...x...x...
+hat ..x...x...x...x.
+perc ...........x....
+tune perc 780
+stab . . . . . . . . a2 . . . . . . .
+filter stab lp 1600 res 0.5
+sidechain stab 0.5
+gain hat 0.6
