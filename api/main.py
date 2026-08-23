@@ -147,7 +147,12 @@ def send_mail(to, subject, text, html=None):
     req = urllib.request.Request(
         "https://api.resend.com/emails", data=body,
         headers={"Authorization": "Bearer " + RESEND_KEY,
-                 "Content-Type": "application/json"})
+                 "Content-Type": "application/json",
+                 # Without an explicit UA, urllib sends "Python-urllib/3.x" and
+                 # Cloudflare in front of the API answers 1010 (banned browser
+                 # signature). The failure looked like a rejected key.
+                 "User-Agent": "oontz/1.0 (+https://oontz.sh)",
+                 "Accept": "application/json"})
     try:
         with urllib.request.urlopen(req, timeout=10) as r:
             return 200 <= r.status < 300
