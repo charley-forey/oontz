@@ -9,6 +9,7 @@ import sys
 import time
 import math
 import dataclasses
+import numpy as np
 
 from . import core
 from .core import ST, do, echo, complete, CMDS, TRACK_ORDER, REC
@@ -54,11 +55,33 @@ def header(s, w):
 
 
 def master_bar(s, w):
-    db = -48.0 if s.peak <= 0.004 else 20 * math.log10(s.peak)
-    n = int(max(0.0, min(1.0, (db + 48) / 48)) * (w - 26))
-    col = 196 if db > -1 else (214 if db > -6 else 78)
-    bar = c(col, "█" * n) + DIM + "░" * (w - 26 - n) + OFF
-    return fit("  " + c(244, "master ") + bar + c(250, " %+5.1f dB" % db), w)
+    """RMS fill with a peak tick, on the same dB scale as the meters view.
+
+    Peak alone sits near 0dBFS almost all the time, which is why the old bar read
+    as permanently full; RMS is what tells you how loud it actually is.
+    """
+    rms = float(np.sqrt(np.mean(np.square(s.scope)))) if len(s.scope) else 0.0
+    try:
+        from .viz_scope import _db, _frac_from_db
+        rdb, pdb = _db(rms), _db(s.peak)
+        rf, pf = _frac_from_db(rdb), _frac_from_db(pdb)
+    except Exception:                                    # viz_scope absent
+        rdb, pdb = _fallback_db(rms), _fallback_db(s.peak)
+        rf, pf = max(0.0, (rdb + 60) / 60), max(0.0, (pdb + 60) / 60)
+    bw = w - 30
+    n = int(rf * bw)
+    tick = min(bw - 1, int(pf * bw))
+    col = 196 if pdb > -0.5 else (214 if pdb > -6 else 78)
+    cells = [c(col, "█")] * n + [DIM + "░" + OFF] * (bw - n)
+    if 0 <= tick < bw:
+        cells[tick] = c(231, "▏")                        # peak-hold tick
+    clip = c(196, " CLIP") if pdb > -0.1 else "     "
+    return fit("  " + c(244, "master ") + "".join(cells) +
+               c(250, " %+5.1f dB" % rdb) + clip, w)
+
+
+def _fallback_db(x):
+    return -60.0 if x <= 0.001 else max(-60.0, 20 * math.log10(x))
 
 
 def track_row(t, i, s, w):

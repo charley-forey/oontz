@@ -1,7 +1,7 @@
 """AI bridge - talks to Claude by shelling out to the `claude` CLI. No API key,
 no secret in the repo: the user already has Claude Code installed and
-authenticated, so `claude -p "<prompt>"` (print mode, one-shot) is the whole
-integration.
+authenticated, so `claude -p` (print mode, one-shot, prompt piped on stdin)
+is the whole integration.
 
 THE RULE: a model reply is untrusted text. It is never executed, never eval'd,
 never applied blind. validate() is the gate - every line is parsed and checked
@@ -372,7 +372,7 @@ def _band_report(snap):
 
 
 def _run_raw(prompt, timeout=25):
-    """Shell out to `claude -p <prompt>`. Never raises.
+    """Shell out to `claude -p`, prompt on stdin. Never raises.
 
     Returns (True, reply_text) on success, or (False, "[reason]") for every
     failure mode - missing binary, timeout, non-zero exit, empty reply.
@@ -381,10 +381,15 @@ def _run_raw(prompt, timeout=25):
     if not bin_path:
         return False, "[claude unavailable]"
     try:
-        # the resolved path, not the bare "claude" - see available()'s docstring.
-        # No shell=True: validate() exists precisely because this text is
-        # untrusted, and a resolved-path argv avoids the shell entirely.
-        r = subprocess.run([bin_path, "-p", prompt], capture_output=True,
+        # Prompt goes on stdin, not argv: the resolved path is an npm .CMD
+        # shim on Windows, and any subprocess call to a .bat/.cmd is
+        # re-parsed by cmd.exe even without shell=True - an embedded newline
+        # in an argv element (our multi-line system prompt has plenty) gets
+        # read as a line break and silently truncates the argument there.
+        # stdin has no such reparsing, and it's what `-p` is documented for
+        # ("useful for pipes"). No shell=True either way: validate() exists
+        # precisely because this text is untrusted.
+        r = subprocess.run([bin_path, "-p"], input=prompt, capture_output=True,
                             text=True, timeout=timeout)
     except subprocess.TimeoutExpired:
         return False, "[claude timed out after %gs]" % timeout
