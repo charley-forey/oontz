@@ -23,9 +23,15 @@ SCOPE_N = 4096
 
 
 def new_track(name):
-    return {"pat": "." * 16, "notes": [], "gain": 1.0, "sc": 0.0, "hum": 0.0,
-            "filt": None, "fc": 0.0, "res": 0.6, "tune": DEFAULT_TUNE.get(name, 0.0),
-            "mute": False, "solo": False}
+    return {"pat": "." * 16, "notes": [], "gain": 1.0, "pan": 0.0, "sc": 0.0,
+            "hum": 0.0, "filt": None, "fc": 0.0, "res": 0.6,
+            "tune": DEFAULT_TUNE.get(name, 0.0), "mute": False, "solo": False}
+
+
+def stereo(x):
+    """Widen a mono voice to (n,2). Voices may return either shape."""
+    x = np.asarray(x)
+    return x if x.ndim == 2 else np.repeat(x[:, None], 2, axis=1)
 
 
 class State:
@@ -33,7 +39,7 @@ class State:
         self.bpm = 132.0
         self.swing = 0.0
         self.tracks = {n: new_track(n) for n in TRACK_ORDER}
-        self.bar = np.zeros(self.n, np.float32)
+        self.bar = np.zeros((self.n, 2), np.float32)
         self.pending = None
         self.pos = 0
         self.bars = 0
@@ -118,6 +124,8 @@ def voice(name, tr, accent, hz=0.0, dur=0.2, slide=0.0):
 
 
 def add_wrap(buf, v, pos):
+    """Mix v into the (n,2) bar at pos. Tails wrap the loop point."""
+    v = stereo(v)
     n, m = len(buf), len(v)
     if m > n:
         v, m = v[:n], n
@@ -141,7 +149,7 @@ def duck_env(n, kick_positions):
 def render_bar(st=None):
     st = st or ST
     n = st.n
-    mix = np.zeros(n)
+    mix = np.zeros((n, 2))
     soloed = [k for k, t in st.tracks.items() if t["solo"]]
     kicks = [p for _, p, _ in hits("kick", st.tracks["kick"], n, st.swing)]
     duck = duck_env(n, kicks)
@@ -151,7 +159,7 @@ def render_bar(st=None):
             continue
         if tr["mute"] or (soloed and name not in soloed):
             continue
-        buf = np.zeros(n)
+        buf = np.zeros((n, 2))
         L = len(tr["pat"])
         dur = round(n / L / SR, 3)
         prev = 0.0
@@ -164,8 +172,10 @@ def render_bar(st=None):
                 prev = hz
             add_wrap(buf, voice(name, tr, acc, hz, dur, slide), p)
         if tr["sc"] and name != "kick":
-            buf *= 1.0 - tr["sc"] * (1.0 - duck)
-        buf *= tr["gain"]
+            buf *= (1.0 - tr["sc"] * (1.0 - duck))[:, None]
+        p = max(-1.0, min(1.0, tr["pan"]))          # equal-power pan
+        buf *= tr["gain"] * np.array([np.cos((p + 1) * np.pi / 4),
+                                      np.sin((p + 1) * np.pi / 4)]) * 1.41421356
         st.rms[name] = float(np.sqrt((buf ** 2).mean()))
         mix += buf
     return (np.tanh(mix * 1.1) * 0.95).astype(np.float32)    # soft limiter
@@ -202,20 +212,20 @@ def _callback(out, frames, _t, _status):
         bl = ST.blip
         k = min(frames, len(bl) - ST.blip_i)
         seg = seg.copy()
-        seg[:k] += bl[ST.blip_i:ST.blip_i + k]
+        seg[:k] += bl[ST.blip_i:ST.blip_i + k, None]
         ST.blip_i += k
         if ST.blip_i >= len(bl):
             ST.blip = None
 
-    out[:, 0] = seg
-    out[:, 1] = seg
+    out[:] = seg
     ST.pos = end % n
 
-    j = ST.scope_i                                       # ring for the visuals
+    mono = seg.mean(axis=1)                              # ring for the visuals
+    j = ST.scope_i
     k = min(frames, SCOPE_N - j)
-    ST.scope[j:j + k] = seg[:k]
+    ST.scope[j:j + k] = mono[:k]
     if k < frames:
-        ST.scope[:frames - k] = seg[k:]
+        ST.scope[:frames - k] = mono[k:]
     ST.scope_i = (j + frames) % SCOPE_N
 
     if REC.on:
@@ -270,7 +280,7 @@ class Recorder:
             i += 1
         self.path = "takes/take_%03d.wav" % i
         self._w = wave.open(self.path, "wb")
-        self._w.setnchannels(1)
+        self._w.setnchannels(2)
         self._w.setsampwidth(2)
         self._w.setframerate(SR)
         self.q.clear()
@@ -348,9 +358,9 @@ def _filter(a):
 
 def _render(a):
     bars = int(a[a.index("--bars") + 1]) if "--bars" in a else 8
-    data = np.tile(render_bar(), bars)
+    data = np.tile(render_bar(), (bars, 1))
     with wave.open(a[0], "wb") as w:
-        w.setnchannels(1)
+        w.setnchannels(2)
         w.setsampwidth(2)
         w.setframerate(SR)
         w.writeframes((np.clip(data, -1, 1) * 32767).astype("<i2").tobytes())
@@ -396,6 +406,7 @@ CMDS = {
     "bpm":       (lambda a: setattr(ST, "bpm", float(a[0])), "t", "set tempo"),
     "swing":     (lambda a: setattr(ST, "swing", max(0.0, min(50.0, float(a[0])))), "sw", "shuffle odd 16ths"),
     "gain":      (lambda a: track_arg(a[0]).__setitem__("gain", float(a[1])), "g", "track level"),
+    "pan":       (lambda a: track_arg(a[0]).__setitem__("pan", float(a[1])), "pn", "-1 left .. 1 right"),
     "tune":      (lambda a: track_arg(a[0]).__setitem__("tune", float(a[1])), "tn", "voice pitch/tone"),
     "filter":    (_filter, "f", "lp|hp|bp FC [res R] | off"),
     "sidechain": (lambda a: track_arg(a[0]).__setitem__("sc", float(a[1])), "sc", "duck against kick"),
@@ -546,7 +557,7 @@ def snapshot(**over):
         t = ST.tracks[name]
         tv.append(TrackView(
             name=name, pat=t["pat"], notes=tuple(t["notes"]), gain=t["gain"],
-            sc=t["sc"], filt=t["filt"] or "", fc=t["fc"], res=t["res"],
+            pan=t["pan"], sc=t["sc"], filt=t["filt"] or "", fc=t["fc"], res=t["res"],
             tune=t["tune"], hum=t["hum"], mute=t["mute"], solo=t["solo"],
             rms=ST.rms.get(name, 0.0),
             active=bool(t["pat"].strip(".-")) and not t["mute"] and (t["solo"] or not soloed)))

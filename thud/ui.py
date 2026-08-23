@@ -5,7 +5,6 @@ lines that changed are rewritten, so the page doesn't flicker under screen
 capture.
 """
 import os
-import re
 import sys
 import time
 import math
@@ -21,25 +20,9 @@ else:
     import termios
     import select
 
-ANSI = re.compile(r"\x1b\[[0-9;?]*[a-zA-Z]")
-COL = {"kick": 203, "hat": 80, "oh": 80, "clap": 213, "snare": 215,
-       "perc": 149, "bass": 39, "stab": 141}
+from .term import ANSI, COL, DIM, OFF, INV, c, vlen, fit
+
 STEP_KEYS = "qwertyuiasdfghjk"          # two rows of 8 = the 16 buttons
-DIM, OFF, INV = "\x1b[38;5;240m", "\x1b[0m", "\x1b[7m"
-
-
-def c(n, s):
-    return "\x1b[38;5;%dm%s%s" % (n, s, OFF)
-
-
-def vlen(s):
-    return len(ANSI.sub("", s))
-
-
-def fit(s, w):
-    """Pad or truncate to w visible columns, ignoring colour codes."""
-    n = vlen(s)
-    return s + " " * (w - n) if n <= w else ANSI.sub("", s)[:w]
 
 # ------------------------------------------------------------------- keys
 

@@ -8,9 +8,13 @@ THE RULE: agents add entries to the registries below. No agent edits core.py.
 Integration is a dict entry, so there is nothing to conflict.
 
 Audio conventions
-    SR = 44100, float32, peak <= 1.0 at every stage.
-    v1/M1 is mono: shape (n,). M2 moves everything to stereo (n, 2).
-    Every voice is pure, seeded off SEED, and safe to lru_cache.
+    SR = 44100, peak <= 1.0 at every stage, float32 or float64.
+    The bar and the master bus are STEREO, shape (n, 2).
+    A voice may return mono (n,) or stereo (n, 2) - core.stereo() widens mono, so
+    write mono unless the voice genuinely has a stereo image (detuned stacks,
+    wide hats, ping-pong delays).
+    Every voice is pure, seeded off SEED, and safe to lru_cache: hashable args
+    only, no ndarray parameters.
 
 Registries
     VOICES   : dict[str, f(**hashable) -> ndarray]        drums.py synths.py
@@ -30,7 +34,7 @@ from dataclasses import dataclass, field
 SR = 44100
 SEED = 1312
 TAU = 6.283185307179586
-CHANNELS = 1                       # M2: 2
+CHANNELS = 2
 
 VERSION = "2.0-M1"
 
@@ -42,6 +46,7 @@ class TrackView:
     pat: str
     notes: tuple = ()
     gain: float = 1.0
+    pan: float = 0.0
     sc: float = 0.0
     filt: str = ""
     fc: float = 0.0

@@ -47,6 +47,11 @@ def selftest():
     assert centroid(v_clap()) > 900, "clap too dull"
     assert peak_hz(v_bass303(note_hz("a1"), 0.2)) < 200, "303 not bassy"
 
+    from .core import stereo
+    assert stereo(np.zeros(10)).shape == (10, 2), "mono widening broken"
+    assert stereo(np.zeros((10, 2))).shape == (10, 2), "stereo passthrough broken"
+    assert a.shape == (st.n, 2), "bar is not stereo: %s" % (a.shape,)
+
     for nm, v in (("kick", v_kick()), ("hat", v_hat()), ("clap", v_clap()),
                   ("snare", v_snare()), ("perc", v_perc()),
                   ("bass", v_bass303(55.0, 0.2)), ("stab", v_stab(220.0, 0.4))):
@@ -60,6 +65,7 @@ def selftest():
     st.tracks["bass"]["sc"] = 0.7
     wet = render_bar(st)
     w = slice(int(SR * 0.005), int(SR * 0.025))
+    dry, wet = dry.mean(axis=1), wet.mean(axis=1)
     db = 20 * np.log10(np.sqrt((wet[w] ** 2).mean()) / np.sqrt((dry[w] ** 2).mean()))
     assert db <= -6.0, "sidechain only ducks %.1fdB, want >=6" % -db
 
@@ -73,6 +79,12 @@ def selftest():
     render_bar(st)
     assert st.rms["kick"] == 0.0, "solo did not silence kick"
     assert st.rms["bass"] > 0.0, "solo silenced the soloed track"
+
+    st.tracks["bass"]["pan"] = -1.0      # bass is still soloed, so it is the whole mix
+    pl = render_bar(st)
+    assert np.abs(pl[:, 0]).sum() > 8 * np.abs(pl[:, 1]).sum(), "hard-left pan leaks right"
+    st.tracks["bass"]["pan"] = 0.0
+    st.tracks["bass"]["solo"] = False
 
     # -- notes -----------------------------------------------------------
     assert abs(note_hz("a1") - 55.0) < 0.01
@@ -142,12 +154,13 @@ def selftest():
 
     # -- recorder writes a real wav of the right length ------------------
     core.REC.start()
-    blk = np.zeros(512, np.float32)
+    blk = np.zeros((512, 2), np.float32)
     for _ in range(20):
         core.REC.q.append(blk.copy())
     time.sleep(0.4)
     core.REC.stop()
     with wave.open(core.REC.path) as f:
+        assert f.getnchannels() == 2, "take is not stereo"
         assert f.getnframes() == 20 * 512, "recorded %d frames, want %d" % (f.getnframes(), 20 * 512)
         assert f.getframerate() == SR
     assert os.path.exists(core.REC.path[:-4] + ".thud"), "take did not save its .thud"
