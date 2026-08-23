@@ -188,7 +188,10 @@ def c_song():
         for a in sg.sections[n].automation:
             tgt, lo, hi = a[0], float(a[1]), float(a[2])
             start = int(a[3]) if len(a) > 3 else 0
-            length = int(a[4]) if len(a) > 4 and a[4] else sg.sections[n].bars - start
+            bars = sg.sections[n].bars
+            start = max(0, min(start, bars - 1))
+            length = int(a[4]) if len(a) > 4 and a[4] else (bars - start)
+            length = max(1, min(length, bars - start))   # same clamp as song.py
             base, _s = sg.bar_span(sg.order.index(n))
             s0 = sg.state_at(base + start)
             s1 = sg.state_at(base + start + length - 1)

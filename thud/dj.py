@@ -41,7 +41,11 @@ def _lerp_read(bar, p):
     """Linear-interpolated read at fractional sample position(s) p, any shape."""
     n = len(bar)
     p = np.mod(p, n)
-    i0 = np.floor(p).astype(np.int64)
+    # np.mod on a tiny NEGATIVE p returns n - eps, which rounds to exactly n at
+    # float64 precision for a buffer this long - and floor() then indexes one
+    # past the end. scratch drives the pointer slightly negative, so only it
+    # ever hit this. Clamp rather than trusting the mod.
+    i0 = np.clip(np.floor(p).astype(np.int64), 0, n - 1)
     i1 = (i0 + 1) % n
     frac = (p - i0)[:, None]
     return bar[i0] * (1 - frac) + bar[i1] * frac
