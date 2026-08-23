@@ -128,10 +128,19 @@ def optional_user(authorization: str = Header(default="")):
         return None
 
 
+LAST_MAIL_ERROR = {"why": ""}
+
+
 def send_mail(to, subject, text, html=None):
     """Resend if configured. Without a key the link comes back in the response,
-    which keeps the whole flow testable before email is wired up."""
+    which keeps the whole flow testable before email is wired up.
+
+    Failures are RECORDED, not swallowed. A silent false here looked exactly like
+    'no key configured' and cost a diagnosis round-trip.
+    """
+    LAST_MAIL_ERROR["why"] = ""
     if not RESEND_KEY:
+        LAST_MAIL_ERROR["why"] = "no RESEND_API_KEY"
         return False
     body = json.dumps({"from": MAIL_FROM, "to": [to], "subject": subject,
                        "text": text, "html": html or text}).encode()
@@ -142,7 +151,14 @@ def send_mail(to, subject, text, html=None):
     try:
         with urllib.request.urlopen(req, timeout=10) as r:
             return 200 <= r.status < 300
-    except Exception:
+    except urllib.error.HTTPError as e:
+        try:
+            LAST_MAIL_ERROR["why"] = e.read().decode()[:300]
+        except Exception:
+            LAST_MAIL_ERROR["why"] = "HTTP %s" % e.code
+        return False
+    except Exception as e:
+        LAST_MAIL_ERROR["why"] = "%s: %s" % (type(e).__name__, e)
         return False
 
 
@@ -187,7 +203,8 @@ def health():
         n = c.execute("SELECT COUNT(*) n FROM songs").fetchone()["n"]
         u = c.execute("SELECT COUNT(*) n FROM users").fetchone()["n"]
     return {"ok": True, "songs": n, "users": u, "mail": bool(RESEND_KEY),
-            "ai": bool(ANTHROPIC_KEY)}
+            "ai": bool(ANTHROPIC_KEY), "mail_error": LAST_MAIL_ERROR["why"],
+            "db": DB, "db_exists": os.path.exists(DB)}
 
 
 @app.post("/auth/request")
@@ -206,9 +223,12 @@ def auth_request(body: EmailIn, request: Request):
     sent = send_mail(email, "your oontz sign-in link",
                      "Open this to sign in. It expires in 15 minutes.\n\n" + link)
     out = {"sent": sent, "email": email}
-    if not sent:                                 # no mail provider: hand it back
+    if not sent:                                 # hand the link back, and say why
         out["link"] = link
-        out["note"] = "email is not configured on this deployment; use this link"
+        out["why"] = LAST_MAIL_ERROR["why"] or "unknown"
+        out["note"] = ("email could not be sent, so here is the link directly"
+                       if RESEND_KEY else
+                       "email is not configured on this deployment; use this link")
     return out
 
 
