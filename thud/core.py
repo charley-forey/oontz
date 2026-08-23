@@ -357,7 +357,25 @@ def _tap(seg, frames):
                                                      # preallocated ring if takes run for hours.
 
 
+def _deck_audio(out, frames):
+    """DECK mode: two rendered songs through the mixer. Returns True if handled."""
+    try:
+        from . import deck, mixer
+    except ImportError:
+        return False
+    d = deck.DECKS
+    seg = mixer.MIX.process(d.a.read(frames), d.b.read(frames))
+    if len(seg) != frames:
+        return False
+    out[:] = seg
+    _tap(seg, frames)
+    return True
+
+
 def _callback(out, frames, _t, _status):
+    if ST.mode == "deck":
+        if _deck_audio(out, frames):
+            return
     b, i = ST.bar, ST.pos
     n = len(b)
     if PERF["fn"] is not None:                       # live FX: pointer math, no re-render
@@ -739,6 +757,15 @@ def render_song(path, on_progress=None):
                                          _mmss(len(data) / SR))
 
 
+def _mode_cmd(a):
+    """Switch instruments. STUDIO builds songs, DECK mixes them."""
+    m = (a[0] if a else ("deck" if ST.mode == "studio" else "studio")).lower()
+    if m not in ("studio", "deck"):
+        return "mode studio|deck"
+    ST.mode = m
+    return "mode: %s" % m.upper()
+
+
 def _voice_cmd(a):
     """`voice bass reese` - point a track at any registered voice."""
     tr = track_arg(a[0])
@@ -824,6 +851,7 @@ CMDS = {
     "play":      (lambda a: toggle_play(), "p", "start/stop"),
     "stop":      (lambda a: stop(), None, "stop"),
     "rec":       (lambda a: REC.toggle(), "rc", "record a take"),
+    "mode":      (lambda a: _mode_cmd(a), "md", "studio | deck"),
     "view":      (lambda a: setattr(ST, "view", a[0]) or ("view " + a[0]), "vw", "switch panel"),
     "song":      (_song_cmd, "sg", "new|info|save|load|render|key"),
     "sec":       (_sec_cmd, "se", "add|copy|del|len|goto|role|order|list"),
@@ -848,7 +876,7 @@ CMDS = {
 }
 NO_LOG = {"play", "stop", "rec", "save", "load", "render", "undo", "redo",
           "ab", "songs", "open", "view", "voices", "fxlist",
-          "song", "sec", "goto", "loopsec"}
+          "song", "sec", "goto", "loopsec", "mode"}
 # How a command is keyed in the session log, which is what a .thud file is. One entry
 # per thing that can be independently set, so a later edit replaces the earlier one.
 KEYED = {"gain", "pan", "tune", "filter", "sidechain", "humanize", "mute", "solo", "voice"}
@@ -895,7 +923,7 @@ def do(line, log=True):
             return out
         if out:
             return out
-    elif verb in COMMANDS:
+    elif verb in COMMANDS and verb not in CMDS:
         out = COMMANDS[verb](ST, args)
         if isinstance(out, (list, tuple)):               # expanded to primitives
             bad = []
@@ -994,6 +1022,10 @@ def generate(verb, args):
 
 
 MODULES, MODULE_ERRORS = load_modules()
+
+# A module verb that shadows a core verb is unreachable, and the module has no way
+# to know. Surface it rather than letting the user hit a confusing error.
+SHADOWED = sorted(set(COMMANDS) & set(CMDS))
 
 
 def _wire_bar_hooks():
