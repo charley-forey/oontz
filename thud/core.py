@@ -4,6 +4,7 @@ The audio callback slices a pre-rendered bar and does nothing else. Editing
 re-renders off-thread and swaps the array in on the next bar boundary.
 """
 import os
+import sys
 import copy
 import inspect
 import time
@@ -15,7 +16,7 @@ import collections
 import numpy as np
 import sounddevice as sd
 
-from .contracts import (SR, SEED, Snapshot, TrackView, VOICES, COMMANDS,
+from .contracts import (SR, SEED, Snapshot, TrackView, VOICES, FX, COMMANDS,
                         BAR_HOOKS, load_modules)
 from .voices import svf, note_hz, rng, v_hat, v_perc, v_bass303, v_stab
 
@@ -28,7 +29,8 @@ SCOPE_N = 4096
 def new_track(name, voice_name=None):
     return {"voice": voice_name or name, "pat": "." * 16, "notes": [], "gain": 1.0,
             "pan": 0.0, "sc": 0.0, "hum": 0.0, "filt": None, "fc": 0.0, "res": 0.6,
-            "tune": DEFAULT_TUNE.get(name, 0.0), "mute": False, "solo": False}
+            "tune": DEFAULT_TUNE.get(name, 0.0), "mute": False, "solo": False,
+            "fx": []}                                   # [[name, {params}], ...]
 
 
 def is_pitched(tr):
@@ -70,6 +72,7 @@ class State:
         self.blip = None
         self.blip_i = 0
         self.ab = [None, None]
+        self.master_fx = []
 
     @property
     def n(self):
@@ -177,6 +180,24 @@ def duck_env(n, kick_positions):
     return d
 
 
+def apply_fx(x, chain, bpm):
+    """Run an effect chain over a buffer. A broken effect is skipped, not fatal."""
+    for name, params in chain:
+        fn = FX.get(name)
+        if fn is None:
+            continue
+        try:
+            kw = dict(params)
+            if "bpm" in _params_of(fn):
+                kw.setdefault("bpm", bpm)
+            y = fn(x, **kw)
+            if y is not None and np.shape(y)[0] == np.shape(x)[0]:
+                x = y
+        except Exception:
+            pass
+    return x
+
+
 def render_bar(st=None):
     st = st or ST
     n = st.n
@@ -208,8 +229,12 @@ def render_bar(st=None):
         p = max(-1.0, min(1.0, tr["pan"]))          # equal-power pan
         buf *= tr["gain"] * np.array([np.cos((p + 1) * np.pi / 4),
                                       np.sin((p + 1) * np.pi / 4)]) * 1.41421356
+        if tr["fx"]:
+            buf = stereo(apply_fx(buf, tr["fx"], st.bpm))
         st.rms[name] = float(np.sqrt((buf ** 2).mean()))
         mix += buf
+    if st.master_fx:
+        mix = stereo(apply_fx(mix, st.master_fx, st.bpm))
     return (np.tanh(mix * 1.1) * 0.95).astype(np.float32)    # soft limiter
 
 
@@ -459,6 +484,34 @@ def _render(a):
     return "rendered %s  %d bars  %.1fs" % (a[0], bars, len(data) / SR)
 
 
+def _num(v):
+    try:
+        return float(v)
+    except ValueError:
+        return {"true": True, "false": False, "on": True, "off": False}.get(v.lower(), v)
+
+
+def _fx_cmd(a):
+    """`fx bass drive amount 2.5` · `fx bass drive off` · `fx bass off` · target `master`."""
+    chain = ST.master_fx if a[0] == "master" else track_arg(a[0])["fx"]
+    if len(a) < 2 or a[1] == "off":
+        chain.clear()
+        return None
+    name = a[1]
+    if name not in FX:
+        return "no effect %r  (try `fxlist`)" % name
+    if len(a) > 2 and a[2] == "off":
+        chain[:] = [e for e in chain if e[0] != name]
+        return None
+    params = {a[i]: _num(a[i + 1]) for i in range(2, len(a) - 1, 2)}
+    for e in chain:
+        if e[0] == name:                                 # update in place, keep the order
+            e[1].update(params)
+            return None
+    chain.append([name, params])
+    return None
+
+
 def _voice_cmd(a):
     """`voice bass reese` - point a track at any registered voice."""
     tr = track_arg(a[0])
@@ -548,6 +601,8 @@ CMDS = {
     "voice":     (_voice_cmd, "vc", "point a track at a voice"),
     "track":     (_track_cmd, "tk", "add <name> [voice] | del <name>"),
     "voices":    (_voices_cmd, None, "list every registered voice"),
+    "fx":        (_fx_cmd, "x", "fx <track|master> <effect> [k v ..] | off"),
+    "fxlist":    (lambda a: "  ".join(sorted(FX)), None, "list every registered effect"),
     "songs":     (_songs, "ls", "list the starter songbook"),
     "open":      (_open, "o", "load a song by name"),
     "save":      (lambda a: save(a[0]), "s", "write .thud"),
@@ -560,8 +615,11 @@ CMDS = {
     "variation": (lambda a: generate("variation", a), "v", "mutate a pattern"),
 }
 NO_LOG = {"play", "stop", "rec", "save", "load", "render", "undo", "redo",
-          "ab", "songs", "open", "view", "voices"}
-KEYED = {"gain", "tune", "filter", "sidechain", "humanize", "mute", "solo"}
+          "ab", "songs", "open", "view", "voices", "fxlist"}
+# How a command is keyed in the session log, which is what a .thud file is. One entry
+# per thing that can be independently set, so a later edit replaces the earlier one.
+KEYED = {"gain", "pan", "tune", "filter", "sidechain", "humanize", "mute", "solo", "voice"}
+KEYED2 = {"fx", "track"}                                 # keyed by two arguments
 ALIAS = {a: n for n, (_, a, _) in CMDS.items() if a}
 ALIAS.update({"k": "kick", "h": "hat", "b": "bass", "c": "clap", "st": "stab",
               "sn": "snare", "pc": "perc"})
@@ -604,11 +662,29 @@ def do(line, log=True):
             return out
         if out:
             return out
+    elif verb in COMMANDS:
+        out = COMMANDS[verb](ST, args)
+        if isinstance(out, (list, tuple)):               # expanded to primitives
+            bad = []
+            for cmd in out:
+                r = do(cmd, log=False)
+                if isinstance(r, str) and r.startswith("?"):
+                    bad.append(cmd)
+            if log:
+                ST.log[(verb,) + tuple(args)] = line.strip()
+                refresh()
+            return "%s: %d command(s) did not parse" % (verb, len(bad)) if bad else None
+        return out
     else:
         return "? %s   (: then Tab to complete, or ? for keys)" % parts[0]
 
     if log:
-        key = (verb, args[0]) if verb in KEYED else verb
+        if verb in KEYED2:
+            key = (verb,) + tuple(args[:2])
+        elif verb in KEYED:
+            key = (verb, args[0])
+        else:
+            key = verb
         ST.log[key] = line.strip()
         refresh()
     return None
@@ -685,6 +761,19 @@ def generate(verb, args):
 
 
 MODULES, MODULE_ERRORS = load_modules()
+
+
+def _wire_bar_hooks():
+    """Any module exposing automation_at/commands_at_bar gets called once per bar."""
+    for m in MODULES:
+        mod = sys.modules["%s.%s" % (__package__, m)]
+        fns = [getattr(mod, n, None) for n in ("automation_at", "commands_at_bar")]
+        fns = [f for f in fns if callable(f)]
+        if fns:
+            BAR_HOOKS.append(lambda i, fns=fns: [c for f in fns for c in (f(i) or ())])
+
+
+_wire_bar_hooks()
 
 
 def snapshot(**over):

@@ -108,6 +108,10 @@ COMMANDS = {}
 # arrange.py drives automation without touching core.
 BAR_HOOKS = []
 
+# (key, first_owner, module_that_overwrote_it). Two modules claiming one name is a
+# real bug - surfaced rather than silently resolved by import order.
+COLLISIONS = []
+
 # Optional modules. Missing ones are skipped, so the instrument runs with any
 # subset of them present.
 OPTIONAL = ("drums", "synths", "fx", "viz_spectrum", "viz_scope",
@@ -118,10 +122,18 @@ def load_modules(pkg=__name__.rsplit(".", 1)[0]):
     """Import every optional module so it can fill the registries above."""
     import importlib
     loaded, failed = [], {}
+    owner = {}                                    # registry key -> module that claimed it
     for m in OPTIONAL:
+        before = {id(r): dict(r) for r in (VOICES, FX, VIEWS, COMMANDS)}
         try:
             importlib.import_module("%s.%s" % (pkg, m))
             loaded.append(m)
+            for r in (VOICES, FX, VIEWS, COMMANDS):
+                for k in r:
+                    if k not in before[id(r)]:
+                        owner[k] = m
+                    elif before[id(r)][k] is not r[k]:
+                        COLLISIONS.append((k, owner.get(k, "?"), m))
         except ImportError:
             pass                                  # not written yet, that is fine
         except Exception as e:                    # written but broken: say so, keep going

@@ -1,0 +1,18 @@
+# negativespace - sparse pentatonic stabs, mostly silence
+bpm 122
+swing 8
+humanize kick 10
+humanize hat 10
+humanize oh 10
+humanize clap 10
+humanize snare 10
+humanize perc 10
+humanize bass 10
+humanize stab 10
+kick x...x...x...x...
+hat x....x....x.....
+perc x.......x.......
+tune perc 780
+stab a2! . . . . g2 . . . . d2 . . . . .
+filter stab lp 1600 res 0.5
+sidechain stab 0.5

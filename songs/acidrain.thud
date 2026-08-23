@@ -1,0 +1,17 @@
+# acidrain - phrygian 303 line, filter wide open
+bpm 134
+swing 20
+humanize kick 4
+humanize hat 4
+humanize oh 4
+humanize clap 4
+humanize snare 4
+humanize perc 4
+humanize bass 4
+humanize stab 4
+kick x...x...x...x...
+hat x..x..x.x..x..x.
+clap ....x.......x...
+bass a#1! a1! c2 c3 a#2! a1 f1 . g1 f1 . g1 a1 a#1 . g1!
+filter bass lp 340 res 0.94
+sidechain bass 0.7

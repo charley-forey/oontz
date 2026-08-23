@@ -1,0 +1,20 @@
+# concrete - poured, driving techno - the euclidean default
+bpm 132
+swing 20
+humanize kick 4
+humanize hat 4
+humanize oh 4
+humanize clap 4
+humanize snare 4
+humanize perc 4
+humanize bass 4
+humanize stab 4
+kick x...x...x...x...
+hat x.xx.xx.xx.xx.xx
+filter hat hp 8500
+oh ....x.......x...
+gain oh 0.6
+clap ....x.......x...
+bass a1 . g1 . b1! c2 a1 . b1! a1 f1 . g1! . a1 b1
+filter bass lp 420 res 0.8
+sidechain bass 0.7

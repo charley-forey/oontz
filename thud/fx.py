@@ -205,17 +205,17 @@ def phaser(x, rate=0.4, stages=4, mix=0.5, fmin=200.0, fmax=1600.0):
     win = np.hanning(N + 1)[:N]                            # periodic: 50% OLA sums to 1
     z = np.exp(-1j * TAU * np.arange(N // 2 + 1) / N)
     sh = (-1,) + (1,) * (y.ndim - 1)
-    pad = np.zeros((n + 2 * N,) + y.shape[1:])
-    pad[:n] = y
-    out = np.zeros_like(pad)
-    for i in range(0, n, hop):
+    pad = np.zeros((n + 3 * N,) + y.shape[1:])
+    pad[hop:hop + n] = y            # lead-in block, so every real sample is
+    out = np.zeros_like(pad)        # covered by two windows and OLA sums to 1
+    for i in range(0, n + hop, hop):
         fc = fmin * (fmax / fmin) ** (0.5 + 0.5 * np.sin(TAU * rate * (i + hop) / SR))
         g = np.tan(np.pi * fc / SR)
         a = (1.0 - g) / (1.0 + g)
-        H = ((a + z) / (1.0 + a * z)) ** int(stages)
+        H = ((z - a) / (1.0 - a * z)) ** int(stages)       # -pi/2 of phase at fc
         blk = np.fft.rfft(pad[i:i + N] * win.reshape(sh), axis=0)
         out[i:i + N] += np.fft.irfft(blk * H.reshape(sh), N, axis=0)
-    return _cap(y * (1.0 - mix) + out[:n] * mix)
+    return _cap(y * (1.0 - mix) + out[hop:hop + n] * mix)
 
 # ------------------------------------------------------------------- spectral
 
@@ -270,12 +270,10 @@ def eq3(x, low=1.0, mid=1.0, high=1.0, lo_hz=200.0, hi_hz=2000.0):
     if low == mid == high == 1.0:
         return y.copy()
     n = len(y)
-    N = 1 << (max(n, 2) - 1).bit_length()    # pad to pow2: numpy falls back to
-    f = np.fft.rfftfreq(N, 1.0 / SR)         # Bluestein on a bar length like
-    a, b = _band(f, lo_hz), _band(f, hi_hz)  # 80182 (=2*47*853) - 262ms vs 4ms
+    N, a, b = _bands(n, lo_hz, hi_hz)
     g = low * (1.0 - a) + mid * a * (1.0 - b) + high * b   # the three sum to 1
-    w = np.fft.irfft(np.fft.rfft(y.T, N) * g, N).T         # .T: channels last is
-    return _cap(w[:n])                                     # contiguous, 5x faster
+    w = np.fft.irfft(np.fft.rfft(y.T, N) * g, N).T         # .T so channels are
+    return _cap(w[:n])                                     # the contiguous axis
 
 # ------------------------------------------------------------------- dynamics
 
@@ -365,6 +363,15 @@ def demo():
     assert hi_db < -20.0, hi_db
     assert np.allclose(eq3(st, 1.0, 1.0, 1.0), st), "unity eq3 is not flat"
 
+    # -- phaser: the OLA reconstructs, and the cascade really notches ------
+    assert np.abs(phaser(mono, stages=0, mix=1.0) - mono).max() < 1e-9, "phaser OLA leaks"
+    imp = np.zeros(8192)
+    imp[1024] = 0.5                                        # flat spectrum = |H|
+    h = np.abs(np.fft.rfft(phaser(imp, rate=0.0))) / 0.5
+    fz = np.fft.rfftfreq(8192, 1.0 / SR)
+    notch = 20 * np.log10(h[(fz > 100) & (fz < 6000)].min())
+    assert notch < -20.0, notch
+
     # -- delay and reverb decay -------------------------------------------
     m = SR * 2
     burst = np.zeros(m)
@@ -378,9 +385,9 @@ def demo():
         tails[name] = 20 * np.log10((_rms(tail[-k:]) + 1e-12) / (_rms(tail[:k]) + 1e-12))
 
     print("fx: %d effects pass  ·  eq3 kill low %.0fdB / high %.0fdB"
-          "  ·  limiter peak %.3f  ·  delay tail %.0fdB  ·  reverb tail %.0fdB"
-          "  ·  width %.4f -> %.4f"
-          % (len(FX), lo_db, hi_db, pk, tails["delay"], tails["reverb"], d0, d2))
+          "  ·  limiter peak %.3f  ·  phaser notch %.0fdB"
+          "  ·  delay tail %.0fdB  ·  reverb tail %.0fdB  ·  width %.3f -> %.3f"
+          % (len(FX), lo_db, hi_db, pk, notch, tails["delay"], tails["reverb"], d0, d2))
 
 
 if __name__ == "__main__":

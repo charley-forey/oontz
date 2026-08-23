@@ -193,13 +193,15 @@ def meters_view(s, w, h):
 # ------------------------------------------------------------------ stereo
 
 
-def _stereo_lr(scope):
-    """(n,2) if ever provided; today scope is mono so L is R (degenerate
-    vertical line - the correct, honest picture until a stereo buffer exists)."""
-    arr = _to_array(scope)
-    if arr.ndim == 2 and arr.shape[1] == 2:
-        return arr[:, 0], arr[:, 1]
-    return arr, arr
+def _stereo_lr(s):
+    """Prefer the real (n,2) scope_lr; fall back to mono scope (L=R, a
+    degenerate vertical line) when scope_lr is absent - e.g. a snapshot
+    built before playback ever fills the ring buffer."""
+    lr = _to_array(s.scope_lr)
+    if lr.ndim == 2 and lr.shape[1] == 2 and lr.shape[0]:
+        return lr[:, 0], lr[:, 1], True
+    mono = _mono_trace(s.scope)
+    return mono, mono, False
 
 
 def _correlation(L, R):
@@ -214,8 +216,7 @@ def stereo_view(s, w, h):
     w, h = max(1, w), max(1, h)
     show_corr = h >= 2
     ph = max(1, h - 1) if show_corr else h
-    L, R = _stereo_lr(s.scope)
-    mono = L is R
+    L, R, stereo_src = _stereo_lr(s)
 
     bits = [[0] * w for _ in range(ph)]
     amp = [[0.0] * w for _ in range(ph)]
@@ -235,9 +236,10 @@ def stereo_view(s, w, h):
     if show_corr:
         corr = _correlation(L, R)
         col = 78 if corr > 0.5 else (214 if corr > -0.5 else 196)
-        tag = "mono scope" if mono else "stereo"
-        lines.append(fit("  " + c(51, "correlation") + " " + c(col, "%+.2f" % corr) +
-                          DIM + "  (%s)" % tag + OFF, w))
+        label = "  " + c(51, "correlation") + " " + c(col, "%+.2f" % corr)
+        if not stereo_src:                             # no scope_lr yet - say so, don't pretend
+            label += DIM + "  (mono scope)" + OFF
+        lines.append(fit(label, w))
     return lines[:h]
 
 
@@ -257,6 +259,19 @@ def _dot_rows_used(lines):
                     if bits & bit:
                         rows.add(cy * 4 + sy)
     return rows
+
+
+def _dot_cols_used(lines):
+    """Same decode as _dot_rows_used but for columns, to check trace width."""
+    cols = set()
+    for line in lines:
+        for cx, ch in enumerate(ANSI.sub("", line)):
+            bits = ord(ch) - BRAILLE
+            if 0 < bits <= 0xFF:
+                for (sx, sy), bit in DOT_BIT.items():
+                    if bits & bit:
+                        cols.add(cx * 2 + sx)
+    return cols
 
 
 def demo():
@@ -295,6 +310,29 @@ def demo():
     assert m, "no dB readout in meter row: %r" % out4[0]
     assert abs(float(m.group(1)) - (-6.0)) < 1.0, "0.5 amplitude read %s, want ~-6dB" % m.group(1)
 
+    # 5) stereo_view must actually be wired to scope_lr, not silently mono:
+    #    a genuinely mono signal reads +1.00 and draws a vertical line...
+    mono_lines = stereo_view(snap, w, h)
+    mono_cols = _dot_cols_used(mono_lines)
+    mono_corr = _correlation(*_stereo_lr(snap)[:2])
+    assert mono_cols and max(mono_cols) - min(mono_cols) <= 1, \
+        "mono input should draw a vertical line, spread cols %r" % mono_cols
+    assert abs(mono_corr - 1.0) < 0.01, "mono input should read +1.00, got %.2f" % mono_corr
+
+    # ...a decorrelated stereo signal must NOT: it should spread horizontally
+    # and read well below +1.00.
+    Lc = 0.6 * np.sin(np.linspace(0, 90, 4096))
+    Rc = np.roll(Lc, 40)
+    stereo_snap = Snapshot(scope_lr=tuple(map(tuple, np.stack([Lc, Rc], axis=1))),
+                            scope=tuple(((Lc + Rc) / 2).tolist()), peak=0.6)
+    st_lines = stereo_view(stereo_snap, w, h)
+    st_cols = _dot_cols_used(st_lines)
+    st_corr = _correlation(*_stereo_lr(stereo_snap)[:2])
+    assert max(st_cols) - min(st_cols) > w // 4, \
+        "decorrelated stereo should spread across the goniometer, spread cols %r" % st_cols
+    assert st_corr < 0.9, "decorrelated stereo should read well below +1.00, got %.2f" % st_corr
+    print("\nmono correlation: %+.2f   decorrelated correlation: %+.2f" % (mono_corr, st_corr))
+
     print("\n-- scope --")
     for l in scope_view(snap, 100, 16):
         print(l)
@@ -309,8 +347,12 @@ def demo():
     for l in meters_view(Snapshot(tracks=demo_tracks, peak=0.97), 100, 8):
         print(l)
 
-    print("\n-- stereo --")
+    print("\n-- stereo (mono fallback) --")
     for l in stereo_view(snap, 60, 16):
+        print(l)
+
+    print("\n-- stereo (real scope_lr, decorrelated) --")
+    for l in stereo_view(stereo_snap, 60, 16):
         print(l)
 
     print("\nviz_scope: all checks pass")

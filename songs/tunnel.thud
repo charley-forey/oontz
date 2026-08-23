@@ -1,0 +1,19 @@
+# tunnel - one loop, slowly mutating - the Hood pocket
+bpm 128
+swing 8
+humanize kick 10
+humanize hat 10
+humanize oh 10
+humanize clap 10
+humanize snare 10
+humanize perc 10
+humanize bass 10
+humanize stab 10
+kick x...x...x...x...
+hat x....x....x.....
+gain hat 0.5
+perc .x..x..x..x...x.
+tune perc 350
+bass a1! . . g1 b1 . . . b0! . . a0 . . . .
+filter bass lp 500 res 0.7
+sidechain bass 0.6

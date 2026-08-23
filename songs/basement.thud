@@ -1,0 +1,20 @@
+# basement - 124bpm, warm dorian bassline, offbeat hats
+bpm 124
+swing 20
+humanize kick 4
+humanize hat 4
+humanize oh 4
+humanize clap 4
+humanize snare 4
+humanize perc 4
+humanize bass 4
+humanize stab 4
+kick x...x...x...x...
+hat .x.x.x.x.x.x.x.x
+tune hat 9000
+oh ..x...x...x...x.
+gain oh 0.7
+clap ....x.......x...
+bass a2! b2 a2 g2~ a1 f#1~ a1 f#1! f#1! e1 a1 g1 e1~ . . .
+filter bass lp 700 res 0.5
+sidechain bass 0.5

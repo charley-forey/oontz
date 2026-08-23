@@ -410,12 +410,12 @@ def demo():
                 "did not parse: %r -> %r" % (line, out)
 
     SETLIST.append(("warehouse", 64))              # for `set go`, exercised below
+    assert isinstance(scene_cmd(core.ST, ["save", "check"]), str)   # status msg, not commands
     batches = [
         ramp_cmd(core.ST, ["bass.fc", "300", "4000", "over", "16", "curve", "exp"]),
         build_cmd(core.ST, ["8"]), drop_cmd(core.ST, ["1"]), break_cmd(core.ST, ["4"]),
         riser_cmd(core.ST, ["4"]), fill_cmd(core.ST, ["1"]),
         automation_at(0), automation_at(3), automation_at(15),
-        [scene_cmd(core.ST, ["save", "check"])] and [],   # side effect only, not a cmd batch
         scenes_to_commands("check"),
         _transition(core.ST, 0, 4),
     ]
@@ -442,14 +442,19 @@ def demo():
     after = core.render_bar()
     assert np.array_equal(before, after), "scene replay is not byte-identical"
 
-    # -- serialisation: to_commands() also all parses --------------------
-    check_all([l for l in to_commands() if not l.startswith(("scene define", "ramp ", "song ", "set "))])
+    # -- serialisation: shapes are right (parsing these needs the dispatch
+    # hook noted in the module docstring - not present in core.py today) --
+    lines = to_commands()
+    assert any(l.startswith("scene define snap1 ") for l in lines), lines
+    assert any(l.startswith("ramp bass.fc ") for l in lines), lines
+    assert any(l.startswith("song intro 4") for l in lines), lines
+    assert any(l == "set add warehouse 64" for l in lines), lines
 
     # -- timeline_str is exactly w visible columns ------------------------
     for w in (20, 40, 80, 120):
         for bar in (0, 4, 7):
             s = timeline_str(bar, w)
-            assert core.ui.vlen(s) == w, (w, bar, core.ui.vlen(s), s)
+            assert vlen(s) == w, (w, bar, vlen(s), s)
 
     return ("arrange ok  ·  ramps exact+monotonic  ·  song 64 bars  ·  %d parse checks"
             "  ·  scene round-trip byte-identical  ·  timeline widths exact"

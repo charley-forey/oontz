@@ -1,0 +1,21 @@
+# foundry - syncopated kick, metallic hats, dark bass
+bpm 140
+swing 14
+humanize kick 5
+humanize hat 5
+humanize oh 5
+humanize clap 5
+humanize snare 5
+humanize perc 5
+humanize bass 5
+humanize stab 5
+kick X..X..X..X..X...
+hat x.x.x.xx.x.x.xx.
+filter hat hp 11000
+tune hat 11000
+snare ........x.......
+perc x.x.x..x.x.x..x.
+tune perc 210
+bass d1 . f1 e1 g1! . e1! d1! e1 d1 f1~ g1 f1~ . f0 d1
+filter bass lp 300 res 0.92
+sidechain bass 0.8

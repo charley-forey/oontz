@@ -18,7 +18,7 @@ from dataclasses import dataclass
 
 from . import core
 from .voices import note_hz
-from .contracts import COMMANDS
+from .contracts import COMMANDS, VOICES
 
 # ------------------------------------------------------------- availability
 
@@ -61,7 +61,9 @@ def _safe_path(p):
 
 
 def _validate_track(name, args):
-    if name in core.PITCHED:
+    # Pitched-ness is per-voice, not a fixed track list (voice/track add can
+    # repoint or create tracks at runtime) - ask the same predicate core uses.
+    if core.is_pitched(core.ST.tracks[name]):
         if not args:
             raise ValueError("needs note tokens")
         for t in args:
@@ -92,7 +94,7 @@ def _num(s):
 
 
 def _trk(name):
-    if name not in core.TRACK_ORDER:
+    if name not in core.ST.tracks:                          # dynamic: track add/del
         raise ValueError("no track %r" % name)
     return name
 
@@ -178,6 +180,34 @@ def _v_variation(a):
         _trk(a[0])
 
 
+def _v_view(a):
+    _need(a, 1, "view <name>")
+
+
+def _v_voice(a):
+    _need(a, 2, "<track> <voicename>")
+    _trk(a[0])
+    if a[1] not in VOICES:
+        raise ValueError("no voice %r  (try `voices`)" % a[1])
+
+
+def _v_track(a):
+    _need(a, 1, "add <name> [voice] | del <name>")
+    if a[0] == "add":
+        _need(a, 2, "track add <name> [voice]")
+        v = a[2] if len(a) > 2 else a[1]
+        if v not in VOICES:
+            raise ValueError("no voice %r  (try `voices`)" % v)
+    elif a[0] in ("del", "rm"):
+        _need(a, 2, "track del <name>")
+    else:
+        raise ValueError("track add|del <name>: %r" % a[0])
+
+
+def _v_voices(a):
+    pass
+
+
 CMD_VALIDATORS = {
     "bpm": _v_bpm, "swing": _v_swing,
     "gain": _v_track_num, "pan": _v_track_num, "tune": _v_track_num,
@@ -187,6 +217,7 @@ CMD_VALIDATORS = {
     "undo": _v_none, "redo": _v_none, "ab": _v_ab, "open": _v_open,
     "save": _v_save, "load": _v_load, "render": _v_render,
     "gen": _v_gen, "variation": _v_variation,
+    "view": _v_view, "voice": _v_voice, "track": _v_track, "voices": _v_voices,
 }
 
 
@@ -209,7 +240,7 @@ def validate(lines):
         verb = core.ALIAS.get(verb0, verb0)
         args = parts[1:]
         try:
-            if verb in core.TRACK_ORDER:
+            if verb in core.ST.tracks:                       # dynamic track table
                 _validate_track(verb, args)
             elif verb in core.CMDS:
                 v = CMD_VALIDATORS.get(verb)
@@ -263,13 +294,18 @@ def _render_state(snap):
 
 
 def _system_prompt(snap):
+    names = [t.name for t in snap.tracks]
+    pitched = [n for n in names
+               if n in core.ST.tracks and core.is_pitched(core.ST.tracks[n])]
     return """You are editing a live techno pattern in thud, a terminal step
 sequencer. A thud session is just a log of commands, one per line - your
 entire output is more of those lines, applied on top of what already exists.
 
 TRACKS: %s
 Pitched tracks (%s) take note tokens, one per step, space separated; every
-other track takes a single pattern string.
+other track takes a single pattern string. New tracks can be added with
+`track add <name> [voice]` (voice defaults to the track name); `voices`
+lists every registered voice.
 
 PATTERN SYNTAX (non-pitched tracks): a string of
   x  hit      X  accented hit      .  rest      -  rest
@@ -277,7 +313,7 @@ Any length works - tracks don't have to share a length; different lengths
 against each other is polymeter, and used on purpose. "kick x...x...x...x..."
 is four-on-the-floor.
 
-NOTE SYNTAX (bass, stab): scientific pitch, one token per step -
+NOTE SYNTAX (pitched tracks): scientific pitch, one token per step -
   a1  note + octave (a b c d e f g, # for sharp, e.g. f#2)
   .   rest           a1~  slide from the previous note
   a1!  accent        a1~!  slide and accent together
@@ -291,7 +327,7 @@ CURRENT STATE:
 Reply with ONLY thud command lines, one per line. No prose, no markdown
 fences, no numbering, no explanation - every line must be something that
 could be pasted straight into thud.""" % (
-        ", ".join(core.TRACK_ORDER), ", ".join(core.PITCHED),
+        ", ".join(names), ", ".join(pitched) or "none",
         _cmd_table_text(), _render_state(snap))
 
 
@@ -347,9 +383,10 @@ def _diff(snap, commands):
         parts = line.split()
         verb = core.ALIAS.get(parts[0].lower(), parts[0].lower())
         args = parts[1:]
-        if verb in core.TRACK_ORDER:
+        if verb in pat:                                      # a track that existed at ask() time
             before = pat[verb]
-            if verb in core.PITCHED:
+            tr = core.ST.tracks.get(verb)
+            if tr is not None and core.is_pitched(tr):
                 after = "".join("." if a in (".", "-") else
                                  ("X" if a.endswith("!") else "x") for a in args)
             else:
@@ -549,6 +586,8 @@ def demo():
         "open warehouse", "save songs/_tmp_ai_demo.thud", "load songs/warehouse.thud",
         "render takes/_tmp_ai_demo.wav --bars 4", "ab a", "undo", "redo",
         "gen techno", "variation kick",
+        "view perform", "voice bass bass", "voices",
+        "track add _tmp_ai_track rumble", "track del _tmp_ai_track",
         "ask add a hat", "crit", "explain", "name",             # registered COMMANDS entries
     ]
     good, rejected = validate(ok_lines)

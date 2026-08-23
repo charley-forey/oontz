@@ -1,0 +1,20 @@
+# sledgehammer - 150bpm, accented four-on-the-floor, no mercy
+bpm 150
+swing 0
+humanize kick 0
+humanize hat 0
+humanize oh 0
+humanize clap 0
+humanize snare 0
+humanize perc 0
+humanize bass 0
+humanize stab 0
+kick X...X...X...X...
+hat x.x.x..x.x.x..x.
+filter hat hp 9500
+clap ......X.......X.
+perc x..x..x..x..x...
+tune perc 500
+bass b1! g#1 . e1 c1! . d1 c1
+filter bass lp 260 res 0.9
+sidechain bass 0.85

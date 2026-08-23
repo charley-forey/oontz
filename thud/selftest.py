@@ -8,7 +8,7 @@ import time
 import wave
 import numpy as np
 
-from .contracts import SR, Snapshot
+from .contracts import SR, Snapshot, VOICES as VOICES_, FX
 from . import core, ui
 from .core import ST, State, do, render_bar, hits, new_track
 from .voices import (v_kick, v_hat, v_clap, v_snare, v_perc, v_bass303, v_stab,
@@ -115,14 +115,39 @@ def selftest():
     # -- save / load round-trip -----------------------------------------
     do("gen techno")
     do("sidechain bass 0.7")
+    do("pan hat -0.4")
+    if "sub" in VOICES_:                      # a pitched voice takes notes, not a pattern
+        do("track add sub2 sub")
+        do("sub2 a1 . . . a1 . . .")
+    else:
+        do("track add extra kick")
+        do("extra x.......")
+    if FX:
+        do("fx bass %s" % (sorted(FX)[0]))
     p = "_selftest_%d.thud" % os.getpid()   # unique: tests run concurrently
     do("save " + p)
     want = render_bar()
     ST.tracks = {n: new_track(n) for n in core.TRACK_ORDER}
+    ST.order = list(core.TRACK_ORDER)
+    ST.master_fx = []
     do("load " + p)
     got = render_bar()
     assert np.array_equal(want, got), "save/load did not round-trip"
     os.remove(p)
+
+    # -- fx chains, and everything survives a save --------------------
+    if FX:
+        eff = "drive" if "drive" in FX else sorted(FX)[0]
+        assert do("fx bass %s" % eff) is None, "fx command failed"
+        assert do("fx master %s" % eff) is None
+        assert do("fx bass nosucheffect").startswith("no effect")
+        assert ST.tracks["bass"]["fx"] and ST.master_fx, "fx chain not stored"
+        dirty = render_bar()
+        assert np.max(np.abs(dirty)) <= 1.0, "fx chain clips the master"
+        assert not np.isnan(dirty).any(), "fx chain produced NaN"
+        do("fx bass off")
+        do("fx master off")
+        assert not ST.tracks["bass"]["fx"] and not ST.master_fx, "fx off did not clear"
 
     # -- page renders, every line fits exactly ---------------------------
     snap = core.snapshot(mode="play", hint="x", cmdline="", complete="")
