@@ -159,6 +159,14 @@ def selftest():
         hp = ui.build(core.snapshot(overlay="help"), W, H)
         assert any("every key" in ui.ANSI.sub("", r) for r in hp), "help overlay empty"
 
+    # -- a long track name must not break row alignment ----------------
+    do("track add verylongname kick")
+    do("verylongname x...............")
+    for W in (80, 120):
+        for r in ui.build(core.snapshot(), W, 24):
+            assert ui.vlen(r) == W, "long track name broke the grid at w=%d" % W
+    do("track del verylongname")
+
     # -- keys drive state ------------------------------------------------
     ST.focus = 0
     ui.on_key("2", snap)

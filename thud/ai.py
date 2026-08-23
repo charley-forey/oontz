@@ -18,19 +18,27 @@ from dataclasses import dataclass
 
 from . import core
 from .voices import note_hz
-from .contracts import COMMANDS, VOICES
+from .contracts import COMMANDS, VOICES, FX
 
 # ------------------------------------------------------------- availability
 
-_claude_bin = None
+_claude_bin = None                # None = not probed; else resolved path, or False
 
 
 def available():
     """Is the `claude` CLI on PATH? Cached - shutil.which is cheap but there's
-    no reason to stat PATH on every keystroke."""
+    no reason to stat PATH on every keystroke.
+
+    Caches the RESOLVED PATH, not just a bool. On Windows, `claude` ships as
+    an npm shim: shutil.which("claude") finds claude.CMD, but
+    subprocess.run(["claude", ...]) does not do PATHEXT lookup on a bare name
+    and fails with WinError 2 - so a bool cache would report "available" and
+    then every call would fail. Callers get a truthy/falsy value either way;
+    _run_raw uses the cached value itself as argv[0].
+    """
     global _claude_bin
     if _claude_bin is None:
-        _claude_bin = shutil.which("claude") is not None
+        _claude_bin = shutil.which("claude") or False
     return _claude_bin
 
 # ------------------------------------------------------------------ validate
@@ -208,6 +216,24 @@ def _v_voices(a):
     pass
 
 
+def _v_fx(a):
+    _need(a, 1, "<track|master> [effect [k v ..]] | off")
+    if a[0] != "master":
+        _trk(a[0])
+    if len(a) < 2 or a[1] == "off":
+        return                                              # clears the whole chain
+    if a[1] not in FX:
+        raise ValueError("no effect %r  (try `fxlist`)" % a[1])
+    if len(a) > 2 and a[2] == "off":
+        return                                              # removes just that one effect
+    if len(a[2:]) % 2 != 0:
+        raise ValueError("fx params must be key value pairs")
+
+
+def _v_fxlist(a):
+    pass
+
+
 CMD_VALIDATORS = {
     "bpm": _v_bpm, "swing": _v_swing,
     "gain": _v_track_num, "pan": _v_track_num, "tune": _v_track_num,
@@ -218,6 +244,7 @@ CMD_VALIDATORS = {
     "save": _v_save, "load": _v_load, "render": _v_render,
     "gen": _v_gen, "variation": _v_variation,
     "view": _v_view, "voice": _v_voice, "track": _v_track, "voices": _v_voices,
+    "fx": _v_fx, "fxlist": _v_fxlist,
 }
 
 
@@ -274,7 +301,10 @@ def _cmd_table_text():
 def _render_state(snap):
     out = ["bpm %g  swing %g" % (snap.bpm, snap.swing)]
     for t in snap.tracks:
+        voice = core.ST.tracks.get(t.name, {}).get("voice", t.name)
         bits = [t.name.ljust(6), t.pat if t.pat.strip(".-") else "(empty)"]
+        if voice != t.name:
+            bits.append("voice:%s" % voice)
         if t.notes:
             bits.append("notes: " + " ".join(t.notes))
         if t.filt:
@@ -347,10 +377,14 @@ def _run_raw(prompt, timeout=25):
     Returns (True, reply_text) on success, or (False, "[reason]") for every
     failure mode - missing binary, timeout, non-zero exit, empty reply.
     """
-    if not available():
+    bin_path = available()
+    if not bin_path:
         return False, "[claude unavailable]"
     try:
-        r = subprocess.run(["claude", "-p", prompt], capture_output=True,
+        # the resolved path, not the bare "claude" - see available()'s docstring.
+        # No shell=True: validate() exists precisely because this text is
+        # untrusted, and a resolved-path argv avoids the shell entirely.
+        r = subprocess.run([bin_path, "-p", prompt], capture_output=True,
                             text=True, timeout=timeout)
     except subprocess.TimeoutExpired:
         return False, "[claude timed out after %gs]" % timeout
@@ -588,6 +622,7 @@ def demo():
         "gen techno", "variation kick",
         "view perform", "voice bass bass", "voices",
         "track add _tmp_ai_track rumble", "track del _tmp_ai_track",
+        "fx bass drive amount 2.5", "fx bass drive off", "fx bass off", "fxlist",
         "ask add a hat", "crit", "explain", "name",             # registered COMMANDS entries
     ]
     good, rejected = validate(ok_lines)
@@ -625,7 +660,7 @@ def demo():
             raise exc
         return f
 
-    globals()["_claude_bin"] = True
+    globals()["_claude_bin"] = "C:\\fake\\claude.CMD"       # any truthy path; sp.run is mocked
     orig_run = sp.run
     try:
         sp.run = _boom(sp.TimeoutExpired(cmd="claude", timeout=1))
@@ -658,10 +693,21 @@ def demo():
         globals()["_claude_bin"] = _claude_bin_saved
 
     # -- real end-to-end call, only if the binary is actually here --------
-    if real_available():
-        r = ask("add an open hat on the offbeat", snap, timeout=30)
+    bin_path = real_available()
+    if bin_path:
+        # a truthy available() must mean a working binary, not just a PATH hit
+        # (Windows: shutil.which("claude") resolves the .CMD shim, but a bare
+        # "claude" argv[0] is not PATHEXT-resolved by CreateProcess - the
+        # resolved path is what has to actually run).
+        v = subprocess.run([bin_path, "--version"], capture_output=True, text=True, timeout=30)
+        assert v.returncode == 0, "available() is truthy but %r --version failed: %s" % (bin_path, v.stderr)
+
+        core.do("open warehouse")
+        snap2 = core.snapshot()
+        r = ask("add an open hat on every offbeat and make the bass darker", snap2, timeout=30)
         print("--- raw reply ---\n%s" % r.raw)
         print("--- validated commands ---\n%s" % "\n".join(r.commands))
+        print("--- rejected ---\n%s" % "\n".join("%r: %s" % x for x in r.rejected))
         print("--- diff ---\n%s" % r.diff)
         assert isinstance(r, AskResult)
         assert isinstance(r.commands, list) and isinstance(r.rejected, list)

@@ -64,7 +64,7 @@ def master_bar(s, w):
 def track_row(t, i, s, w):
     col = COL.get(t.name, 250)
     sel = "▸" if i == s.focus else " "
-    tag = "%s%d %-5s" % (sel, i + 1, t.name)
+    tag = "%s%d %-7s" % (sel, i + 1, t.name[:7])
     tag = c(231 if i == s.focus else col, tag)
     cells = []
     for j, ch in enumerate(t.pat):

@@ -15,6 +15,6 @@ filter hat hp 9500
 clap ......X.......X.
 perc x..x..x..x..x...
 tune perc 500
-bass a2 g#2~! a2 f2~ . a2 f2 e2~
+bass a1! . . f1 a1 . a2 a1
 filter bass lp 260 res 0.9
 sidechain bass 0.85

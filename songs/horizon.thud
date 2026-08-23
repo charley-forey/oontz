@@ -12,9 +12,9 @@ humanize stab 0
 kick x...x...x...x...
 hat xx.xxx.xxx.xxx.x
 filter hat hp 8000
-bass g1 a1 g1 e1 c1 d1~ c1 . c2 a1 b1~ b0! a1 g1 g2 g1
+bass g1 e1 . f1! e1 f1! e1 c1~ . b0! d1 e1~! c1! b0~ a1 a1
 filter bass lp 1200 res 0.3
 sidechain bass 0.4
-stab e2! . . . c2! . . . e2 . . f2 . . . f3
+stab c2! . d2 b1 . . . b2! . . . . . . . c3
 filter stab lp 3000 res 0.2
 sidechain stab 0.3

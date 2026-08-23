@@ -13,6 +13,6 @@ kick x...x...x...x...
 hat ..x...x...x...x.
 filter hat hp 7000
 gain hat 0.5
-stab b2! . . . b3! . . . . a3 a4~ . . a5 c6 .
+stab a1 . . g1 f#1 . . d1! . . . . f#1 g1~ . a2
 filter stab lp 900 res 0.3
 sidechain stab 0.5

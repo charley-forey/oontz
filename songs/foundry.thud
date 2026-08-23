@@ -16,6 +16,6 @@ tune hat 11000
 snare ........x.......
 perc x.x.x..x.x.x..x.
 tune perc 210
-bass e1! d1 . . f1 e1~ f1 f0 d1 e1 d1! e1! f1! e1! e1~ e1~
+bass e1! f1! e1 d1 e1 d1 b0 b1~ b0! b1~ c2 b1 a1 b1 a1! a0!
 filter bass lp 300 res 0.92
 sidechain bass 0.8
