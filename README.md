@@ -1,25 +1,57 @@
 # thud
 
-A terminal techno instrument. You play it with the keyboard, watch it on one
-static page, and record the take. Everything is synthesized — no samples.
+A terminal techno studio and DJ system. You write songs with the keyboard, watch
+them on one page that fits any terminal, and mix the ones you keep. Everything is
+synthesized — no samples.
 
 ```
 python -m thud            # the instrument
 python -m thud test       # the checks
 ```
 
+Two modes, switched with `M`.
+
+**STUDIO** — build a song.
+
 ```
-:open warehouse           # load a starter song   (:songs lists all 15)
+:compose hardtechno 5     # a whole 5-minute track, arranged
+:song info                # what it is
 space                     # play
-1-8                       # focus a track
-qwertyui asdfghjk         # the 16 step buttons
-[ ]                       # sweep the filter      (hold to sweep)
-/                         # loop roll             (hold)
-\                         # spinback
-Tab                       # cycle spectrum / scope / meters / freq / stereo
+< >                       # jump section        ( ) scrub eight bars
+1-8                       # focus a track       L  loop this section
+qwertyui asdfghjk         # the 16 step pads
+[ ]                       # sweep the filter    (hold)
+/                         # loop roll (hold)    \  spinback
+:sec add drop 32          # grow the arrangement
+:song render out.wav      # the whole song, offline
 R                         # record a take
 ?                         # every key
 ```
+
+**DECK** — mix what you made.
+
+```
+:dload a warehouse        # render a song onto deck A
+:dload b acidtrip
+:deck b sync              # beat-exact, no detection involved
+:deck a loop 8
+:eq b low 0               # kill the incoming bass
+:xf 0.5                   # crossfade
+:transition blend 16
+```
+
+## Songs are timelines
+
+A song is sections in an order, and the engine asks it one question:
+
+    song.state_at(bar) -> the track state for that absolute bar
+
+Scrubbing is setting an index. Rendering is asking for every bar in turn.
+Automation interpolates inside the answer. Because it is pure, an offline render
+is what you heard, to the sample — and a DJ deck is just that render, finished.
+
+`:compose` walks an energy curve through an arrangement grammar and develops one
+motif across the whole track, so the drop's bassline is recognisably the intro's.
 
 ## The idea
 
@@ -60,6 +92,14 @@ because that is physically what a turntable does.
     thud/arrange.py     scenes, automation ramps, build/drop/break, song timeline, sets
     thud/gen.py         euclidean rhythms, scale-aware melody, 10 style packs
     thud/viz_*.py       spectrum, braille scope, meters, frequency occupancy, goniometer
+    thud/song.py        Song/Section, state_at, automation, offline render
+    thud/layout.py      panels declare size and priority; a solver fits them
+    thud/theme.py       palette, chrome, widgets - one visual system
+    thud/harmony.py     scales, chords, the Camelot wheel, motifs
+    thud/compose.py     energy curves, arrangement grammar, whole songs
+    thud/deck.py        pre-rendered decks, exact beat grids, sync, cue, loop
+    thud/mixer.py       channel strips, EQ kills, crossfader, transitions
+    thud/ui_studio.py   the STUDIO page      thud/ui_deck.py  the DECK page
     thud/teach.py       context hints, the key legend, why(), the guided lesson
     thud/ai.py          asks the local `claude` CLI for command suggestions
     songs/              the songbook, one commented .thud per style
