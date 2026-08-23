@@ -65,6 +65,7 @@ class State:
         self.undo = collections.deque(maxlen=64)
         self.redo = collections.deque(maxlen=64)
         self.scope = np.zeros(SCOPE_N, np.float32)
+        self.scope_lr = np.zeros((SCOPE_N, 2), np.float32)
         self.scope_i = 0
         self.blip = None
         self.blip_i = 0
@@ -278,8 +279,10 @@ def _tap(seg, frames):
     j = ST.scope_i
     k = min(frames, SCOPE_N - j)
     ST.scope[j:j + k] = mono[:k]
+    ST.scope_lr[j:j + k] = seg[:k]
     if k < frames:
         ST.scope[:frames - k] = mono[k:]
+        ST.scope_lr[:frames - k] = seg[k:]
     ST.scope_i = (j + frames) % SCOPE_N
     if REC.on:
         REC.q.append(seg.copy())                     # ponytail: deque append is atomic in
@@ -698,13 +701,14 @@ def snapshot(**over):
             active=bool(t["pat"].strip(".-")) and not t["mute"] and (t["solo"] or not soloed)))
     n = ST.n
     scope = np.concatenate((ST.scope[ST.scope_i:], ST.scope[:ST.scope_i]))
+    scope_lr = np.concatenate((ST.scope_lr[ST.scope_i:], ST.scope_lr[:ST.scope_i]))
     return Snapshot(
         bpm=ST.bpm, swing=ST.swing, bar=ST.bars,
         step=int(ST.pos / n * 16) if playing() else -1,
         playing=playing(), name=ST.name, tracks=tuple(tv), focus=ST.focus,
         view=ST.view, echo=ST.echo if time.time() - ST.echo_at < 1.2 else "",
         recording=REC.on, rec_secs=REC.secs, rec_name=os.path.basename(REC.path),
-        scope=scope, peak=float(np.abs(scope).max()), drops=ST.drops, **over)
+        scope=scope, scope_lr=scope_lr, peak=float(np.abs(scope).max()), drops=ST.drops, **over)
 
 
 def echo(msg):

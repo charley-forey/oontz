@@ -115,7 +115,7 @@ def selftest():
     # -- save / load round-trip -----------------------------------------
     do("gen techno")
     do("sidechain bass 0.7")
-    p = "_selftest.thud"
+    p = "_selftest_%d.thud" % os.getpid()   # unique: tests run concurrently
     do("save " + p)
     want = render_bar()
     ST.tracks = {n: new_track(n) for n in core.TRACK_ORDER}

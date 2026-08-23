@@ -24,6 +24,13 @@ Registries
     hint(Snapshot) -> str | None                          teach.py
     ask(prompt, Snapshot) -> list[str]                    ai.py
 
+Views and display state
+    A view is a pure function of (Snapshot, w, h). The one sanctioned exception is
+    DISPLAY state - peak-hold decay, a clip latch, a scroll offset - which by
+    definition cannot come from a single frame. Keep it module-local, keep it
+    small, reset it when the width changes, and never let it affect audio or leak
+    to another module. Two view agents hit this independently; this is the ruling.
+
 A COMMANDS function returns thud command strings, never mutated state. That is
 what keeps generative and AI code honest: everything they do is expressible as
 something you could have typed, so it lands in the undo stack and the .thud file
@@ -83,7 +90,8 @@ class Snapshot:
     rec_secs: float = 0.0
     rec_name: str = ""
     flash: bool = False            # one white frame, the video sync mark
-    scope: tuple = ()              # recent samples for the oscilloscope
+    scope: tuple = ()              # recent MONO samples for the oscilloscope
+    scope_lr: tuple = ()           # the same window as (n,2) stereo, for goniometers
     spectrum: tuple = ()           # magnitude bins, already log-spaced
     peak: float = 0.0
     drops: int = 0                 # bars the scheduler failed to render in time

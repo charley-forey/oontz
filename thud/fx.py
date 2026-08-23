@@ -10,6 +10,8 @@ runs off the live kill keys, so the filtering here is either FFT-domain (eq3,
 phaser) or a 2-tap FIR inside a feedback path (delay, reverb). Same maths, ~50x
 cheaper.
 """
+import functools
+
 import numpy as np
 
 from .contracts import SR, TAU, FX
@@ -235,6 +237,28 @@ def _band(f, hz, oct_=1.0):
     return 0.5 - 0.5 * np.cos(np.pi * u)
 
 
+@functools.lru_cache(maxsize=8)
+def _bands(n, lo_hz, hi_hz):
+    """Padded FFT length + both crossover curves, cached - they only change
+    when the bpm does.
+
+    The length matters: numpy falls back to Bluestein on large prime factors,
+    and a bar is an ugly number (80182 = 2*47*853 -> 146ms). Rounding up to the
+    next 5-smooth length costs 1% more samples and runs in 11ms.
+    """
+    N = max(int(n), 2)
+    while True:
+        r = N
+        for p in (2, 3, 5):
+            while r % p == 0:
+                r //= p
+        if r == 1:
+            break
+        N += 1
+    f = np.fft.rfftfreq(N, 1.0 / SR)
+    return N, _band(f, lo_hz), _band(f, hi_hz)
+
+
 def eq3(x, low=1.0, mid=1.0, high=1.0, lo_hz=200.0, hi_hz=2000.0):
     """DJ three-band: 0.0 is a full kill, 1.0 unity. What the kill keys drive.
 
@@ -246,11 +270,12 @@ def eq3(x, low=1.0, mid=1.0, high=1.0, lo_hz=200.0, hi_hz=2000.0):
     if low == mid == high == 1.0:
         return y.copy()
     n = len(y)
-    f = np.fft.rfftfreq(n, 1.0 / SR)
-    a, b = _band(f, lo_hz), _band(f, hi_hz)
+    N = 1 << (max(n, 2) - 1).bit_length()    # pad to pow2: numpy falls back to
+    f = np.fft.rfftfreq(N, 1.0 / SR)         # Bluestein on a bar length like
+    a, b = _band(f, lo_hz), _band(f, hi_hz)  # 80182 (=2*47*853) - 262ms vs 4ms
     g = low * (1.0 - a) + mid * a * (1.0 - b) + high * b   # the three sum to 1
-    sh = (-1,) + (1,) * (y.ndim - 1)
-    return _cap(np.fft.irfft(np.fft.rfft(y, axis=0) * g.reshape(sh), n, axis=0))
+    w = np.fft.irfft(np.fft.rfft(y.T, N) * g, N).T         # .T: channels last is
+    return _cap(w[:n])                                     # contiguous, 5x faster
 
 # ------------------------------------------------------------------- dynamics
 
@@ -350,7 +375,7 @@ def demo():
         tail = y[m // 10:]                                 # skip past the dry burst
         k = len(tail) // 10
         assert _rms(tail[:k]) > _rms(tail[-k:]) * 2.0, name + " does not decay"
-        tails[name] = 20 * np.log10(_rms(tail[-k:]) / (_rms(tail[:k]) + 1e-12))
+        tails[name] = 20 * np.log10((_rms(tail[-k:]) + 1e-12) / (_rms(tail[:k]) + 1e-12))
 
     print("fx: %d effects pass  ·  eq3 kill low %.0fdB / high %.0fdB"
           "  ·  limiter peak %.3f  ·  delay tail %.0fdB  ·  reverb tail %.0fdB"
