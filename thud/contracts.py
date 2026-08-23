@@ -21,7 +21,10 @@ Registries
     FX       : dict[str, f(x, **params) -> ndarray]       fx.py
     VIEWS    : dict[str, f(Snapshot, w, h) -> list[str]]  viz_*.py
     COMMANDS : dict[str, f(state, args) -> list[str]]     arrange.py dj.py gen.py
-    hint(Snapshot) -> str | None                          teach.py
+    teach.py exposes three, all load-bearing - ui calls each with a fallback:
+        hint(Snapshot) -> str | None
+        legend(Snapshot, w) -> str
+        help_page(Snapshot, w, h) -> list[str]
     ask(prompt, Snapshot) -> list[str]                    ai.py
 
 Views and display state
@@ -30,6 +33,11 @@ Views and display state
     definition cannot come from a single frame. Keep it module-local, keep it
     small, reset it when the width changes, and never let it affect audio or leak
     to another module. Two view agents hit this independently; this is the ruling.
+
+Import order
+    load_modules() runs while core is still initialising, so a module imported
+    this way must NOT import thud.ui at module level - ui imports names from core
+    that do not exist yet at that point. Import it lazily inside a function.
 
 A COMMANDS function returns thud command strings, never mutated state. That is
 what keeps generative and AI code honest: everything they do is expressible as
@@ -118,6 +126,17 @@ OPTIONAL = ("drums", "synths", "fx", "viz_spectrum", "viz_scope",
             "arrange", "dj", "gen", "teach", "ai")
 
 
+def _ident(fn):
+    """Identify a registered function by name, not by object identity.
+
+    Running a module as __main__ and then importing it under its real name makes
+    a second set of function objects for the same code; identity would call that
+    a collision. Two genuinely different functions still differ here.
+    """
+    return (getattr(fn, "__module__", "").rsplit(".", 1)[-1],
+            getattr(fn, "__qualname__", repr(fn)))
+
+
 def load_modules(pkg=__name__.rsplit(".", 1)[0]):
     """Import every optional module so it can fill the registries above."""
     import importlib
@@ -132,7 +151,7 @@ def load_modules(pkg=__name__.rsplit(".", 1)[0]):
                 for k in r:
                     if k not in before[id(r)]:
                         owner[k] = m
-                    elif before[id(r)][k] is not r[k]:
+                    elif _ident(before[id(r)][k]) != _ident(r[k]):
                         COLLISIONS.append((k, owner.get(k, "?"), m))
         except ImportError:
             pass                                  # not written yet, that is fine
