@@ -1,0 +1,326 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>oontz — techno from a command line</title>
+<meta name="description" content="A terminal instrument for making and mixing techno. Text patterns are the interface. Free, runs in your browser.">
+<meta property="og:title" content="oontz">
+<meta property="og:description" content="Techno from a command line. Type a pattern, hear it.">
+<style>
+  :root{
+    --bg:#080a0c; --surface:#0e1216; --line:#1c2530; --dim:#4a5866;
+    --fg:#c8d4de; --bright:#f2f7fb; --accent:#22e0d0; --accent2:#ff4fa3;
+    --warn:#ffb020; --hot:#ff3b3b; --ok:#4ade80;
+    --mono:ui-monospace,"SF Mono",Menlo,Consolas,"DejaVu Sans Mono",monospace;
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{
+    margin:0;background:var(--bg);color:var(--fg);font:14px/1.5 var(--mono);
+    overflow:hidden;
+  }
+  #bg{position:fixed;inset:0;z-index:0;opacity:.5}
+  #scan{position:fixed;inset:0;z-index:2;pointer-events:none;
+    background:repeating-linear-gradient(180deg,rgba(0,0,0,0) 0 2px,rgba(0,0,0,.28) 2px 4px);
+    mix-blend-mode:multiply}
+  #vig{position:fixed;inset:0;z-index:2;pointer-events:none;
+    background:radial-gradient(ellipse at 50% 45%,transparent 40%,rgba(0,0,0,.75) 100%)}
+  #wrap{position:relative;z-index:1;height:100%;display:flex;flex-direction:column;
+    max-width:1100px;margin:0 auto;padding:16px 20px}
+  #out{flex:1;overflow-y:auto;white-space:pre-wrap;word-break:break-word;
+    scrollbar-width:thin;scrollbar-color:var(--line) transparent}
+  #out::-webkit-scrollbar{width:8px}
+  #out::-webkit-scrollbar-thumb{background:var(--line);border-radius:4px}
+  #bar{display:flex;align-items:center;gap:8px;border-top:1px solid var(--line);
+    padding-top:10px;margin-top:8px}
+  #ps1{color:var(--accent);white-space:nowrap}
+  #in{flex:1;background:none;border:0;outline:0;color:var(--bright);
+    font:inherit;caret-color:var(--accent)}
+  .dim{color:var(--dim)} .b{color:var(--bright)} .a{color:var(--accent)}
+  .a2{color:var(--accent2)} .w{color:var(--warn)} .ok{color:var(--ok)} .hot{color:var(--hot)}
+  .row{display:flex;gap:10px;align-items:baseline}
+  .k{color:var(--accent);min-width:15ch;display:inline-block}
+  a{color:var(--accent);text-decoration:none;border-bottom:1px solid rgba(34,224,208,.3)}
+  a:hover{color:var(--bright);border-color:var(--bright)}
+  .big{font-size:min(2.6vw,15px);line-height:1.05;letter-spacing:.5px}
+  .cursor{display:inline-block;width:8px;height:1em;background:var(--accent);
+    vertical-align:-2px;animation:bl 1.1s steps(2) infinite}
+  @keyframes bl{50%{opacity:0}}
+  .grid{font-size:13px;letter-spacing:1px}
+  @media (max-width:640px){ body{font-size:12px} #wrap{padding:10px} .k{min-width:11ch} }
+  @media (prefers-reduced-motion:reduce){ #bg{display:none} .cursor{animation:none} }
+</style>
+</head>
+<body>
+<canvas id="bg"></canvas>
+<div id="scan"></div><div id="vig"></div>
+<div id="wrap">
+  <div id="out"></div>
+  <div id="bar"><span id="ps1">oontz&nbsp;&gt;</span><input id="in" autocomplete="off"
+    autocapitalize="off" spellcheck="false" aria-label="terminal input"></div>
+</div>
+<script>
+"use strict";
+const OUT = document.getElementById('out'), IN = document.getElementById('in');
+const esc = s => String(s).replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+function w(html, cls){ const d=document.createElement('div'); if(cls)d.className=cls;
+  d.innerHTML=html; OUT.appendChild(d); OUT.scrollTop=OUT.scrollHeight; return d; }
+function line(s='', cls){ return w(esc(s), cls); }
+const sleep = ms => new Promise(r=>setTimeout(r,ms));
+async function type(s, cls, speed=8){
+  const d=w('',cls); for(const ch of s){ d.innerHTML+=esc(ch);
+    OUT.scrollTop=OUT.scrollHeight; if(ch!==' ') await sleep(speed); } return d; }
+
+/* ---------------------------------------------------------------- audio
+   A small version of the real engine: everything is synthesized, nothing is
+   sampled, and a pattern is a string. Same idea as the desktop tool, ~80 lines. */
+let AC=null, master=null, playing=false, timer=null, step=0, bpm=138;
+const P = {
+  kick: "x...x...x...x...",
+  hat:  "..x...x...x...x.",
+  clap: "....x.......x...",
+  bass: "x.x.x.x.x.x.x.x."
+};
+const NOTES=[55,55,65.4,55,73.4,55,65.4,49];
+function ac(){
+  if(!AC){ AC=new (window.AudioContext||window.webkitAudioContext)();
+    master=AC.createGain(); master.gain.value=.9;
+    const lim=AC.createDynamicsCompressor();
+    lim.threshold.value=-6; lim.ratio.value=12; lim.attack.value=.002; lim.release.value=.12;
+    master.connect(lim); lim.connect(AC.destination); }
+  if(AC.state==='suspended') AC.resume();
+  return AC;
+}
+function env(g,t,a,d,peak=1){ g.gain.setValueAtTime(0,t);
+  g.gain.linearRampToValueAtTime(peak,t+a); g.gain.exponentialRampToValueAtTime(.0001,t+a+d); }
+function kick(t,acc){ const c=ac(),o=c.createOscillator(),g=c.createGain();
+  o.frequency.setValueAtTime(150,t); o.frequency.exponentialRampToValueAtTime(48,t+.06);
+  env(g,t,.002,acc?.5:.38,acc?1:.85); const s=c.createWaveShaper();
+  s.curve=curve(acc?4:2.4); o.connect(s); s.connect(g); g.connect(master);
+  o.start(t); o.stop(t+.6); }
+function noise(t,dur){ const c=ac(),n=Math.max(1,Math.floor(c.sampleRate*dur));
+  const b=c.createBuffer(1,n,c.sampleRate),d=b.getChannelData(0);
+  for(let i=0;i<n;i++) d[i]=Math.random()*2-1;
+  const s=c.createBufferSource(); s.buffer=b; return s; }
+function hat(t,open){ const c=ac(),s=noise(t,open?.32:.06),f=c.createBiquadFilter(),g=c.createGain();
+  f.type='highpass'; f.frequency.value=8200; f.Q.value=.7;
+  env(g,t,.001,open?.28:.045,.34); s.connect(f); f.connect(g); g.connect(master);
+  s.start(t); s.stop(t+.4); }
+function clap(t){ const c=ac();
+  for(let k=0;k<3;k++){ const s=noise(t,.02),f=c.createBiquadFilter(),g=c.createGain();
+    f.type='bandpass'; f.frequency.value=1500; f.Q.value=1.1;
+    env(g,t+k*.011,.001,.03,.5); s.connect(f); f.connect(g); g.connect(master);
+    s.start(t+k*.011); s.stop(t+k*.011+.06); }
+  const s=noise(t,.16),f=c.createBiquadFilter(),g=c.createGain();
+  f.type='bandpass'; f.frequency.value=1400; f.Q.value=.8;
+  env(g,t,.002,.13,.32); s.connect(f); f.connect(g); g.connect(master); s.start(t); s.stop(t+.25); }
+function bass(t,hz,dur){ const c=ac(),o=c.createOscillator(),f=c.createBiquadFilter(),g=c.createGain();
+  o.type='sawtooth'; o.frequency.setValueAtTime(hz,t);
+  f.type='lowpass'; f.Q.value=9;
+  f.frequency.setValueAtTime(180+hz*8,t); f.frequency.exponentialRampToValueAtTime(140,t+dur*.9);
+  env(g,t,.004,dur*.9,.32); o.connect(f); f.connect(g); g.connect(master);
+  o.start(t); o.stop(t+dur+.05); }
+function curve(k){ const n=1024,c=new Float32Array(n);
+  for(let i=0;i<n;i++){ const x=i*2/n-1; c[i]=Math.tanh(k*x)/Math.tanh(k); } return c; }
+
+function tick(){
+  const c=ac(), t=c.currentTime+.03, i=step%16;
+  if(P.kick[i]&&P.kick[i]!=='.') kick(t,P.kick[i]==='X');
+  if(P.hat[i%P.hat.length]&&P.hat[i%P.hat.length]!=='.') hat(t,P.hat[i%P.hat.length]==='O');
+  if(P.clap[i]&&P.clap[i]!=='.') clap(t);
+  const bi=i%P.bass.length;
+  if(P.bass[bi]&&P.bass[bi]!=='.') bass(t,NOTES[(step>>1)%NOTES.length],60/bpm/2);
+  drawGrid(i); step++;
+}
+function start(){ if(playing) return; ac(); playing=true; step=0;
+  timer=setInterval(tick, 60/bpm/4*1000); tick(); }
+function stop(){ playing=false; clearInterval(timer); timer=null; if(gridEl) gridEl.remove(), gridEl=null; }
+
+/* ------------------------------------------------------------- live grid */
+let gridEl=null;
+function drawGrid(head){
+  if(!gridEl){ gridEl=w('','grid'); }
+  const names=['kick','hat','clap','bass'];
+  let h='';
+  for(const n of names){
+    const pat=P[n], col={kick:'--hot',hat:'--accent',clap:'--accent2',bass:'--warn'}[n];
+    let cells='';
+    for(let i=0;i<16;i++){
+      const ch=pat[i%pat.length]||'.';
+      const on=ch!=='.';
+      const cur=(i===head);
+      const glyph=on?'█':'·';
+      const style=on?`color:var(${col})`:'color:var(--dim)';
+      cells+=`<span style="${style}${cur?';background:'+(on?`var(${col})`:'var(--line)')+';color:#000':''}">${glyph}</span>`
+        + (i%4===3?' ':'');
+    }
+    h+=`<div><span class="dim">  ${n.padEnd(6)}</span>${cells}</div>`;
+  }
+  h+=`<div class="dim">  ${String(bpm)} BPM · bar ${Math.floor(step/16)+1} · type <span class="a">stop</span> to end</div>`;
+  gridEl.innerHTML=h;
+  OUT.scrollTop=OUT.scrollHeight;
+}
+
+/* ------------------------------------------------------- psychedelic bg */
+const cv=document.getElementById('bg'), cx=cv.getContext('2d');
+let W=0,H=0,tt=0;
+function size(){ W=cv.width=innerWidth*devicePixelRatio; H=cv.height=innerHeight*devicePixelRatio;
+  cv.style.width=innerWidth+'px'; cv.style.height=innerHeight+'px'; }
+size(); addEventListener('resize',size);
+const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+function frame(){
+  requestAnimationFrame(frame);
+  if(reduce) return;
+  tt+=playing?.02:.006;
+  cx.fillStyle='rgba(8,10,12,.16)'; cx.fillRect(0,0,W,H);
+  const cxx=W/2, cyy=H/2, R=Math.min(W,H)*.42;
+  const beat = playing ? Math.max(0,1-((performance.now()/1000*bpm/60)%1)) : .25;
+  const rings = 5;
+  for(let r=0;r<rings;r++){
+    const p=(tt*.5+r/rings)%1, rad=R*p*(1+beat*.12);
+    cx.beginPath();
+    for(let a=0;a<=64;a++){
+      const th=a/64*Math.PI*2;
+      const wob=1+Math.sin(th*(3+r)+tt*2)*.12*(1+beat);
+      const x=cxx+Math.cos(th)*rad*wob, y=cyy+Math.sin(th)*rad*wob*.42;
+      a?cx.lineTo(x,y):cx.moveTo(x,y);
+    }
+    cx.closePath();
+    const hue=(tt*40+r*40)%360;
+    cx.strokeStyle=`hsla(${hue},80%,60%,${(1-p)*.22*(playing?1:.45)})`;
+    cx.lineWidth=(1.5+beat*2)*devicePixelRatio; cx.stroke();
+  }
+}
+frame();
+
+/* ---------------------------------------------------------------- shell */
+const LOGO = [
+"   ▄▄▄   ▄▄▄  ▄▄▄▄▄ ▄▄▄▄▄ ▄▄▄▄▄▄",
+"  █   █ █   █ █   █ █   █    ▄▀ ",
+"  █   █ █   █ █   █ █   █  ▄▀   ",
+"  █   █ █   █ █   █ █   █ ▄▀    ",
+"   ▀▀▀   ▀▀▀  ▀   ▀ ▀   ▀ ▀▀▀▀▀▀"];
+
+const HELP = [
+  ["demo",      "hear it — a 4-bar loop, right here in this page"],
+  ["stop",      "silence"],
+  ["kick x...x...x...x...", "change a pattern. x is a hit, . is a rest"],
+  ["bpm 145",   "change the tempo"],
+  ["what",      "what oontz actually is"],
+  ["why",       "why a command line, of all things"],
+  ["open",      "go to the instrument at oontz.sh"],
+  ["gallery",   "tracks other people made"],
+  ["free",      "the catch (there isn't one)"],
+  ["help",      "this"],
+];
+
+const CMDS = {
+  help(){ line(); for(const [k,v] of HELP)
+      w(`  <span class="k">${esc(k)}</span><span class="dim">${esc(v)}</span>`); line(); },
+
+  async what(){ line();
+    await type("oontz is an instrument that lives in a terminal.", 'b');
+    line();
+    line("You type patterns. It makes techno. Nothing is sampled — every kick,");
+    line("hat and bassline is synthesized from arithmetic, live, on your machine.");
+    line();
+    w(`  <span class="a">kick x...x...x...x...</span>   <span class="dim">four to the floor</span>`);
+    w(`  <span class="a">hat  ..x...x...x...x.</span>   <span class="dim">offbeat hats</span>`);
+    w(`  <span class="a">bass a1 . a1~ c2</span>        <span class="dim">~ slides between notes</span>`);
+    line();
+    line("A whole track is a text file. That is the point — you can read it, diff it,");
+    line("commit it, and send it to someone as a few kilobytes.");
+    line();
+  },
+
+  async why(){ line();
+    await type("Because text is the best interface anyone has built for music.", 'b');
+    line();
+    line("A DAW makes you drag rectangles with a mouse. A pattern is a sentence.");
+    line("You can search it, version it, generate it, explain it, and share it in a");
+    line("chat message. And because a song is text and the engine is deterministic,");
+    w(`<span class="ok">sharing a track costs kilobytes, not megabytes — and what you share is</span>`);
+    w(`<span class="ok">the source, so anyone who hears it can open it and take it apart.</span>`);
+    line();
+    line("You share the recipe, not the cake. Nothing else in music works this way.");
+    line();
+  },
+
+  demo(){ line();
+    w(`<span class="a">▸ playing.</span> <span class="dim">try: <span class="a">kick x...x..x.x...x</span> · <span class="a">bpm 150</span> · <span class="a">hat ..x.x.x...x.x.x.</span> · <span class="a">stop</span></span>`);
+    start(); },
+
+  stop(){ stop(); line("▸ stopped.", 'dim'); },
+
+  bpm(a){ const v=parseFloat(a[0]); if(!isFinite(v)||v<60||v>220) return line("bpm 60-220", 'w');
+    bpm=v; if(playing){ clearInterval(timer); timer=setInterval(tick,60/bpm/4*1000); }
+    line(`▸ ${bpm} BPM`, 'dim'); },
+
+  async open(){ line();
+    await type("opening the instrument…", 'a');
+    line();
+    w(`  <span class="b">oontz.sh</span> <span class="dim">— the full thing: song arrangement, two DJ decks,</span>`);
+    w(`  <span class="dim">  an AI that helps you build a track, and session recording.</span>`);
+    line();
+    w(`  <a href="https://oontz.sh" target="_blank" rel="noopener">https://oontz.sh →</a>`);
+    line();
+  },
+
+  gallery(){ line();
+    line("Tracks people made and published. Each one is a few KB of text —");
+    line("open any of them and you get the arrangement, not just the audio.");
+    line();
+    w(`<span class="dim">  the gallery goes live with the instrument. </span><a href="https://oontz.sh" target="_blank" rel="noopener">oontz.sh</a>`);
+    line(); },
+
+  free(){ line();
+    w(`<span class="b">It is free. All of it.</span>`);
+    line();
+    line("The audio runs on your machine, not a server — so there is no bill for me");
+    line("to pass on to you. Songs are text, so storing them costs almost nothing.");
+    line();
+    line("An account (just an email) only buys you saved songs and publishing.");
+    line("You never need one to play.");
+    line(); },
+
+  clear(){ OUT.innerHTML=''; gridEl=null; },
+};
+const ALIAS={ '?':'help','ls':'help','play':'demo','start':'demo','about':'what',
+  'sh':'open','app':'open','quit':'stop','exit':'stop','cls':'clear' };
+
+function run(raw){
+  const s=raw.trim(); if(!s) return;
+  w(`<span class="a">oontz &gt;</span> ${esc(s)}`);
+  const [v0,...args]=s.split(/\s+/); const v=ALIAS[v0.toLowerCase()]||v0.toLowerCase();
+  if(v in P){ const pat=args[0]||'';
+    if(!/^[xXoO.\-]+$/.test(pat)) return line("a pattern is made of x . and - — try  kick x...x...x...x...", 'w');
+    P[v]=pat; line(`▸ ${v} ${pat}`, 'dim'); if(!playing) start(); return; }
+  if(CMDS[v]) return CMDS[v](args);
+  line(`${v0}: no such command. type help`, 'w');
+}
+
+IN.addEventListener('keydown', e=>{
+  if(e.key==='Enter'){ const v=IN.value; IN.value=''; run(v); }
+});
+addEventListener('click', ()=>IN.focus());
+
+/* -------------------------------------------------------------- boot */
+(async function boot(){
+  for(const l of LOGO) w(`<span class="a">${esc(l)}</span>`, 'big');
+  line();
+  await type("techno from a command line.", 'b', 14);
+  line();
+  await sleep(120);
+  w(`<span class="dim">  Every sound is synthesized. A song is a text file. It is free.</span>`);
+  line();
+  w(`  <span class="k">demo</span><span class="dim">hear it, right now, in this page</span>`);
+  w(`  <span class="k">what</span><span class="dim">what this actually is</span>`);
+  w(`  <span class="k">open</span><span class="dim">go to the instrument</span>`);
+  w(`  <span class="k">help</span><span class="dim">everything else</span>`);
+  line();
+  IN.focus();
+})();
+</script>
+</body>
+</html>
