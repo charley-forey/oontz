@@ -214,6 +214,8 @@ C.help = [
   ["share",                 "why 15KB matters more than it sounds"],
   ["free",                  "the catch (there is no catch)"],
   ["theory",                "what the machine knows"],
+  ["rules",                 "every rule it grades you by, with the reason"],
+  ["bands",                 "who owns which frequencies, and why"],
   ["clear",                 "wipe the screen, keep the vibes"]
 ];
 

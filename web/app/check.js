@@ -119,4 +119,21 @@ A.ok(Math.abs(g[0] * g[0] + g[1] * g[1] - 1) < 1e-9 && Math.abs(g[0] - g[1]) < 1
 A.deepStrictEqual(OZ.xfGains(-1).map(Math.round), [1, 0], "hard left is all A");
 A.deepStrictEqual(OZ.xfGains(1).map(Math.round), [0, 1], "hard right is all B");
 
-console.log("web checks pass  ·  write-through · pads · notes · roll · jumps · decks · " + OZ.KEYS.length + " keys listed");
+/* -- one theory: the composer's tables come from theory.js, and it obeys them --- */
+require("./theory.js"); require("./compose.js");
+var T = globalThis.OONTZ_THEORY, CO = globalThis.OONTZ_COMPOSE;
+A.ok(T && T.genres && T.arrangement && T.templates, "theory.js exports the corpus");
+A.strictEqual(CO.GENRES.techno.bpm, T.genres.techno.sweet, "composer bpm is theory's sweet spot");
+A.strictEqual(CO.TEMPLATES, T.templates, "composer templates are theory's, not a copy");
+var checked = 0;
+Object.keys(T.genres).forEach(function(style){ var gnr = T.genres[style];
+  Object.keys(T.templates).forEach(function(curve){
+    var plan = CO.arrange(5, curve, gnr.sweet, gnr.drop_at), total = 0, pre = 0, seen = false;
+    plan.forEach(function(p){ total += p.bars; if(p.role === "drop") seen = true; if(!seen) pre += p.bars;
+      A.ok(p.bars % 8 === 0 && p.bars >= 8, style + "/" + curve + ": " + p.role + " is " + p.bars + " bars"); });
+    var at = pre / total;
+    A.ok(at >= gnr.drop_at[0] - 0.04 && at <= gnr.drop_at[1] + 0.04,
+      style + "/" + curve + " drops at " + Math.round(at * 100) + "%, window " + gnr.drop_at);
+    checked++; }); });
+
+console.log("web checks pass  ·  write-through · pads · notes · roll · jumps · decks · theory (" + checked + " plans in window) · " + OZ.KEYS.length + " keys listed");

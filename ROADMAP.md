@@ -104,25 +104,35 @@ reports SUCCESS and the live file contains the change.
 
 ## Next, web-first (the order the loop should take them)
 
-1. **One theory, three consumers** — `theory.py` exports `web/app/theory.json`;
-   `compose.py` and `compose.js` drop their private tables and read it; the AI prompt
-   gets `theory.brief()`; a check that both composers make the same shape for one seed.
-2. Make `copy.js` honest: any claim a cycle did not deliver gets cut, not softened.
+1. **Port `critique()` fully to JS** — theory.py grades 19 claims, compose.js 6. Now
+   that the corpus is in `theory.js`, the grader can read its rules from there too.
+2. **Play a gallery track on oontz.music** (above) — the landing toy could load a
+   real `.song` now that the engine is shared.
 3. **Reference matching from music you own** — analyse a WAV (band energy, onset
    BPM, chroma key) and compare to theory. The Rekordbox library on this machine is
    the legal corpus; not the internet.
 
-## Known risk: the two composers can drift
+## One theory (was: the two composers can drift)
 
-`thud/compose.py` and `web/app/compose.js` implement the same arrangement logic
-independently. The JS one now solves the drop window directly; the Python one still
-nudges and carries the same 14%-drop-in-techno fault the grader caught. Port the fix
-back, then add a check that both produce the same shape for the same seed.
+`thud/theory.py` is the only source. `python -m thud theory export` writes
+`web/app/theory.js` (the browser composer derives its tables from it) and
+`api/theory.json` (the AI proxy appends its `prompt` to the system prompt). The
+desktop AI reads `theory.prompt_text()` directly. The selftest fails if an export is
+stale; `qa` runs 192 arrangements through both composers and requires identical plans.
 
 ## Cycle log
 
 Append one line per completed cycle: what changed, what it measured, what it learned.
 
+- 2026-08-24 — cycle 7: one theory. TEMPLATES/ROLE_BARS moved into theory.py; the
+  Python arranger is now the JS solve line for line (decide the pre-drop bars up
+  front, share the rest); the 14%-drop fault the grader caught in cycle 3 is gone on
+  the desktop too. theory.py exports theory.js + theory.json; compose.js derives its
+  GENRES from theory.js instead of carrying truncated rewrites; both `ask`s get the
+  same 4.4KB corpus. Checks: 48 genre×curve plans drop inside their window in both
+  languages, 192 plans identical across Python and node, export staleness fails the
+  selftest. Learned that Math.round and Python round() disagree on halves - a
+  cross-language equality check finds the kind of drift a per-language test never will.
 - 2026-08-24 — cycle 6: DECK mode in the browser. 725 lines of engine now. The port
   was honest about one thing deck.py never had to think about: an
   AudioBufferSourceNode has no playhead, so position is anchor arithmetic and every

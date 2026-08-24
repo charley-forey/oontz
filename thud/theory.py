@@ -14,6 +14,9 @@ sidechained low end, mix-friendly intros and outros. Where a number is a judgeme
 call rather than a convention it says so.
 """
 
+import os
+import json
+
 from .contracts import COMMANDS
 
 # ---------------------------------------------------------------- the corpus
@@ -79,6 +82,25 @@ GENRES = {
         "swing": (0, 4),
         "note": "The breakdown is the song. Everything before it is setup."},
 }
+
+# Real dance tracks have known shapes. Walking a grammar produced technically
+# legal nonsense - a "drop" at 0.24 energy - so the shape is explicit per curve
+# and energy modulates WITHIN it rather than choosing the roles.
+TEMPLATES = {
+    "classic":       ["intro", "build", "drop", "break", "build", "drop", "outro"],
+    "peaktime":      ["intro", "build", "drop", "drop", "break", "build", "drop", "outro"],
+    "hypnotic":      ["intro", "verse", "build", "drop", "verse", "drop", "outro"],
+    "journey":       ["intro", "build", "drop", "break", "verse", "build", "drop",
+                      "break", "drop", "outro"],
+    "warmup":        ["intro", "verse", "build", "verse", "drop", "outro"],
+    "rollercoaster": ["intro", "build", "drop", "break", "build", "drop", "break",
+                      "build", "drop", "outro"],
+}
+
+# Bars a role wants. Dance music is phrased in powers of two, and a build is
+# usually half its drop.
+ROLE_BARS = {"intro": 16, "build": 8, "drop": 32, "break": 8, "verse": 16,
+             "fill": 4, "outro": 16}
 
 # Which band an element owns. Two things fighting for one band is the most common
 # way a mix turns to mud, and it is the thing you cannot hear until it is fixed.
@@ -210,6 +232,65 @@ def brief(name):
                                 g["key"], g["phrase"],
                                 int(g["drop_at"][0] * 100), int(g["drop_at"][1] * 100),
                                 g["note"]))
+
+
+def prompt_text():
+    """The corpus as a few hundred words a model can hold: every genre's brief and
+    every rule with its reason. The desktop `ask` and the web one get this same
+    text, so there is one theory and two readers rather than two theories."""
+    lines = ["GENRES:"] + ["  " + brief(n) for n in GENRES]
+    for title, rules in (("ARRANGEMENT", ARRANGEMENT), ("MIXING", MIXING), ("DJ", DJ)):
+        lines.append(title + ":")
+        lines += ["  %s (%s)" % (r["rule"], r["why"]) for r in rules]
+    lines.append("BANDS:")
+    lines += ["  %s %d-%dHz: %s" % (k, v["hz"][0], v["hz"][1], v["note"])
+              for k, v in FREQ_ROLES.items()]
+    return "\n".join(lines)
+
+
+def as_dict():
+    return {"genres": GENRES, "freq_roles": FREQ_ROLES, "rhythm": RHYTHM,
+            "arrangement": ARRANGEMENT, "mixing": MIXING, "dj": DJ,
+            "templates": TEMPLATES, "role_bars": ROLE_BARS}
+
+
+def export_files():
+    """The generated files, keyed by path from the repo root. This module is the
+    only source; the browser composer and the API read these, never their own copy.
+    `python -m thud theory export` writes them and the selftest fails if they are stale."""
+    data = json.dumps(as_dict(), indent=1, sort_keys=True)
+    head = "/* generated from thud/theory.py by `python -m thud theory export` - do not edit */\n"
+    return {
+        "web/app/theory.js": head + '(typeof window !== "undefined" ? window : globalThis)'
+                             '.OONTZ_THEORY = ' + data + ";\n",
+        "api/theory.json": json.dumps(dict(as_dict(), prompt=prompt_text()),
+                                      indent=1, sort_keys=True) + "\n",
+    }
+
+
+ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
+
+
+def export():
+    for rel, text in export_files().items():
+        with open(os.path.join(ROOT, rel), "w", encoding="utf-8", newline="\n") as f:
+            f.write(text)
+    return "wrote " + ", ".join(export_files())
+
+
+def stale():
+    """Which exported files no longer match this module."""
+    out = []
+    for rel, want in export_files().items():
+        p = os.path.join(ROOT, rel)
+        try:
+            with open(p, encoding="utf-8") as f:
+                got = f.read()
+        except OSError:
+            got = None
+        if got != want:
+            out.append(rel)
+    return out
 
 
 def band_conflicts(bands_by_track, threshold=0.30):

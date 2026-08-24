@@ -8,11 +8,14 @@ drop's bassline is recognisably the intro's, not a fresh roll of the dice.
 That last part is the difference between a song and eight unrelated loops.
 """
 import copy
+import math
 import random
 
 from .contracts import COMMANDS, VOICES
 from . import song as sm
 from . import harmony as hm
+from . import theory
+from .theory import TEMPLATES, ROLE_BARS
 
 # Energy curves. Each is a shape in 0..1 that the arrangement walks along.
 CURVES = {
@@ -24,24 +27,8 @@ CURVES = {
     "rollercoaster": "several peaks, each higher, short breaks between",
 }
 
-# Real dance tracks have known shapes. Walking a grammar produced technically
-# legal nonsense - a "drop" at 0.24 energy - so the shape is explicit per curve
-# and energy modulates WITHIN it rather than choosing the roles.
-TEMPLATES = {
-    "classic":       ["intro", "build", "drop", "break", "build", "drop", "outro"],
-    "peaktime":      ["intro", "build", "drop", "drop", "break", "build", "drop", "outro"],
-    "hypnotic":      ["intro", "verse", "build", "drop", "verse", "drop", "outro"],
-    "journey":       ["intro", "build", "drop", "break", "verse", "build", "drop",
-                      "break", "drop", "outro"],
-    "warmup":        ["intro", "verse", "build", "verse", "drop", "outro"],
-    "rollercoaster": ["intro", "build", "drop", "break", "build", "drop", "break",
-                      "build", "drop", "outro"],
-}
-
-# Bars a role wants. Dance music is phrased in powers of two, and a build is
-# usually half its drop.
-ROLE_BARS = {"intro": 16, "build": 8, "drop": 32, "break": 8, "verse": 16,
-             "fill": 4, "outro": 16}
+# The shapes (TEMPLATES) and the bars a role wants (ROLE_BARS) live in theory.py,
+# the one place the browser composer also reads them from.
 
 
 def _energy_for(role, position, shape):
@@ -56,40 +43,88 @@ def _energy_for(role, position, shape):
     return max(0.05, min(1.0, base + 0.2 * position * shape))
 
 
-def arrange(minutes=5.0, curve_name="classic", bpm=140.0, seed=None):
-    """[(role, bars)] whose total duration lands near `minutes`."""
-    bars_total = max(16, int(round(minutes * 60.0 / (240.0 / bpm))))
-    tpl = list(TEMPLATES.get(curve_name, TEMPLATES["classic"]))
+def _jsround(x):
+    """Math.round: halves go up. Python's round() goes to even, and the browser
+    composer must produce the same plan for the same inputs."""
+    return int(math.floor(x + 0.5))
 
-    # extend by repeating the middle, so a long track is a longer journey rather
-    # than the same sections stretched absurdly
-    while sum(ROLE_BARS[x] for x in tpl) < bars_total - 16 and len(tpl) < 26:
-        tpl = tpl[:-1] + (tpl[1:-1] or ["build", "drop"])[-4:] + [tpl[-1]]
 
-    plan = [(role, ROLE_BARS[role]) for role in tpl]
-    used = sum(b for _, b in plan)
-    for _ in range(300):                        # settle length on the drops first
-        if used > bars_total + 8:
-            for i in range(len(plan) - 1, -1, -1):
-                role, bars = plan[i]
-                floor = 16 if role == "drop" else 8
-                if bars > floor:
-                    plan[i] = (role, bars - 8)
-                    used -= 8
-                    break
-            else:
-                break
-        elif used < bars_total - 8:
-            for i, (role, bars) in enumerate(plan):
-                if role == "drop":
-                    plan[i] = (role, bars + 16)
-                    used += 16
-                    break
-            else:
-                break
-        else:
+def _share(roles, bars):
+    """Distribute `bars` across `roles` in proportion to what each wants, every
+    section a multiple of 8 and never below 8. Phrasing is not negotiable, so the
+    rounding remainder goes to the biggest section rather than being smeared."""
+    if not roles:
+        return []
+    want = [ROLE_BARS.get(r, 16) for r in roles]
+    tot = float(sum(want))
+    out = [max(8, _jsround(bars * w / tot / 8.0) * 8) for w in want]
+    guard = 0
+    while sum(out) > bars and guard < 200:
+        guard += 1
+        i = out.index(max(out))
+        if out[i] <= 8:
             break
-    return plan
+        out[i] -= 8
+    guard = 0
+    while sum(out) < bars - 4 and guard < 200:
+        guard += 1
+        out[out.index(max(out))] += 8
+    return out
+
+
+def arrange(minutes=5.0, curve_name="classic", bpm=140.0, seed=None, drop_window=None):
+    """[(role, bars)] whose total lands near `minutes`, with the first drop inside
+    the genre's window.
+
+    Solved rather than nudged. Nudging fought itself: growing the intro to reach
+    the window pushed the length out, and trimming the length dragged the drop
+    back out of the window. Decide up front how many bars belong BEFORE the drop -
+    that is what the window specifies - and share the rest out after it. This is
+    the browser composer's algorithm, line for line; qa checks they agree.
+    """
+    bars_total = max(32, _jsround(minutes * 60.0 / (240.0 / bpm) / 8.0) * 8)
+    tpl = list(TEMPLATES.get(curve_name, TEMPLATES["classic"]))
+    min_bars = len(tpl) * 8
+    while min_bars > bars_total and len(tpl) > 4:
+        del tpl[1]
+        min_bars -= 8
+    while min_bars < bars_total - 64 and len(tpl) < 22:
+        tpl = tpl[:-1] + tpl[1:-1][-4:] + [tpl[-1]]
+        min_bars = len(tpl) * 8
+
+    mid = (drop_window[0] + drop_window[1]) / 2.0 if drop_window else 0.3
+
+    # A long template has many post-drop sections, each needing 8 bars. For a
+    # genre whose drop belongs late those minimums can eat the pre-drop budget and
+    # drag the drop forward out of its window - then the template is too long for
+    # this duration. Drop a repeated later section rather than compromise the shape.
+    for _ in range(12):
+        if "drop" not in tpl:
+            break
+        di = tpl.index("drop")
+        pre = max(di * 8, _jsround(bars_total * mid / 8.0) * 8)
+        if pre + (len(tpl) - di) * 8 <= bars_total:
+            break
+        if len(tpl) <= 5:
+            break
+        cut = -1
+        for k in range(len(tpl) - 2, di, -1):
+            if tpl[k] != "outro":
+                cut = k
+                break
+        if cut < 0:
+            break
+        del tpl[cut]
+
+    if "drop" not in tpl:
+        return list(zip(tpl, _share(tpl, bars_total)))
+    di = tpl.index("drop")
+    pre = max(di * 8, _jsround(bars_total * mid / 8.0) * 8)
+    post = max((len(tpl) - di) * 8, bars_total - pre)
+    if pre + post > bars_total + 8:
+        pre = max(di * 8, bars_total - post)
+    pre_bars, post_bars = _share(tpl[:di], pre), _share(tpl[di:], post)
+    return [(r, pre_bars[i] if i < di else post_bars[i - di]) for i, r in enumerate(tpl)]
 
 
 def _uniq(plan):
@@ -137,7 +172,7 @@ def compose_song(style="hardtechno", minutes=5.0, key=None, seed=None,
     motif = hm.motif_generate(r.randrange(1 << 30), 8,
                               r.choice(["static", "arch", "rising", "zigzag"]))
 
-    plan = arrange(minutes, curve_name, bpm, seed)
+    plan = arrange(minutes, curve_name, bpm, seed, theory.genre(style)["drop_at"])
     named = _uniq(plan)
     shape = {"hypnotic": 1.0, "warmup": 0.4, "peaktime": 0.6}.get(curve_name, 0.8)
     energies = [_energy_for(role, i / float(max(1, len(named) - 1)), shape)

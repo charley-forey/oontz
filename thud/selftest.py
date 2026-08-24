@@ -160,6 +160,20 @@ def selftest():
         bs = theory.score(theory.critique(bad, None, "hardtechno"))
         assert gs >= 70, "a well-formed song scored only %d" % gs
         assert bs < gs - 20, "grader cannot separate good (%d) from bad (%d)" % (gs, bs)
+
+        # the exported theory the browser and the API read must match this module
+        assert not theory.stale(), "stale: %s - run `python -m thud theory export`" % theory.stale()
+
+        # the composer obeys the theory it is graded by: first drop inside the window
+        for style, g in theory.GENRES.items():
+            for curve in theory.TEMPLATES:
+                plan = compose.arrange(5.0, curve, g["sweet"], None, g["drop_at"])
+                total = sum(b for _r, b in plan)
+                pre = sum(b for _r, b in plan[:[r for r, _b in plan].index("drop")])
+                at = pre / float(total)
+                assert g["drop_at"][0] - 0.04 <= at <= g["drop_at"][1] + 0.04, \
+                    "%s/%s drops at %.0f%%, window %s" % (style, curve, at * 100, g["drop_at"])
+                assert all(b % 8 == 0 and b >= 8 for _r, b in plan), "%s/%s: %s" % (style, curve, plan)
         assert theory.advice(theory.critique(bad, None, "hardtechno")), "no advice given"
     except ImportError:
         pass

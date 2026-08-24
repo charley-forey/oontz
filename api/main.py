@@ -35,6 +35,15 @@ RESEND_KEY = os.environ.get("RESEND_API_KEY", "")
 MAIL_FROM = os.environ.get("OONTZ_MAIL_FROM", "oontz <hello@oontz.sh>")
 ANTHROPIC_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
 
+# thud/theory.py exported: the same rules the desktop AI and the grader use.
+THEORY = {}
+try:
+    with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "theory.json"),
+              encoding="utf-8") as _f:
+        THEORY = json.load(_f)
+except (OSError, ValueError):
+    pass
+
 MAX_SONG_BYTES = 512 * 1024          # a .song is a few KB; this is generous
 LINK_TTL = 900                       # magic links die in 15 minutes
 SESSION_TTL = 60 * 60 * 24 * 90
@@ -407,7 +416,9 @@ def ai_ask(body: AskIn, request: Request):
         "compose <style> <minutes> <curve>; ramp <track>.<param> <lo> <hi> over <bars>.\n"
         "If the state lists `commands`, use only verbs from that list - the client "
         "rejects anything else. Prefer few, decisive lines.\n"
-        "Current state:\n" + json.dumps(body.state)[:4000])
+        + ("What makes a track work - decide with it, and it is what `grade` checks:\n"
+           + THEORY["prompt"] + "\n" if THEORY.get("prompt") else "")
+        + "Current state:\n" + json.dumps(body.state)[:4000])
     payload = json.dumps({
         "model": "claude-sonnet-5",
         "max_tokens": 700,

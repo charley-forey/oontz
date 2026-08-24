@@ -353,6 +353,9 @@ NOTE SYNTAX (pitched tracks): scientific pitch, one token per step -
 COMMANDS (name, short alias, what it does):
 %s
 
+WHAT MAKES A TRACK WORK (decide with this; it is what the grader checks):
+%s
+
 CURRENT STATE:
 %s
 
@@ -360,7 +363,15 @@ Reply with ONLY thud command lines, one per line. No prose, no markdown
 fences, no numbering, no explanation - every line must be something that
 could be pasted straight into thud.""" % (
         ", ".join(names), ", ".join(pitched) or "none",
-        _cmd_table_text(), _render_state(snap))
+        _cmd_table_text(), _theory_text(), _render_state(snap))
+
+
+def _theory_text():
+    try:
+        from . import theory
+        return theory.prompt_text()
+    except ImportError:
+        return "(theory module not present)"
 
 
 def _band_report(snap):

@@ -347,6 +347,32 @@ def c_golden(bless=False):
         len([k for k in hashes if k not in old]))
 
 
+# ----------------------------------------------------- 3. the two composers
+
+def c_composers_agree():
+    """thud/compose.py and web/app/compose.js implement one algorithm. Prove it."""
+    import shutil
+    import subprocess
+    node = shutil.which("node")
+    if not node:
+        raise SkipCheck("node not on PATH")
+    from thud import compose, theory
+    cases, want = [], []
+    for style, g in theory.GENRES.items():
+        for curve in theory.TEMPLATES:
+            for minutes in (2.0, 3.5, 5.0, 8.0):
+                cases.append([curve, minutes, g["sweet"], g["drop_at"][0], g["drop_at"][1]])
+                want.append([list(x) for x in compose.arrange(minutes, curve, g["sweet"], None, g["drop_at"])])
+    r = subprocess.run([node, os.path.join("web", "app", "plan.js")], input=json.dumps(cases),
+                       capture_output=True, text=True, timeout=60)
+    assert r.returncode == 0, r.stderr[-300:]
+    got = json.loads(r.stdout)
+    bad = [(c, w, g) for c, w, g in zip(cases, want, got) if w != g]
+    assert not bad, "%d of %d plans differ, first: %s\n  py %s\n  js %s" % (
+        len(bad), len(cases), bad[0][0], bad[0][1], bad[0][2])
+    return "%d arrangements identical in python and js" % len(cases)
+
+
 # ------------------------------------------------------------------ report
 
 def report():
@@ -382,6 +408,7 @@ def main(argv=()):
     check("performance fx", c_perf_fx)
     check("audio soak", lambda: c_soak(0.5 if quick else 2.0))
     check("golden renders", lambda: c_golden(bless))
+    check("composers agree", c_composers_agree)
     ok = report()
     return 0 if ok else 1
 

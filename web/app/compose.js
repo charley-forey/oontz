@@ -19,36 +19,17 @@ var SCALES = {
   harmonic: [0,2,3,5,7,8,11]
 };
 
-/* Genre facts. Same numbers as theory.py. */
-var GENRES = {
-  techno:     {bpm:132, key:"minor",    drop:[0.20,0.40], swing:4,
-               note:"Hypnotic and mechanical. Repetition is the point."},
-  hardtechno: {bpm:150, key:"minor",    drop:[0.12,0.30], swing:0,
-               note:"Distorted kick carries it. Rumble fills the gaps between kicks."},
-  acid:       {bpm:138, key:"minor",    drop:[0.15,0.35], swing:6,
-               note:"The 303 is the lead, the hook and the arrangement."},
-  minimal:    {bpm:126, key:"minor",    drop:[0.30,0.55], swing:14,
-               note:"Space is an instrument. What you leave out is the composition."},
-  industrial: {bpm:150, key:"phrygian", drop:[0.10,0.28], swing:0,
-               note:"Metallic percussion and noise. Ugly on purpose, tight anyway."},
-  dubtechno:  {bpm:122, key:"minor",    drop:[0.35,0.60], swing:8,
-               note:"Chords through long delays. Nothing arrives suddenly."},
-  house:      {bpm:124, key:"minor",    drop:[0.20,0.40], swing:18,
-               note:"Swing is the whole feel. Straight house is broken house."},
-  trance:     {bpm:138, key:"minor",    drop:[0.45,0.65], swing:0,
-               note:"The breakdown is the song. Everything before it is setup."}
-};
-
-/* Real records have shapes. Walking a grammar produced legal nonsense. */
-var TEMPLATES = {
-  classic:       ["intro","build","drop","break","build","drop","outro"],
-  peaktime:      ["intro","build","drop","drop","break","build","drop","outro"],
-  hypnotic:      ["intro","verse","build","drop","verse","drop","outro"],
-  journey:       ["intro","build","drop","break","verse","build","drop","break","drop","outro"],
-  warmup:        ["intro","verse","build","verse","drop","outro"],
-  rollercoaster: ["intro","build","drop","break","build","drop","break","build","drop","outro"]
-};
-var ROLE_BARS = {intro:16, build:8, drop:32, break:8, verse:16, outro:16};
+/* The theory is not copied here. theory.js is generated from thud/theory.py and
+   must load first; what the composer needs is derived from it. */
+var T = g.OONTZ_THEORY;
+if(!T) throw new Error("theory.js must load before compose.js");
+var GENRES = {};
+Object.keys(T.genres).forEach(function(k){
+  var t = T.genres[k];
+  GENRES[k] = {bpm: t.sweet, key: t.key, drop: t.drop_at, phrase: t.phrase,
+               swing: Math.round((t.swing[0] + t.swing[1]) / 2), note: t.note};
+});
+var TEMPLATES = T.templates, ROLE_BARS = T.role_bars;
 
 function rng(seed){
   var s = seed >>> 0 || 1;
@@ -339,6 +320,6 @@ function score(crit){
     return a + (wgt[c[0]] || 0); }, 0)));
 }
 
-g.OONTZ_COMPOSE = {compose: compose, critique: critique, score: score,
+g.OONTZ_COMPOSE = {compose: compose, critique: critique, score: score, arrange: arrange,
                    GENRES: GENRES, TEMPLATES: TEMPLATES, degToken: degToken};
-})(window);
+})(typeof window !== "undefined" ? window : globalThis);

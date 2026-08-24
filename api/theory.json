@@ -1,0 +1,504 @@
+{
+ "arrangement": [
+  {
+   "id": "dj_intro",
+   "rule": "Start with 16-32 bars of beat before anything melodic.",
+   "why": "A DJ needs a plain section to mix into. A track that starts on the drop is unmixable and gets skipped."
+  },
+  {
+   "id": "phrase_multiple",
+   "rule": "Every section is a multiple of 8 bars, usually 16 or 32.",
+   "why": "Dancers and DJs both count in 8s. A 12-bar section lands wrong and no one can tell you why."
+  },
+  {
+   "id": "drop_placement",
+   "rule": "The first drop belongs 20-40% into the track.",
+   "why": "Earlier and there is no tension to release. Later and the floor drifts."
+  },
+  {
+   "id": "break_earns_drop",
+   "rule": "A drop needs a quieter section before it.",
+   "why": "Loudness is relative. Without contrast the ear stops registering loud."
+  },
+  {
+   "id": "one_change",
+   "rule": "Change one element per 8 or 16 bars, not three.",
+   "why": "Techno is about noticing a single change. Three at once reads as chaos."
+  },
+  {
+   "id": "energy_moves",
+   "rule": "Peak energy minus minimum energy should exceed 0.4.",
+   "why": "A flat track is a long loop. The shape is the composition."
+  },
+  {
+   "id": "outro_mixable",
+   "rule": "End with 16-32 bars of thinning beat.",
+   "why": "Same reason as the intro, in reverse: the next DJ needs somewhere to go."
+  },
+  {
+   "id": "motif_returns",
+   "rule": "The main motif should appear in at least three sections.",
+   "why": "Repetition is what makes a track memorable. A new idea every section is eight loops, not a song."
+  }
+ ],
+ "dj": [
+  {
+   "id": "phrase_align",
+   "rule": "Start a blend on a phrase boundary, not a bar boundary.",
+   "why": "Phrases are 16 or 32 bars. Landing mid-phrase makes both tracks feel wrong."
+  },
+  {
+   "id": "bass_swap",
+   "rule": "Never run two basslines at once. Swap the lows at the midpoint.",
+   "why": "Two sub sources double the energy in the one band with no headroom."
+  },
+  {
+   "id": "key_distance",
+   "rule": "Mix within one step on the Camelot wheel.",
+   "why": "Two keys a tritone apart beat against each other audibly."
+  },
+  {
+   "id": "energy_direction",
+   "rule": "Mix into equal or higher energy across a set.",
+   "why": "A set is one arrangement at a larger scale. The same rules apply."
+  },
+  {
+   "id": "tempo_stretch",
+   "rule": "Keep tempo changes under about 6%.",
+   "why": "Past that, drums start to sound obviously time-stretched."
+  }
+ ],
+ "freq_roles": {
+  "atmos": {
+   "band": "presence+air",
+   "hz": [
+    2000,
+    16000
+   ],
+   "note": "Texture, not content."
+  },
+  "bass": {
+   "band": "bass+lowmid",
+   "hz": [
+    60,
+    400
+   ],
+   "note": "Sits above the kick. Highpass at ~60Hz to stay out of it."
+  },
+  "clap": {
+   "band": "lowmid+mid",
+   "hz": [
+    1000,
+    3000
+   ],
+   "note": "1-2kHz is where a clap reads as a clap."
+  },
+  "hat": {
+   "band": "air",
+   "hz": [
+    8000,
+    16000
+   ],
+   "note": "Above 8k. Below that it fights the mids."
+  },
+  "kick": {
+   "band": "sub+bass",
+   "hz": [
+    40,
+    90
+   ],
+   "note": "Owns 40-90Hz. Nothing else lives there."
+  },
+  "oh": {
+   "band": "presence+air",
+   "hz": [
+    6000,
+    14000
+   ],
+   "note": "Longer than a closed hat, so it masks more. Use sparingly."
+  },
+  "pad": {
+   "band": "lowmid+mid",
+   "hz": [
+    200,
+    4000
+   ],
+   "note": "Wide and long, so it masks everything. Duck it or filter it."
+  },
+  "perc": {
+   "band": "mid+presence",
+   "hz": [
+    300,
+    6000
+   ],
+   "note": "The band with the most room in most techno tracks."
+  },
+  "rumble": {
+   "band": "sub",
+   "hz": [
+    30,
+    120
+   ],
+   "note": "Sits under the kick and fills the gap between hits. Sidechain it or it eats the kick."
+  },
+  "snare": {
+   "band": "mid",
+   "hz": [
+    180,
+    4000
+   ],
+   "note": "Body at 180, snap at 2k."
+  },
+  "stab": {
+   "band": "mid",
+   "hz": [
+    300,
+    3000
+   ],
+   "note": "Mid-range hook."
+  },
+  "sub": {
+   "band": "sub",
+   "hz": [
+    30,
+    80
+   ],
+   "note": "Conflicts with the kick by definition. Sidechain hard or write it to play in the kick's gaps."
+  }
+ },
+ "genres": {
+  "acid": {
+   "bpm": [
+    130,
+    145
+   ],
+   "drop_at": [
+    0.15,
+    0.35
+   ],
+   "intro_bars": [
+    8,
+    16
+   ],
+   "key": "minor",
+   "note": "The 303 is the lead, the hook and the arrangement. Move the filter, not the notes.",
+   "outro_bars": [
+    16,
+    32
+   ],
+   "phrase": 16,
+   "sweet": 138,
+   "swing": [
+    0,
+    10
+   ]
+  },
+  "dubtechno": {
+   "bpm": [
+    118,
+    128
+   ],
+   "drop_at": [
+    0.35,
+    0.6
+   ],
+   "intro_bars": [
+    32,
+    64
+   ],
+   "key": "minor",
+   "note": "Chords through long delays. Nothing arrives suddenly.",
+   "outro_bars": [
+    32,
+    64
+   ],
+   "phrase": 32,
+   "sweet": 122,
+   "swing": [
+    0,
+    12
+   ]
+  },
+  "hardtechno": {
+   "bpm": [
+    145,
+    165
+   ],
+   "drop_at": [
+    0.12,
+    0.3
+   ],
+   "intro_bars": [
+    16,
+    32
+   ],
+   "key": "minor",
+   "note": "Distorted kick carries the track. Rumble tails fill the gaps between kicks - that smear IS the genre.",
+   "outro_bars": [
+    16,
+    32
+   ],
+   "phrase": 16,
+   "sweet": 150,
+   "swing": [
+    0,
+    4
+   ]
+  },
+  "house": {
+   "bpm": [
+    118,
+    128
+   ],
+   "drop_at": [
+    0.2,
+    0.4
+   ],
+   "intro_bars": [
+    16,
+    32
+   ],
+   "key": "minor",
+   "note": "Swing is the whole feel. Straight house is broken house.",
+   "outro_bars": [
+    16,
+    32
+   ],
+   "phrase": 16,
+   "sweet": 124,
+   "swing": [
+    8,
+    25
+   ]
+  },
+  "industrial": {
+   "bpm": [
+    140,
+    160
+   ],
+   "drop_at": [
+    0.1,
+    0.28
+   ],
+   "intro_bars": [
+    8,
+    16
+   ],
+   "key": "phrygian",
+   "note": "Metallic percussion and noise. Ugly on purpose, tight anyway.",
+   "outro_bars": [
+    8,
+    24
+   ],
+   "phrase": 16,
+   "sweet": 150,
+   "swing": [
+    0,
+    3
+   ]
+  },
+  "minimal": {
+   "bpm": [
+    120,
+    130
+   ],
+   "drop_at": [
+    0.3,
+    0.55
+   ],
+   "intro_bars": [
+    32,
+    64
+   ],
+   "key": "minor",
+   "note": "Space is an instrument. What you leave out is the composition.",
+   "outro_bars": [
+    32,
+    64
+   ],
+   "phrase": 32,
+   "sweet": 126,
+   "swing": [
+    8,
+    20
+   ]
+  },
+  "techno": {
+   "bpm": [
+    125,
+    145
+   ],
+   "drop_at": [
+    0.2,
+    0.4
+   ],
+   "intro_bars": [
+    16,
+    32
+   ],
+   "key": "minor",
+   "note": "Hypnotic and mechanical. Repetition is the point; change one element at a time and let it ride.",
+   "outro_bars": [
+    16,
+    32
+   ],
+   "phrase": 16,
+   "sweet": 132,
+   "swing": [
+    0,
+    8
+   ]
+  },
+  "trance": {
+   "bpm": [
+    132,
+    142
+   ],
+   "drop_at": [
+    0.45,
+    0.65
+   ],
+   "intro_bars": [
+    32,
+    64
+   ],
+   "key": "minor",
+   "note": "The breakdown is the song. Everything before it is setup.",
+   "outro_bars": [
+    32,
+    64
+   ],
+   "phrase": 32,
+   "sweet": 138,
+   "swing": [
+    0,
+    4
+   ]
+  }
+ },
+ "mixing": [
+  {
+   "id": "sidechain_bass",
+   "rule": "Duck the bass 6dB or more against the kick.",
+   "why": "They occupy the same band. Ducking is what lets both be loud."
+  },
+  {
+   "id": "hp_the_bass",
+   "rule": "Highpass anything that is not the kick above ~60Hz.",
+   "why": "Sub energy from three sources sums to mud and eats all the headroom."
+  },
+  {
+   "id": "one_per_band",
+   "rule": "One element owns each band at any moment.",
+   "why": "Masking is inaudible as a problem and obvious as a result."
+  },
+  {
+   "id": "headroom",
+   "rule": "Master peak at or below -0.5dBFS.",
+   "why": "Clipping on a limiter is distortion you cannot undo later."
+  },
+  {
+   "id": "mono_bass",
+   "rule": "Keep everything below ~120Hz centred.",
+   "why": "Wide bass cancels on a mono club system - the one place it must not."
+  }
+ ],
+ "prompt": "GENRES:\n  techno: 125-145 BPM (sweet spot 132), minor key, 16-bar phrases, first drop 20-40% in. Hypnotic and mechanical. Repetition is the point; change one element at a time and let it ride.\n  hardtechno: 145-165 BPM (sweet spot 150), minor key, 16-bar phrases, first drop 12-30% in. Distorted kick carries the track. Rumble tails fill the gaps between kicks - that smear IS the genre.\n  acid: 130-145 BPM (sweet spot 138), minor key, 16-bar phrases, first drop 15-35% in. The 303 is the lead, the hook and the arrangement. Move the filter, not the notes.\n  minimal: 120-130 BPM (sweet spot 126), minor key, 32-bar phrases, first drop 30-55% in. Space is an instrument. What you leave out is the composition.\n  dubtechno: 118-128 BPM (sweet spot 122), minor key, 32-bar phrases, first drop 35-60% in. Chords through long delays. Nothing arrives suddenly.\n  industrial: 140-160 BPM (sweet spot 150), phrygian key, 16-bar phrases, first drop 10-28% in. Metallic percussion and noise. Ugly on purpose, tight anyway.\n  house: 118-128 BPM (sweet spot 124), minor key, 16-bar phrases, first drop 20-40% in. Swing is the whole feel. Straight house is broken house.\n  trance: 132-142 BPM (sweet spot 138), minor key, 32-bar phrases, first drop 45-65% in. The breakdown is the song. Everything before it is setup.\nARRANGEMENT:\n  Start with 16-32 bars of beat before anything melodic. (A DJ needs a plain section to mix into. A track that starts on the drop is unmixable and gets skipped.)\n  Every section is a multiple of 8 bars, usually 16 or 32. (Dancers and DJs both count in 8s. A 12-bar section lands wrong and no one can tell you why.)\n  The first drop belongs 20-40% into the track. (Earlier and there is no tension to release. Later and the floor drifts.)\n  A drop needs a quieter section before it. (Loudness is relative. Without contrast the ear stops registering loud.)\n  Change one element per 8 or 16 bars, not three. (Techno is about noticing a single change. Three at once reads as chaos.)\n  Peak energy minus minimum energy should exceed 0.4. (A flat track is a long loop. The shape is the composition.)\n  End with 16-32 bars of thinning beat. (Same reason as the intro, in reverse: the next DJ needs somewhere to go.)\n  The main motif should appear in at least three sections. (Repetition is what makes a track memorable. A new idea every section is eight loops, not a song.)\nMIXING:\n  Duck the bass 6dB or more against the kick. (They occupy the same band. Ducking is what lets both be loud.)\n  Highpass anything that is not the kick above ~60Hz. (Sub energy from three sources sums to mud and eats all the headroom.)\n  One element owns each band at any moment. (Masking is inaudible as a problem and obvious as a result.)\n  Master peak at or below -0.5dBFS. (Clipping on a limiter is distortion you cannot undo later.)\n  Keep everything below ~120Hz centred. (Wide bass cancels on a mono club system - the one place it must not.)\nDJ:\n  Start a blend on a phrase boundary, not a bar boundary. (Phrases are 16 or 32 bars. Landing mid-phrase makes both tracks feel wrong.)\n  Never run two basslines at once. Swap the lows at the midpoint. (Two sub sources double the energy in the one band with no headroom.)\n  Mix within one step on the Camelot wheel. (Two keys a tritone apart beat against each other audibly.)\n  Mix into equal or higher energy across a set. (A set is one arrangement at a larger scale. The same rules apply.)\n  Keep tempo changes under about 6%. (Past that, drums start to sound obviously time-stretched.)\nBANDS:\n  kick 40-90Hz: Owns 40-90Hz. Nothing else lives there.\n  rumble 30-120Hz: Sits under the kick and fills the gap between hits. Sidechain it or it eats the kick.\n  sub 30-80Hz: Conflicts with the kick by definition. Sidechain hard or write it to play in the kick's gaps.\n  bass 60-400Hz: Sits above the kick. Highpass at ~60Hz to stay out of it.\n  stab 300-3000Hz: Mid-range hook.\n  clap 1000-3000Hz: 1-2kHz is where a clap reads as a clap.\n  snare 180-4000Hz: Body at 180, snap at 2k.\n  hat 8000-16000Hz: Above 8k. Below that it fights the mids.\n  oh 6000-14000Hz: Longer than a closed hat, so it masks more. Use sparingly.\n  perc 300-6000Hz: The band with the most room in most techno tracks.\n  pad 200-4000Hz: Wide and long, so it masks everything. Duck it or filter it.\n  atmos 2000-16000Hz: Texture, not content.",
+ "rhythm": {
+  "clap_on_3": {
+   "pattern": "....x.......x...",
+   "why": "Backbeat on beats 2 and 4. Borrowed from rock and it still works, because the ear expects it."
+  },
+  "four_floor": {
+   "pattern": "x...x...x...x...",
+   "why": "A kick on every beat gives every other element a grid. It is the reason techno is danceable at any tempo."
+  },
+  "offbeat_bass": {
+   "pattern": ".x.x.x.x.x.x.x.x",
+   "why": "Bass in the kick's gaps means no sidechain is needed - they never collide in the first place."
+  },
+  "offbeat_hat": {
+   "pattern": "..x...x...x...x.",
+   "why": "A hat between kicks doubles the perceived tempo without changing the BPM. This is why house feels faster than it is."
+  },
+  "rolling_16ths": {
+   "pattern": "xxxxxxxxxxxxxxxx",
+   "why": "Constant 16ths on a closed hat is momentum with no information. Vary the accents or it is wallpaper."
+  },
+  "tresillo": {
+   "pattern": "x..x..x.",
+   "why": "3-3-2. The most common syncopation on earth, and it makes a straight 4/4 groove immediately."
+  }
+ },
+ "role_bars": {
+  "break": 8,
+  "build": 8,
+  "drop": 32,
+  "fill": 4,
+  "intro": 16,
+  "outro": 16,
+  "verse": 16
+ },
+ "templates": {
+  "classic": [
+   "intro",
+   "build",
+   "drop",
+   "break",
+   "build",
+   "drop",
+   "outro"
+  ],
+  "hypnotic": [
+   "intro",
+   "verse",
+   "build",
+   "drop",
+   "verse",
+   "drop",
+   "outro"
+  ],
+  "journey": [
+   "intro",
+   "build",
+   "drop",
+   "break",
+   "verse",
+   "build",
+   "drop",
+   "break",
+   "drop",
+   "outro"
+  ],
+  "peaktime": [
+   "intro",
+   "build",
+   "drop",
+   "drop",
+   "break",
+   "build",
+   "drop",
+   "outro"
+  ],
+  "rollercoaster": [
+   "intro",
+   "build",
+   "drop",
+   "break",
+   "build",
+   "drop",
+   "break",
+   "build",
+   "drop",
+   "outro"
+  ],
+  "warmup": [
+   "intro",
+   "verse",
+   "build",
+   "verse",
+   "drop",
+   "outro"
+  ]
+ }
+}

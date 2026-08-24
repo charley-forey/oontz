@@ -54,6 +54,7 @@
 </div>
 <script src="copy.js"></script>
 <script src="oontz.js"></script>
+<script src="theory.js"></script>
 <script src="compose.js"></script>
 <script>
 "use strict";
@@ -223,6 +224,13 @@ var CMDS = {
     line(); },
   what: function(){ block(CP.what); },
   theory: function(){ block(CP.theory); },
+  rules: function(a){ var T = window.OONTZ_THEORY, sets = {arrangement:T.arrangement, mixing:T.mixing, dj:T.dj};
+    var which = (a[0]||'').toLowerCase(), keys = sets[which] ? [which] : Object.keys(sets); line();
+    keys.forEach(function(k){ w('<span class="b">'+k+'</span>');
+      sets[k].forEach(function(r){ w('  <span class="a">'+esc(r.rule)+'</span>'); w('    <span class="dim">'+esc(r.why)+'</span>'); }); line(); }); },
+  bands: function(){ var T = window.OONTZ_THEORY; line();
+    Object.keys(T.freq_roles).forEach(function(k){ var v = T.freq_roles[k];
+      w('  <span class="k">'+esc(k+'  '+v.hz[0]+'-'+v.hz[1]+' Hz')+'</span><span class="dim">'+esc(v.note)+'</span>'); }); line(); },
   decks: function(){ block(CP.decks); },
   keys: function(){ block(CP.keys); },
   ai: function(){ block(CP.ai); },

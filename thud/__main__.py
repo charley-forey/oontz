@@ -8,6 +8,10 @@ def main():
         from .selftest import selftest
         print(selftest())
         return
+    if args[:2] == ["theory", "export"]:
+        from . import theory
+        print(theory.export())
+        return
     for a in args:
         if a.endswith(".thud"):
             core.load(a)
