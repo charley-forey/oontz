@@ -153,6 +153,27 @@ function arrange(minutes, curve, bpm, dropWindow){
     return {role: r, bars: i < di ? preBars[i] : postBars[i - di]}; });
 }
 
+/* Tracks that may carry a fill. Not the kick - moving it moves the floor - and
+   not anything pitched, whose notes lane would have to move with it. */
+var FILLABLE = ["perc", "snare", "clap", "oh", "hat"];
+
+/* Repeat `pat` for `bars` bars and vary the last one. A fill is a roll into the
+   downbeat that is coming, so it lands in the final beat and accents its last hit. */
+function fillBar(pat, name, rand, energy){
+  var b = pat.padEnd(16, ".").slice(0, 16).split("");
+  var from = name === "hat" ? 8 : 12;              // hats roll for half a bar, drums for a beat
+  for(var i = from; i < 16; i++){
+    var dense = name === "hat" ? true : (i >= 12);
+    b[i] = dense || rand() < 0.4 + 0.4 * energy ? (i === 15 ? "X" : "x") : b[i];
+  }
+  return b.join("");
+}
+function phrase(pat, bars, name, rand, energy){
+  var base = pat.padEnd(16, ".").slice(0, 16), out = "";
+  for(var b = 0; b < bars; b++) out += (b === bars - 1) ? fillBar(base, name, rand, energy) : base;
+  return out;
+}
+
 function energyFor(role, pos){
   if(role === "drop") return Math.min(1, 0.84 + 0.16 * pos);
   if(role === "break") return Math.max(0.05, 0.2 - 0.05 * pos);
@@ -223,11 +244,17 @@ function compose(style, minutes, curveName, seed){
       if(tracks.hat) tracks.hat.pat = "xxxxxxxxxxxxxxxx";
       tracks.bass.fc = 300;
       auto.push(["bass.fc", 260, 4200, 0, p.bars, "exp"]);
+      /* everything tightens into the drop: the clap gets louder and the kick harder */
+      if(tracks.clap) auto.push(["clap.gain", 0.6, 1.0, 0, p.bars, "exp"]);
+      auto.push(["kick.gain", 0.9, 1.0, 0, p.bars, "linear"]);
       tracks.riser = {voice: "riser", pat: "x...............", gain: 0.5};
       ord.push("riser");
       auto.push(["riser.gain", 0.2, 0.9, 0, p.bars, "exp"]);
     } else if(p.role === "drop"){
       tracks.bass.fc = 1200; tracks.bass.sc = 0.8;
+      /* a drop opens rather than arriving flat, and the hats lift across it */
+      auto.push(["bass.fc", 700, 1600, 0, Math.min(8, p.bars), "log"]);
+      if(tracks.hat) auto.push(["hat.gain", 0.55, 0.85, 0, p.bars, "linear"]);
       if(energy > 0.85){
         tracks.rumble = {voice: "rumble", pat: "x...............", gain: 0.5, sc: 0};
         ord.push("rumble");
@@ -242,6 +269,9 @@ function compose(style, minutes, curveName, seed){
       ord.push("pad");
       tracks.bass.gain = 0.4; tracks.bass.fc = 220;
       auto.push(["bass.fc", 180, 900, 0, p.bars, "linear"]);
+      /* the pad swells and the room opens as the break runs out */
+      auto.push(["pad.gain", 0.25, 0.7, 0, p.bars, "ease"]);
+      auto.push(["pad.fc", 400, 2600, 0, p.bars, "linear"]);
     } else if(p.role === "outro"){
       silence("clap","perc");
       tracks.bass.pat = tracks.bass.pat.replace(/[xX]/g, ".");
@@ -257,12 +287,25 @@ function compose(style, minutes, curveName, seed){
       tracks.hat.pat = pat.join("");
     }
 
+    /* The last bar of the phrase is not the same as the other seven. This is the
+       single biggest difference between a loop and a track: the ear counts in
+       eights and expects to be told where the boundary is. */
+    if(p.bars >= 8 && p.role !== "break"){
+      FILLABLE.forEach(function(n){
+        var t = tracks[n];
+        if(!t || !t.pat || t.notes) return;
+        if(!t.pat.replace(/[.\-]/g, "").length) return;   // silenced here: a fill would resurrect it
+        t.pat = phrase(t.pat, 8, n, rand, energy);
+      });
+    }
+
     sections[name] = {name: name, bars: p.bars, role: p.role, energy: energy,
                       tracks: tracks, order: ord, automation: auto};
     order.push(name);
   });
 
   return {name: style + "-" + curve, bpm: bpm, swing: G.swing, key: root,
+          groove: (T.genre_groove || {})[style] || "straight",
           scale: scale, order: order, sections: sections,
           meta: {style: style, curve: curve, generated: true}};
 }

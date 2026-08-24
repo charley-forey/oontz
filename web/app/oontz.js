@@ -44,18 +44,58 @@ function Engine(){
   this.focus = null;           // the track the pads edit
   this.roll = null;            // {i, step, len} while a loop roll is held
   this.fc = 20000;             // the master filter, swept by [ and ]
+  this.groove = null;          // {accent[16], push_ms[16]} - see theory.GROOVES
   this.stepNow = 0;            // the step that is sounding right now (for the grid)
   this._timer = null; this._next = 0;
+}
+
+/* The master chain, built once and used by the live engine and both offline
+   renders - if they differed, the ear would be measuring something nobody hears.
+ *
+ * It enforces the rules theory.py already states rather than trusting them:
+ *   - everything below 120Hz is summed to mono, because wide bass cancels on the
+ *     one system it must not, which is a mono club rig;
+ *   - a real limiter after the glue compressor, because the generator was
+ *     shipping tracks that peaked at +2.8 dBFS.
+ * Returns the node everything plays into. */
+function buildMaster(c, dest){
+  var inp = c.createGain(); inp.gain.value = 0.85;
+  var glue = c.createDynamicsCompressor();
+  glue.threshold.value = -8; glue.ratio.value = 14;
+  glue.attack.value = 0.002; glue.release.value = 0.10;
+
+  var lp = c.createBiquadFilter(); lp.type = "lowpass"; lp.frequency.value = 120; lp.Q.value = 0.7;
+  var hp = c.createBiquadFilter(); hp.type = "highpass"; hp.frequency.value = 120; hp.Q.value = 0.7;
+  var mono = c.createGain();                       // explicit 1 channel = a downmix
+  mono.channelCount = 1; mono.channelCountMode = "explicit"; mono.channelInterpretation = "speakers";
+  var sum = c.createGain();
+
+  var lim = c.createDynamicsCompressor();
+  lim.threshold.value = -2; lim.ratio.value = 20; lim.knee.value = 0;
+  lim.attack.value = 0.001; lim.release.value = 0.05;
+  /* A DynamicsCompressor has no lookahead, so a fast transient still slips past
+     the threshold - measured 0.00 dBFS with the limiter in. The trim is what
+     actually guarantees the 0.5dB theory asks for. */
+  var trim = c.createGain(); trim.gain.value = 0.85;
+
+  inp.connect(glue);
+  glue.connect(lp); glue.connect(hp);
+  lp.connect(mono); mono.connect(sum); hp.connect(sum);
+  sum.connect(lim); lim.connect(trim); trim.connect(dest);
+  return inp;
+}
+
+/* Only what owns the low end is allowed to keep it: theory says highpass anything
+   that is not the kick above ~60Hz, because three sub sources sum to mud. */
+function keepsLows(name){
+  var T = global.OONTZ_THEORY, r = T && T.freq_roles && T.freq_roles[name];
+  return r ? r.hz[0] < 60 : false;
 }
 
 Engine.prototype.start = function(){
   if(this.ctx) { if(this.ctx.state === "suspended") this.ctx.resume(); return this.ctx; }
   var C = global.AudioContext || global.webkitAudioContext;
   var c = this.ctx = new C();
-  this.master = c.createGain(); this.master.gain.value = 0.85;
-  var comp = c.createDynamicsCompressor();
-  comp.threshold.value = -8; comp.ratio.value = 14;
-  comp.attack.value = 0.002; comp.release.value = 0.10;
   this.analyser = c.createAnalyser();
   this.analyser.fftSize = 2048; this.analyser.smoothingTimeConstant = 0.75;
   /* master -> filter -> delay line -> out -> comp -> analyser. The filter is the
@@ -65,8 +105,10 @@ Engine.prototype.start = function(){
   this.filter.frequency.value = this.fc; this.filter.Q.value = 0.7;
   this.fx = c.createDelay(4); this.fx.delayTime.value = 0;
   this.out = c.createGain();
+  var head = buildMaster(c, this.analyser);        // glue, mono lows, limiter
+  this.master = c.createGain(); this.master.gain.value = 1;
   this.master.connect(this.filter); this.filter.connect(this.fx); this.fx.connect(this.out);
-  this.out.connect(comp); comp.connect(this.analyser);
+  this.out.connect(head);
   this.analyser.connect(c.destination);
   return c;
 };
@@ -376,6 +418,22 @@ Engine.prototype.voiceFor = function(name){
   return VOICES[name] || VOICES.perc;
 };
 
+/* Which character of a pattern sounds at step `i` of bar `bar`.
+ *
+ * A pattern of 16 or fewer steps is a bar and repeats every bar, so a 5-step hat
+ * against a 16-step kick still gives polymeter. A pattern that is a whole number
+ * of bars long (32, 64, 128) SPANS those bars instead of repeating inside one -
+ * which is what lets a phrase carry a fill in its last bar, and is the difference
+ * between a loop and a track.
+ *
+ * (The desktop engine spreads any pattern across a single bar instead; the two
+ * have always differed here, and the browser is the instrument people use.) */
+function patIndex(pat, bar, i){
+  var L = pat.length || 16;
+  if(L > 16 && L % 16 === 0) return ((bar % (L / 16)) * 16 + i) % L;
+  return i % L;
+}
+
 /* -- the song model, ported ---------------------------------------------- */
 
 function totalBars(song){
@@ -440,8 +498,16 @@ function stateAt(song, bar){
 
 /* -- the clock ----------------------------------------------------------- */
 
+function grooveOf(song){
+  var T = global.OONTZ_THEORY;
+  if(!T || !T.grooves) return null;
+  var name = (song && song.groove) ||
+             (T.genre_groove && T.genre_groove[(song && song.meta && song.meta.style) || ""]) || null;
+  return name ? T.grooves[name] || null : null;
+}
+
 Engine.prototype.loadSong = function(song){
-  this.song = song; this.songbar = 0;
+  this.song = song; this.songbar = 0; this.groove = grooveOf(song);
   var st = stateAt(song, 0);
   if(st){ this.tracks = st.tracks; this.order = st.order; this.bpm = st.bpm; this.swing = st.swing; }
   return this;
@@ -482,33 +548,45 @@ Engine.prototype.jump = function(bar){
 /* One 16th of one bar: schedule every hit into `dest` on context `c`. Pure in
    the sense that matters - it reads only its arguments - so the live clock and
    an OfflineAudioContext render share it. */
-Engine.prototype._hits = function(c, dest, t, i, tracks, order, bpm, swing){
+Engine.prototype._hits = function(c, dest, t, i, tracks, order, bpm, swing, bar){
   var self = this;
+  bar = bar | 0;
   var kickHit = false;
   var kt = tracks.kick;
-  if(kt && kt.pat && kt.pat[i % kt.pat.length] && kt.pat[i % kt.pat.length] !== ".") kickHit = true;
+  if(kt && kt.pat){ var kc = kt.pat[patIndex(kt.pat, bar, i)];
+    if(kc && kc !== "." && kc !== "-") kickHit = true; }
   var e = {ctx: c};
   order.forEach(function(name){
     var tr = tracks[name];
     if(!tr || !tr.pat) return;
-    var L = tr.pat.length || 16;
-    var ch = tr.pat[i % L];
+    var idx = patIndex(tr.pat, bar, i);
+    var ch = tr.pat[idx];
     if(!ch || ch === "." || ch === "-") return;
     if(tr.mute) return;
     var gain = (tr.gain == null ? 1 : tr.gain);
+    /* Velocity: the accent curve is what stops sixteen identical hits sounding
+       like sixteen identical hits. A written accent (X) overrides it upward. */
+    var gr = self.groove;
+    if(gr && gr.accent && ch !== "X" && ch !== "O")
+      gain *= gr.accent[i % gr.accent.length];
     if(gain <= 0.001) return;
     /* sidechain: duck everything but the kick when the kick lands */
     var duck = (kickHit && tr.sc && name !== "kick") ? (1 - tr.sc * 0.85) : 1;
     var g = c.createGain(); g.gain.value = Math.min(1.2, gain * duck);
-    var pan = tr.pan || 0, out = g;
+    var pan = tr.pan || 0, out = g, tailIn = g;
+    if(!keepsLows(name)){                          // highpass everything but the low-end owners
+      var hpf = c.createBiquadFilter();
+      hpf.type = "highpass"; hpf.frequency.value = 60; hpf.Q.value = 0.7;
+      g.connect(hpf); tailIn = hpf;
+    }
     if(c.createStereoPanner && pan && dest.numberOfInputs){
       var p = c.createStereoPanner(); p.pan.value = Math.max(-1, Math.min(1, pan));
-      g.connect(p); p.connect(dest);
-    } else g.connect(dest);
+      tailIn.connect(p); p.connect(dest);
+    } else tailIn.connect(dest);
     var opts = {dest: out, accent: ch === "X" || ch === "O", tune: tr.tune,
                 fc: tr.fc, res: tr.res, dur: 60 / bpm / 2};
     if(tr.notes && tr.notes.length){
-      var tok = tr.notes[i % tr.notes.length];
+      var tok = tr.notes[idx % tr.notes.length];
       if(!tok || tok === "." || tok === "-") return;
       opts.hz = noteHz(tok);
       if(String(tok).indexOf("~") >= 0) opts.slide = opts.hz * 0.75;
@@ -516,7 +594,10 @@ Engine.prototype._hits = function(c, dest, t, i, tracks, order, bpm, swing){
       if(!opts.hz) return;
     }
     var sw = (i % 2 && swing) ? (swing / 100) * (60 / bpm / 4) : 0;
-    try { self.voiceFor(tr.voice || name)(e, t + sw, opts); } catch(err){}
+    /* Micro-timing: milliseconds off the grid, per step. Small on purpose - past
+       about 15ms it stops being feel and starts being a mistake. */
+    if(gr && gr.push_ms) sw += gr.push_ms[i % gr.push_ms.length] / 1000;
+    try { self.voiceFor(tr.voice || name)(e, Math.max(0, t + sw), opts); } catch(err){}
   });
 };
 
@@ -533,7 +614,7 @@ Engine.prototype._tick = function(t){
     if(this.onbar) this.onbar(this.songbar, st);
   }
 
-  this._hits(c, this.master, t, i, this.tracks, this.order, this.bpm, this.swing);
+  this._hits(c, this.master, t, i, this.tracks, this.order, this.bpm, this.swing, this.songbar);
 
   if(this.onstep){ var wait = Math.max(0, (t - c.currentTime) * 1000);   // the grid moves when the sound does
     setTimeout(function(){ self.stepNow = i; if(self.onstep) self.onstep(i, self.tracks, self.order); }, wait); }
@@ -580,15 +661,12 @@ function renderSong(song, onProgress){
   var g0 = gridFor(song), total = totalBars(song);
   var C = global.OfflineAudioContext || global.webkitOfflineAudioContext;
   var off = new C(1, Math.ceil((g0.seconds + 1.5) * SR), SR);
-  var g = off.createGain(); g.gain.value = 0.85;
-  var comp = off.createDynamicsCompressor();
-  comp.threshold.value = -8; comp.ratio.value = 14; comp.attack.value = 0.002; comp.release.value = 0.10;
-  g.connect(comp); comp.connect(off.destination);
-  var fake = new Engine(); fake.ctx = off;
+  var g = buildMaster(off, off.destination);
+  var fake = new Engine(); fake.ctx = off; fake.groove = grooveOf(song);
   var t = 0;
   for(var bar = 0; bar < total; bar++){
     var st = stateAt(song, bar), spb = 60 / (st.bpm || g0.bpm);
-    for(var i = 0; i < 16; i++) fake._hits(off, g, t + i * spb / 4, i, st.tracks, st.order, st.bpm || g0.bpm, st.swing || 0);
+    for(var i = 0; i < 16; i++) fake._hits(off, g, t + i * spb / 4, i, st.tracks, st.order, st.bpm || g0.bpm, st.swing || 0, bar);
     t += 4 * spb;
     if(onProgress && bar % 16 === 0) onProgress(bar / total);
   }
@@ -610,18 +688,15 @@ function renderSlice(song, opts){
     dur += 4 * 60 / ((s0 && s0.bpm) || song.bpm || 138);
   }
   var off = new C(opts.channels || 2, Math.ceil((dur + 1.2) * SR), SR);
-  var g = off.createGain(); g.gain.value = 0.85;
-  var comp = off.createDynamicsCompressor();
-  comp.threshold.value = -8; comp.ratio.value = 14; comp.attack.value = 0.002; comp.release.value = 0.10;
-  g.connect(comp); comp.connect(off.destination);
-  var fake = new Engine(); fake.ctx = off;
+  var g = buildMaster(off, off.destination);
+  var fake = new Engine(); fake.ctx = off; fake.groove = grooveOf(song);
   var t = 0;
   for(b = 0; b < nBars; b++){
     var st = stateAt(song, bar0 + b); if(!st) break;
     var spb = 60 / (st.bpm || song.bpm || 138);
     var order = only ? (st.order.indexOf(only) >= 0 ? [only] : []) : st.order;
     for(var i = 0; i < 16; i++)
-      fake._hits(off, g, t + i * spb / 4, i, st.tracks, order, st.bpm || song.bpm || 138, st.swing || 0);
+      fake._hits(off, g, t + i * spb / 4, i, st.tracks, order, st.bpm || song.bpm || 138, st.swing || 0, bar0 + b);
     t += 4 * spb;
   }
   return off.startRendering();
@@ -774,7 +849,8 @@ var KEYS = [
 Engine.prototype.toggleStep = function(name, i){
   var tr = this.tracks[name];
   if(!tr) return "no track to edit";
-  var pat = (tr.pat || "").padEnd(16, ".").slice(0, 16).split("");   // ponytail: pads see 16 steps; polymeter stays a typed thing
+  var pat = (tr.pat || "").padEnd(16, ".").split("");
+  i = patIndex(pat.join(""), this.songbar, i);       // the bar you are hearing is the bar you edit
   var ch = pat[i], nx = ch === "." || ch === "-" ? "x" : (ch === "x" ? "X" : ".");
   pat[i] = nx;
   var patch = {pat: pat.join("")};
@@ -829,6 +905,7 @@ Engine.prototype.stop = function(){
 global.oontz = {
   Engine: Engine, VOICES: VOICES, noteHz: noteHz, KEYS: KEYS, PADS: PADS,
   Deck: Deck, gridFor: gridFor, renderSong: renderSong, renderSlice: renderSlice,
+  patIndex: patIndex, grooveOf: grooveOf, buildMaster: buildMaster, keepsLows: keepsLows,
   xfGains: xfGains, wavBlob: wavBlob,
   stateAt: stateAt, sectionAt: sectionAt, totalBars: totalBars, SR: SR
 };

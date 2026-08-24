@@ -198,6 +198,16 @@
    "note": "Conflicts with the kick by definition. Sidechain hard or write it to play in the kick's gaps."
   }
  },
+ "genre_groove": {
+  "acid": "straight",
+  "dubtechno": "laid",
+  "hardtechno": "pushed",
+  "house": "swung",
+  "industrial": "pushed",
+  "minimal": "swung",
+  "techno": "straight",
+  "trance": "straight"
+ },
  "genres": {
   "acid": {
    "bpm": [
@@ -406,6 +416,164 @@
     0,
     4
    ]
+  }
+ },
+ "grooves": {
+  "laid": {
+   "accent": [
+    1.0,
+    0.54,
+    0.7,
+    0.54,
+    0.84,
+    0.54,
+    0.7,
+    0.58,
+    0.9,
+    0.54,
+    0.7,
+    0.54,
+    0.82,
+    0.58,
+    0.72,
+    0.66
+   ],
+   "push_ms": [
+    0,
+    5,
+    3,
+    5,
+    1,
+    5,
+    3,
+    5,
+    0,
+    5,
+    3,
+    5,
+    1,
+    5,
+    3,
+    6
+   ],
+   "why": "Behind the beat. Dub and the deeper end sit here; it feels heavier without being slower."
+  },
+  "pushed": {
+   "accent": [
+    1.0,
+    0.55,
+    0.8,
+    0.55,
+    0.95,
+    0.55,
+    0.8,
+    0.6,
+    1.0,
+    0.55,
+    0.8,
+    0.55,
+    0.93,
+    0.6,
+    0.82,
+    0.74
+   ],
+   "push_ms": [
+    0,
+    -4,
+    -2,
+    -4,
+    0,
+    -4,
+    -2,
+    -4,
+    0,
+    -4,
+    -2,
+    -4,
+    0,
+    -4,
+    -2,
+    -5
+   ],
+   "why": "Everything but the downbeat lands fractionally early. Reads as urgency, and it is why hard techno feels faster than its BPM."
+  },
+  "straight": {
+   "accent": [
+    1.0,
+    0.58,
+    0.76,
+    0.58,
+    0.92,
+    0.58,
+    0.76,
+    0.62,
+    0.96,
+    0.58,
+    0.76,
+    0.58,
+    0.9,
+    0.62,
+    0.78,
+    0.7
+   ],
+   "push_ms": [
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+   ],
+   "why": "Dead on the grid. The accent curve alone gives it shape, which is what techno wants - the machine is the point."
+  },
+  "swung": {
+   "accent": [
+    1.0,
+    0.52,
+    0.74,
+    0.6,
+    0.88,
+    0.52,
+    0.74,
+    0.64,
+    0.94,
+    0.52,
+    0.74,
+    0.6,
+    0.86,
+    0.64,
+    0.78,
+    0.72
+   ],
+   "push_ms": [
+    0,
+    11,
+    0,
+    9,
+    0,
+    11,
+    0,
+    9,
+    0,
+    11,
+    0,
+    9,
+    0,
+    11,
+    0,
+    8
+   ],
+   "why": "The offbeat sixteenth arrives late. This is the shuffle house is built on, and straight house is broken house."
   }
  },
  "mixing": [

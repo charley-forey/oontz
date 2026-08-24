@@ -296,9 +296,27 @@ did = EAR.fixWorst(sg4, meas({master: {peak: 0.5, peakDb: -6, rms: 0.2,
 A.ok(/centred/.test(did), "a wide low end must be centred: " + did);
 A.strictEqual(sg4.sections.drop.tracks.bass.pan, 0, "the offending track is panned back to centre");
 
+/* the kick never gives way: if it is one of the pair, the other one moves */
+var sg7 = fakeSong();
+var km = meas();
+km.share = EAR.shares({kick: [50, 45, 40, 0, 0, 0], bass: [10, 40, 45, 0, 0, 0],
+                       hat: [0, 0, 0, 0, 0, 10]}, km.order);
+did = EAR.fixWorst(sg7, km);
+A.ok(did && !/^kick /.test(did), "the kick must never be the one trimmed: " + did);
+
+/* two tracks merely present in a band is not masking; jointly owning it is */
+var mild = meas();
+mild.share = EAR.shares({kick: [50, 40, 30, 0, 0, 0], bass: [10, 30, 32, 0, 0, 0],
+                         hat: [0, 0, 30, 0, 0, 10]}, mild.order);   // three-way split
+A.ok(!EAR.critiqueMix(mild).some(function(c){ return c[0] === "bad" && /living in low-mid/.test(c[1]); }),
+  "a three-way split in one band is a mix, not a fault");
+
 /* then kick vs bass in the same band is a sidechain problem, not a level one */
 var sg5 = fakeSong();
-did = EAR.fixWorst(sg5, meas());
+var m5 = meas();
+m5.share = EAR.shares({kick: [50, 45, 5, 2, 1, 1], bass: [10, 45, 20, 5, 3, 2],
+                       hat: [0, 1, 2, 5, 20, 70]}, m5.order);
+did = EAR.fixWorst(sg5, m5);
 A.ok(/sidechain/.test(did) && /bass/.test(did), "kick and bass in one band want ducking: " + did);
 A.strictEqual(sg5.sections.drop.tracks.bass.sc, 0.8, "the guest gets ducked");
 
@@ -306,11 +324,33 @@ A.strictEqual(sg5.sections.drop.tracks.bass.sc, 0.8, "the guest gets ducked");
 var sg6 = fakeSong();
 sg6.sections.drop.tracks.bass.sc = 0.8; sg6.sections.drop.tracks.bass.pan = 0;
 var clean = meas();
-clean.tracks.bass = [0.05, 0.2, 0.4, 0.2, 0.1, 0.05];   // out of the kick's way
+clean.share = EAR.shares({kick: [90, 70, 5, 2, 1, 1], bass: [5, 20, 60, 20, 2, 1],
+                          hat: [0, 1, 2, 5, 25, 80]}, clean.order);   // one owner per band
 A.strictEqual(EAR.fixWorst(sg6, clean), null, "a clean mix has nothing left to fix");
 
+/* share: who actually owns the band, which is what masking means */
+var sh = EAR.shares({a: [10, 0, 0, 0, 0, 0], b: [30, 0, 0, 0, 0, 0]}, ["a", "b"]);
+A.ok(Math.abs(sh.a[0] - 0.25) < 1e-9 && Math.abs(sh.b[0] - 0.75) < 1e-9, "shares split the band by contribution");
+A.strictEqual(EAR.shares({a: [0, 0, 0, 0, 0, 0]}, ["a"]).a[0], 0, "an empty band has no owner");
+
+/* a ducked rumble sharing the low end with the kick is hard techno, not a fault */
+var rum = meas();
+rum.order = ["kick", "rumble"];
+rum.tracks = {kick: [0.5, 0.4, 0.05, 0.03, 0.01, 0.01], rumble: [0.55, 0.4, 0.03, 0.01, 0, 0]};
+rum.params = {kick: {gain: 1}, rumble: {gain: 0.5, sc: 0.8}};
+rum.share = EAR.shares({kick: [45, 40, 5, 3, 1, 1], rumble: [55, 40, 3, 1, 0, 0]}, rum.order);
+var rc = EAR.critiqueMix(rum);
+A.ok(rc.some(function(c){ return c[0] === "good" && /that smear is the genre/.test(c[1]); }),
+  "a ducked rumble must be allowed to share the low end: " + JSON.stringify(rc));
+rum.params.rumble.sc = 0;                        // not ducked: now it really is eating the kick
+A.ok(EAR.critiqueMix(rum).some(function(c){ return c[0] === "bad" && /living in/.test(c[1]); }),
+  "an undicked rumble is still a fault");
+
 /* the critique says what it measured, with the number */
-var crit = EAR.critiqueMix(meas());
+var cm = meas();
+cm.share = EAR.shares({kick: [50, 45, 5, 2, 1, 1], bass: [10, 45, 20, 5, 3, 2],
+                       hat: [0, 1, 2, 5, 20, 70]}, cm.order);
+var crit = EAR.critiqueMix(cm);
 A.ok(crit.some(function(c){ return c[0] === "bad" && /kick and bass/.test(c[1]); }),
   "the conflict must be reported: " + JSON.stringify(crit));
 A.ok(crit.every(function(c){ return ["good", "warn", "bad"].indexOf(c[0]) >= 0; }), "levels are good/warn/bad");

@@ -192,7 +192,7 @@ function draw(){
                pad:'--accent', riser:'--a2'}[n] || '--fg';
     var cells = '';
     for(var q=0;q<16;q++){
-      var ch = tr.pat[q % tr.pat.length] || '.';
+      var ch = tr.pat[OZ.patIndex(tr.pat, E.songbar, q)] || '.';
       var on = ch !== '.' && ch !== '-';
       var cur = q === i && E.playing;
       cells += '<span class="st" data-t="'+n+'" data-i="'+q+'" style="color:var('+(on?col:'--dim')+')'+

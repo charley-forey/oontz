@@ -158,6 +158,48 @@ RHYTHM = {
                         "a straight 4/4 groove immediately."},
 }
 
+# Groove is a CURVE, not a percentage.
+#
+# A swing number moves every offbeat by the same amount and leaves every hit the
+# same loudness, which is why a machine pattern sounds like a machine. Real feel is
+# two curves over the sixteen: how hard each step is hit, and how far off the grid
+# it sits. The downbeat is loudest and dead on; the rest is the genre.
+#
+# push_ms is milliseconds: negative is early (urgent), positive is late (behind the
+# beat). These are small on purpose - past about 15ms it stops being feel and starts
+# being a timing error.
+GROOVES = {
+    "straight": {
+        "accent": [1.00, .58, .76, .58, .92, .58, .76, .62,
+                   .96, .58, .76, .58, .90, .62, .78, .70],
+        "push_ms": [0] * 16,
+        "why": "Dead on the grid. The accent curve alone gives it shape, which is "
+               "what techno wants - the machine is the point."},
+    "pushed": {
+        "accent": [1.00, .55, .80, .55, .95, .55, .80, .60,
+                   1.00, .55, .80, .55, .93, .60, .82, .74],
+        "push_ms": [0, -4, -2, -4, 0, -4, -2, -4, 0, -4, -2, -4, 0, -4, -2, -5],
+        "why": "Everything but the downbeat lands fractionally early. Reads as "
+               "urgency, and it is why hard techno feels faster than its BPM."},
+    "swung": {
+        "accent": [1.00, .52, .74, .60, .88, .52, .74, .64,
+                   .94, .52, .74, .60, .86, .64, .78, .72],
+        "push_ms": [0, 11, 0, 9, 0, 11, 0, 9, 0, 11, 0, 9, 0, 11, 0, 8],
+        "why": "The offbeat sixteenth arrives late. This is the shuffle house is "
+               "built on, and straight house is broken house."},
+    "laid": {
+        "accent": [1.00, .54, .70, .54, .84, .54, .70, .58,
+                   .90, .54, .70, .54, .82, .58, .72, .66],
+        "push_ms": [0, 5, 3, 5, 1, 5, 3, 5, 0, 5, 3, 5, 1, 5, 3, 6],
+        "why": "Behind the beat. Dub and the deeper end sit here; it feels heavier "
+               "without being slower."},
+}
+
+# Which feel each genre is built on.
+GENRE_GROOVE = {"techno": "straight", "hardtechno": "pushed", "acid": "straight",
+                "minimal": "swung", "dubtechno": "laid", "industrial": "pushed",
+                "house": "swung", "trance": "straight"}
+
 # Arrangement rules. `check` returns None when the rule passes, else what is wrong.
 ARRANGEMENT = [
     {"id": "dj_intro",
@@ -258,7 +300,8 @@ def as_dict():
     return {"genres": GENRES, "freq_roles": FREQ_ROLES, "rhythm": RHYTHM,
             "arrangement": ARRANGEMENT, "mixing": MIXING, "dj": DJ,
             "templates": TEMPLATES, "role_bars": ROLE_BARS,
-            "bands_hz": [list(b) for b in BANDS_HZ]}
+            "bands_hz": [list(b) for b in BANDS_HZ],
+            "grooves": GROOVES, "genre_groove": GENRE_GROOVE}
 
 
 def export_files():

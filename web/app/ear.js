@@ -89,6 +89,36 @@ function bandEnergy(x, sr){
   });
 }
 
+/* The same sums, NOT normalised. Two questions need two measures: "where does
+   this track sit" is about its own distribution, but "who is masking whom" is
+   about how much of the band each track actually contributes. Normalised numbers
+   cannot answer the second - a quiet bright hat still reads as 70% air, so
+   turning it down never clears the conflict, and improve trims forever. */
+function bandAbs(x, sr){
+  var sp = spectrum(x), B = bandsHz();
+  if(!sp) return B.map(function(){ return 0; });
+  var binHz = (sr || 44100) / sp.n;
+  return B.map(function(b){
+    var lo = Math.max(0, Math.ceil(b[1] / binHz)), hi = Math.min(sp.mag.length, Math.ceil(b[2] / binHz)), sum = 0;
+    for(var k = lo; k < hi; k++) sum += sp.mag[k];
+    return sum;
+  });
+}
+
+/* Each track's share of each band, across the tracks that are playing. This is
+   what masking actually means, and it moves when you change a level. */
+function shares(abs, order){
+  var B = bandsHz(), out = {};
+  order.forEach(function(n){ out[n] = B.map(function(){ return 0; }); });
+  B.forEach(function(_b, i){
+    var tot = 0;
+    order.forEach(function(n){ tot += (abs[n] || [])[i] || 0; });
+    if(tot <= 0) return;
+    order.forEach(function(n){ out[n][i] = ((abs[n] || [])[i] || 0) / tot; });
+  });
+  return out;
+}
+
 /* Energy below `hz`, for mid and side. Wide bass cancels on a mono club rig, so
    what matters is how much of the low end is in the side channel at all. */
 function lowMidSide(L, R, sr, hz){
@@ -163,19 +193,56 @@ function measure(song, opts){
   jobs.push(OZ.renderSlice(song, {bar: bar, bars: 1, channels: 2}));
   return Promise.all(jobs).then(function(bufs){
     var master = bufs[bufs.length - 1], sr = master.sampleRate;
-    var tracks = {};
-    names.forEach(function(n, i){ tracks[n] = bandEnergy(bufs[i].getChannelData(0), sr); });
+    var tracks = {}, abs = {};
+    names.forEach(function(n, i){
+      var ch = bufs[i].getChannelData(0);
+      tracks[n] = bandEnergy(ch, sr);
+      abs[n] = bandAbs(ch, sr);
+    });
     var L = master.getChannelData(0);
     var R = master.numberOfChannels > 1 ? master.getChannelData(1) : L;
-    return {section: sec, bar: bar, tracks: tracks, order: names,
+    return {section: sec, bar: bar, tracks: tracks, abs: abs, share: shares(abs, names),
+            order: names, params: st.tracks,
             master: {peak: peakOf(master), peakDb: db(peakOf(master)), rms: rmsOf(master),
                      bands: bandEnergy(L, sr), low: lowMidSide(L, R, sr, 120)}};
   });
 }
 
+/* theory.FREQ_ROLES on rumble: "Sits under the kick and fills the gap between
+   hits. Sidechain it or it eats the kick." So a kick and a rumble in the same low
+   band is the genre working, NOT a fault - as long as the rumble is ducked. Without
+   this the grader fights hard techno for being hard techno. */
+function duckedUnderKick(m, loud){
+  if(loud.length !== 2 || loud.indexOf("kick") < 0) return false;
+  var other = loud.filter(function(n){ return n !== "kick"; })[0];
+  if(other !== "rumble" && other !== "sub") return false;
+  var p = (m.params || {})[other];
+  return !!(p && p.sc >= 0.5);
+}
+
 /* -------------------------------------------------------------- critique */
 /* Same shape as the arrangement critique: [level, text]. Every line carries the
    number it is judging, because "muddy" is an opinion and 0.42 is not. */
+/* Older measurements carry no shares; fall back so a saved one still grades. */
+function sh(m){ return m.share || m.tracks; }
+
+/* Masking is two elements JOINTLY OWNING a band, not merely both being present.
+   Six bands are broad: three tracks in the mids is normal and splits 33% each.
+   The pair has to both be big AND account for most of the band before it is a
+   fault - clap at 38% and bass at 32% of the mids is a mix; a hat at 32% and an
+   open hat at 52% is the same sound twice. */
+var PAIR_EACH = 0.30, PAIR_TOGETHER = 0.75;
+
+function pairIn(m, i){
+  var S = sh(m);
+  var top = m.order.filter(function(n){ return (S[n] || [])[i] >= PAIR_EACH; })
+    .sort(function(a, b){ return S[b][i] - S[a][i]; });
+  if(top.length < 2) return null;
+  var pair = top.slice(0, 2);
+  if(S[pair[0]][i] + S[pair[1]][i] < PAIR_TOGETHER) return null;
+  return pair;
+}
+
 function critiqueMix(m){
   var out = [], B = bandsHz(), names = B.map(function(b){ return b[0]; });
   var roles = (T && T.freq_roles) || {};
@@ -196,12 +263,21 @@ function critiqueMix(m){
   /* one element per band */
   var conflicts = [];
   names.forEach(function(band, i){
-    var loud = m.order.filter(function(n){ return (m.tracks[n] || [])[i] >= 0.30; });
-    if(loud.length > 1) conflicts.push([band, loud]);
+    var loud = pairIn(m, i);
+    if(loud){
+      if(duckedUnderKick(m, loud)){
+        out.push(["good", loud.join(" and ") + " share " + band +
+          ", and the " + loud.filter(function(n){ return n !== "kick"; })[0] +
+          " is ducked under the kick - that smear is the genre, not a fault."]);
+        return;
+      }
+      conflicts.push([band, loud]);
+    }
   });
   conflicts.forEach(function(c){
+    var i = names.indexOf(c[0]);
     out.push(["bad", c[1].join(" and ") + " are both living in " + c[0] +
-      " (" + c[1].map(function(n){ return n + " " + Math.round(m.tracks[n][names.indexOf(c[0])] * 100) + "%"; }).join(", ") +
+      " (" + c[1].map(function(n){ return n + " " + Math.round(sh(m)[n][i] * 100) + "% of the band"; }).join(", ") +
       "). Masking is inaudible as a problem and obvious as a result."]);
   });
   if(!conflicts.length) out.push(["good", "No two elements are fighting for the same band."]);
@@ -221,7 +297,9 @@ function critiqueMix(m){
     for(i = 0; i < B.length; i++) if(B[i][2] > role.hz[0] && B[i][1] < role.hz[1]) want.push(i);
     if(!want.length) return;
     var got = want.reduce(function(a, i2){ return a + (b[i2] || 0); }, 0);
-    if(got < 0.5) out.push(["warn", n + " has only " + Math.round(got * 100) + "% of its energy in " +
+    /* 0.4, not 0.5: a hard kick puts a real share of itself in the click, and a
+       clap has a tail. Below 40% it is genuinely in the wrong place. */
+    if(got < 0.4) out.push(["warn", n + " has only " + Math.round(got * 100) + "% of its energy in " +
       role.band + " (" + role.hz[0] + "-" + role.hz[1] + "Hz). " + role.note]);
     else out.push(["good", n + " sits where it should: " + Math.round(got * 100) + "% in " + role.band + "."]);
   });
@@ -269,7 +347,7 @@ function ownerOf(band){
 
 function fixWorst(song, m){
   var sec = song.sections[m.section]; if(!sec || !sec.tracks) return null;
-  var B = bandsHz(), names = B.map(function(b){ return b[0]; });
+  var B = bandsHz(), names = B.map(function(b){ return b[0]; }), SH = sh(m);
   function tr(n){ return sec.tracks[n]; }
   function setg(n, mult, why){
     var t = tr(n); if(!t) return null;
@@ -304,10 +382,13 @@ function fixWorst(song, m){
 
   /* 3. two elements in one band: the one whose home it is keeps it */
   for(var i = 0; i < names.length; i++){
-    var loud = m.order.filter(function(n){ return (m.tracks[n] || [])[i] >= 0.30; });
-    if(loud.length < 2) continue;
+    var loud = pairIn(m, i);
+    if(!loud) continue;
+    if(duckedUnderKick(m, loud)) continue;        // the genre, already handled correctly
     var owner = ownerOf(names[i]);
-    var guest = loud.filter(function(n){ return n !== owner; })[0];
+    /* The kick is never the one that moves. Everything else in a mix is arranged
+       around it, so if the kick is the "guest" here, the other one gives way. */
+    var guest = loud.filter(function(n){ return n !== owner && n !== "kick"; })[0];
     if(!guest) continue;
     /* a bass fighting the kick is a sidechain problem before it is a level problem */
     if(names[i] === "bass" || names[i] === "sub"){
@@ -320,8 +401,15 @@ function fixWorst(song, m){
           ", and ducking is what lets both be loud";
       }
     }
-    var r = setg(guest, Math.pow(10, -3 / 20), "it is sharing " + names[i] + " with " +
-      (owner || "another track") + ", which owns that band");
+    /* Trim by what it would take to drop the share under the threshold, not by a
+       flat 3dB: a share only moves when the level does, and a fixed step can trim
+       forever without ever clearing the fault. Capped so it converges instead of
+       nuking the track in one go. */
+    var have = SH[guest][i], want = PAIR_EACH - 0.02;
+    var need = (want * (1 - have)) / Math.max(1e-6, have * (1 - want));
+    var r = setg(guest, Math.max(0.5, Math.min(0.95, need)),
+      "it holds " + Math.round(have * 100) + "% of " + names[i] + ", which " +
+      (owner || "another track") + " owns");
     if(r) return r;
   }
 
@@ -343,7 +431,8 @@ function fixWorst(song, m){
   return null;
 }
 
-g.OONTZ_EAR = {fft: fft, fixWorst: fixWorst, ownerOf: ownerOf, spectrum: spectrum, bandEnergy: bandEnergy, lowMidSide: lowMidSide,
+g.OONTZ_EAR = {fft: fft, fixWorst: fixWorst, ownerOf: ownerOf, duckedUnderKick: duckedUnderKick,
+               bandAbs: bandAbs, shares: shares, spectrum: spectrum, bandEnergy: bandEnergy, lowMidSide: lowMidSide,
                measure: measure, critiqueMix: critiqueMix, table: table, db: db,
                loudestSection: loudestSection, barOfSection: barOfSection};
 })(typeof window !== "undefined" ? window : globalThis);
