@@ -89,14 +89,17 @@ reports SUCCESS and the live file contains the change.
       command lines. The first live answer said `gain hat -6`, reaching for dB against a
       0-1.2 linear multiplier, which would have silenced the track: the prompt states
       units and ranges now.
-- [ ] **oontz.music 503s at Railway's edge** — since ~11:30 UTC 2026-08-24. HTTP 503,
-      HTTPS handshake reset, while `landing-production-74c4.up.railway.app` serves the
-      same deployment fine and oontz.sh/api.oontz.sh are unaffected. DNS resolves to the
-      right target (69.46.46.89 = `6nb6dlqp`), Railway reports the domain ACTIVE with a
-      VALID cert, and `domain certificate retry` refuses for that reason. Decided to wait
-      rather than remove/re-add the domain, because re-adding can return a different CNAME
-      target and would need the Namecheap ALIAS changed. Re-check; if it persists, that is
-      the fix, or a support ticket.
+- [ ] **oontz.music 503s at Railway's edge — churn did not fix it (2026-08-24 ~15:20 UTC).**
+      Removed and re-added the domain: re-verified in seconds (the TXT token is
+      unchanged, so Namecheap needed nothing), new CNAME target `5j4213fn.up.railway.app`
+      (69.46.46.58; old `6nb6dlqp` was 69.46.46.89). Symptom identical after: port 80
+      answers 503 FROM THE EDGE, 443 resets during handshake, pinned to either edge IP,
+      while the railway.app hostname serves 200 and control plane says VALID cert. This
+      is Railway's edge, not DNS. Two ways out: (a) a Railway support ticket, or (b) move
+      oontz.music's nameservers to Cloudflare and proxy a CNAME at the apex (SSL mode
+      Full, not Strict) so Cloudflare terminates TLS and Railway's edge cert stops
+      mattering. Either way, update the Namecheap ALIAS to `5j4213fn.up.railway.app` —
+      the old target hostname may stop resolving eventually.
 - [x] **Gallery on oontz.music** — reads the live `/gallery`.
 - [ ] **Play a gallery track in the landing page** — oontz.js can already interpret a
       .song; wire the browser engine to a fetched track.
