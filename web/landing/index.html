@@ -61,6 +61,7 @@
     autocapitalize="off" spellcheck="false" aria-label="terminal input"></div>
 </div>
 <script src="copy.js"></script>
+<script src="/engine/oontz.js"></script>
 <script>
 "use strict";
 const OUT = document.getElementById('out'), IN = document.getElementById('in');
@@ -230,7 +231,7 @@ const CMDS = {
   demo(){ line();
     w(`<span class="a">▸ playing.</span> <span class="dim">now change it: <span class="a">kick x...x..x.x...x</span> · <span class="a">hat ..x.x.x...x.x.x.</span> · <span class="a">bpm 150</span></span>`);
     start(); },
-  stop(){ stop(); line("▸ stopped.", 'dim'); },
+  stop(){ stop(); stopTrack(); line("▸ stopped.", 'dim'); },
   bpm(a){ const v=parseFloat(a[0]);
     if(!isFinite(v)||v<60||v>220) return line(CP.err_bpm||"bpm 60-220", 'w');
     bpm=v; if(playing){ clearInterval(timer); timer=setInterval(tick,60/bpm/4*1000); }
@@ -238,30 +239,85 @@ const CMDS = {
   open(){ block(CP.open);
     w(`  <a href="https://oontz.sh" target="_blank" rel="noopener">https://oontz.sh →</a>`);
     line(); },
-  async gallery(){ block(CP.gallery_head);
+  async gallery(a){ block(CP.gallery_head);
     const d = w('<span class="dim">  loading…</span>');
+    const sort = a[0]==='top' ? 'played' : 'new';
+    let flt = function(){ return true; }, n = a[0] ? 40 : 12;
+    if(a[0]==='bpm' && a[1]){ const m=a[1].split('-'), lo=parseFloat(m[0]), hi=parseFloat(m[1]||m[0]);
+      flt = function(sg){ return sg.bpm>=lo && sg.bpm<=(hi||lo); }; }
+    if(a[0]==='key' && a[1]){ const k=a[1].toLowerCase(); flt = function(sg){ return String(sg.kkey||'').toLowerCase()===k; }; }
     try{
-      const r = await fetch(API + '/gallery?limit_n=12');
+      const r = await fetch(API + '/gallery?limit_n=' + n + '&sort=' + sort);
       const j = await r.json();
       d.remove();
-      if(!j.songs || !j.songs.length) return block(CP.gallery_empty);
-      w(`  <span class="dim">${'track'.padEnd(20)}${'bpm'.padStart(5)}  ${'key'.padEnd(5)}${'len'.padStart(6)}  by</span>`);
+      j.songs = (j.songs||[]).filter(flt).slice(0,12);
+      if(!j.songs.length) return block(CP.gallery_empty);
+      w(`  <span class="dim">${'id'.padEnd(13)}${'track'.padEnd(20)}${'bpm'.padStart(5)}  ${'key'.padEnd(5)}${'len'.padStart(6)}${'plays'.padStart(7)}  by</span>`);
       j.songs.forEach(function(sg){
         const mm = Math.floor((sg.seconds||0)/60), ss = String(Math.floor((sg.seconds||0)%60)).padStart(2,'0');
-        w(`  <span class="b">${esc(String(sg.title).slice(0,20).padEnd(20))}</span>`+
+        w(`  <span class="a">${esc(String(sg.id).padEnd(13))}</span>`+
+          `<span class="b">${esc(String(sg.title).slice(0,20).padEnd(20))}</span>`+
           `<span class="a">${String(Math.round(sg.bpm)).padStart(5)}</span>  `+
           `<span class="w">${esc(String(sg.kkey||'').slice(0,5).padEnd(5))}</span>`+
-          `<span class="dim">${(mm+':'+ss).padStart(6)}  ${esc(sg.by||'')}</span>`);
+          `<span class="dim">${(mm+':'+ss).padStart(6)}${String(sg.plays||0).padStart(7)}  ${esc(sg.handle||sg.by||'')}</span>`);
       });
       line();
-      w(`  <span class="dim">each of those is a few KB of text. open them at </span><a href="https://oontz.sh" target="_blank" rel="noopener">oontz.sh</a>`);
+      w(`  <span class="dim">${esc(CP.gallery_hint)}</span>`);
       line();
     }catch(e){ d.remove(); block(CP.gallery_empty); }
   },
   clear(){ OUT.innerHTML=''; gridEl=null; },
+  /* -- the real engine: gallery tracks and playlists play in this page ----- */
+  play(a){ return a[0] ? playTrack(a[0]) : CMDS.demo(); },
+  async playlists(){
+    const d = w('<span class="dim">  loading…</span>');
+    try{ const r = await fetch(API + '/playlists/public?limit=20'); const j = await r.json(); d.remove();
+      if(!r.ok || !j.playlists || !j.playlists.length) return block(CP.playlists_empty);
+      block(CP.playlists_head);
+      j.playlists.forEach(function(p){
+        w(`  <span class="a">${esc(p.id)}</span> <span class="b">${esc(String(p.title).slice(0,28))}</span>`+
+          ` <span class="dim">${p.count||p.n||0} tracks · by ${esc(p.handle||'someone')} · playlist ${esc(p.id)}</span>`); });
+      line();
+    }catch(e){ d.remove(); block(CP.playlists_empty); } },
+  async playlist(a){
+    if(!a[0]) return CMDS.playlists();
+    const d = w('<span class="dim">  loading…</span>');
+    try{ const r = await fetch(API + '/p/' + encodeURIComponent(a[0])); const j = await r.json(); d.remove();
+      if(!r.ok) return line('▸ ' + esc(j.detail||'not found'), 'w');
+      w(`<span class="b">▸ ${esc(j.title)}</span> <span class="dim">· ${j.songs.length} tracks · by ${esc(j.handle||'someone')}</span>`);
+      j.songs.forEach(function(sg, i){
+        w(`  <span class="dim">${i+1}.</span> <span class="a">${esc(sg.id)}</span> ${esc(sg.title)}`+
+          ` <span class="dim">${Math.round(sg.bpm||0)} BPM · ${esc(sg.kkey||'?')}</span>`); });
+      if(j.songs.length){ EQ = j.songs; EQi = 0; playTrack(EQ[0].id, true); }
+    }catch(e){ d.remove(); line('could not reach the api','w'); } },
 };
+
+/* One Engine, made when first needed. The toy above and this never play together:
+   playTrack stops the toy, and `stop` stops both. A playlist is a queue: the next
+   track starts when this one has run its stated length. */
+let E = null, EQ = [], EQi = 0, EQt = 0;
+function stopTrack(){ if(E) E.stop(); EQ = []; if(EQt){ clearTimeout(EQt); EQt = 0; } }
+async function playTrack(id, fromQueue){
+  stop(); if(!fromQueue) EQ = [];
+  if(EQt){ clearTimeout(EQt); EQt = 0; }
+  const d = w('<span class="dim">  fetching the source…</span>');
+  try{
+    const r = await fetch(API + '/songs/' + encodeURIComponent(id));
+    const j = await r.json(); d.remove();
+    if(!r.ok || !j.data) return line('▸ ' + esc(j.detail||'not found'), 'w');
+    if(!E) E = new oontz.Engine();
+    E.loadSong(j.data); E.play();
+    w(`<span class="ok">▸ ${esc(j.title)}</span> <span class="dim">· ${Math.round(j.bpm||0)} BPM · ${esc(j.key||'?')}`+
+      ` · by ${esc(j.by||'?')} · \`stop\` ends it</span>`);
+    w(`  <span class="dim">${CP.play_note}</span> <a href="https://oontz.sh/?song=${encodeURIComponent(id)}" target="_blank" rel="noopener">oontz.sh/?song=${esc(id)}</a>`);
+    if(EQ.length && EQi + 1 < EQ.length){
+      const next = EQ[++EQi];
+      EQt = setTimeout(function(){ playTrack(next.id, true); }, Math.max(5, j.seconds||120) * 1000);
+    }
+  }catch(e){ d.remove(); line('could not reach the api','w'); }
+}
 const API = "https://api-production-bd3d8.up.railway.app";
-const ALIAS={'?':'help','ls':'help','play':'demo','start':'demo','about':'what',
+const ALIAS={'?':'help','ls':'help','start':'demo','about':'what',
   'sh':'open','app':'open','quit':'stop','exit':'stop','cls':'clear','music':'theory'};
 
 function run(raw){
@@ -288,7 +344,8 @@ addEventListener('click', ()=>IN.focus());
  line();
  (CP.menu||[]).forEach(function(kv){
    w(`  <span class="k">${esc(kv[0])}</span><span class="dim">${esc(kv[1])}</span>`); });
- line();IN.focus();})();
+ line();IN.focus();
+ if(window.OONTZ_BOOT){ await sleep(300); run(window.OONTZ_BOOT); }})();
 </script>
 </body>
 </html>

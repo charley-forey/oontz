@@ -543,6 +543,10 @@ addEventListener('beforeunload', function(){ try{ if(song) localStorage.setItem(
     w('  <span class="k">'+esc(kv[0])+'</span><span class="dim">'+esc(kv[1])+'</span>'); });
   line();
   if(token) w('<span class="dim">  signed in. <span class="a">publish</span> puts a track in the gallery.</span>');
+  var deep = new URLSearchParams(location.search).get('song');
+  if(deep){ try{ var dr = await fetch(API+'/songs/'+encodeURIComponent(deep)); var dj = await dr.json();
+      if(dj && dj.data){ loadSong(dj.data, 'from the gallery'); IN.focus(); return; }
+  }catch(e){} }
   try{ var saved = localStorage.getItem('oontz_song');
     if(saved){ song = JSON.parse(saved); E.loadSong(song); draw();
       w('<span class="dim">  restored <span class="b">'+esc(song.name)+'</span> from last time. <span class="a">play</span> to hear it.</span>'); }

@@ -48,6 +48,9 @@ C.help = [
   ["theory",               "what the machine knows about music"],
   ["free",                  "the catch. spoiler: there isn't one"],
   ["gallery",               "what other people made"],
+  ["play w7k2…",            "hear one, right here. it's the source, not a recording"],
+  ["gallery top",           "most played · also: gallery bpm 140-150 · gallery key 8a"],
+  ["playlists",             "what people bundled together, playable start to finish"],
   ["open",                  "go to oontz.sh, where the real one lives"],
   ["clear",                 "tidy up"]
 ];
@@ -151,6 +154,17 @@ C.free = [
 C.gallery_empty = [
   {s: "Nobody has published anything yet. You could be first, which is either"},
   {s: "an honour or a warning depending on your disposition. 🏆"}
+];
+C.play_note = "that was the recipe, not a recording — a few KB of text, rendered here. take it apart:";
+C.gallery_hint = "each id plays right here: play <the id>. every track is its own source code.";
+C.playlists_empty = [
+  {s: "No public playlists yet."},
+  {s: "Someone signs in at oontz.sh, bundles what they like, types `playlist public` —"},
+  {s: "and it shows up here, playable start to finish."}
+];
+C.playlists_head = [
+  {t: "Playlists people shared.", cls: "b"},
+  {}
 ];
 C.gallery_head = [
   {t: "Published tracks. Each one is a few KB of text.", cls: "b"},
