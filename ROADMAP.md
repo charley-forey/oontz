@@ -80,9 +80,23 @@ reports SUCCESS and the live file contains the change.
       `export` writes the same render as a WAV.
 - [x] **Pyodide spike: GO** -- the real thud runs in Chrome at median 185ms/bar
       against a 1200ms threshold. See cycle 8 and PLAN.md; web/app/py/ is the proof.
-- [ ] **DNS** — the three custom domains are attached on Railway; the records are not
-      set yet. Until they are, only the `*.up.railway.app` URLs work and `oontz.sh` has
-      no reachable URL at all (Railway will not add a service domain beside a custom one).
+- [x] **DNS** — live 2026-08-24. Namecheap: apex ALIAS `@` → `g1p1gota.up.railway.app`
+      (oontz.sh), CNAME `api` → `130v5d2f.up.railway.app`, the two `_railway-verify` TXT
+      records, and `www` redirecting to https://oontz.sh. oontz.music's apex ALIAS →
+      `6nb6dlqp.up.railway.app`. Read a target with
+      `railway domain status <domain> --service <name> --json` — the MCP does not return them.
+- [x] **ANTHROPIC_API_KEY set** — `/health` reports `ai:true` and `/ai/ask` returns
+      command lines. The first live answer said `gain hat -6`, reaching for dB against a
+      0-1.2 linear multiplier, which would have silenced the track: the prompt states
+      units and ranges now.
+- [ ] **oontz.music 503s at Railway's edge** — since ~11:30 UTC 2026-08-24. HTTP 503,
+      HTTPS handshake reset, while `landing-production-74c4.up.railway.app` serves the
+      same deployment fine and oontz.sh/api.oontz.sh are unaffected. DNS resolves to the
+      right target (69.46.46.89 = `6nb6dlqp`), Railway reports the domain ACTIVE with a
+      VALID cert, and `domain certificate retry` refuses for that reason. Decided to wait
+      rather than remove/re-add the domain, because re-adding can return a different CNAME
+      target and would need the Namecheap ALIAS changed. Re-check; if it persists, that is
+      the fix, or a support ticket.
 - [x] **Gallery on oontz.music** — reads the live `/gallery`.
 - [ ] **Play a gallery track in the landing page** — oontz.js can already interpret a
       .song; wire the browser engine to a fetched track.
