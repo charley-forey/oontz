@@ -355,7 +355,10 @@ var CMDS = {
       commands: Object.keys(CMDS).concat(E.order)};
     var d = w('<span class="dim">  thinking…</span>');
     try{
-      var r = await fetch(API+'/ai/ask', {method:'POST', headers:{'content-type':'application/json'},
+      var hdr = {'content-type':'application/json'};
+      var myKey = localStorage.getItem('oontz_key');   // linked with `key` — browser-only
+      if(myKey) hdr['x-anthropic-key'] = myKey;
+      var r = await fetch(API+'/ai/ask', {method:'POST', headers:hdr,
         body: JSON.stringify({prompt: q, state: state})});
       var j = await r.json(); d.remove();
       if(!j.commands || !j.commands.length) return line('▸ '+(j.error||'no suggestion'),'w');
@@ -525,5 +528,6 @@ addEventListener('beforeunload', function(){ try{ if(song) localStorage.setItem(
   IN.focus();
 })();
 </script>
+<script src="account.js"></script>
 </body>
 </html>

@@ -18,3 +18,19 @@ through here — the instrument runs entirely in the visitor's browser.
 | `ANTHROPIC_API_KEY` | optional. Without it `/ai/ask` returns 503 and the app falls back |
 
 Everything except the first two is optional; the service starts and works without them.
+
+## Endpoints
+
+| method · path | auth | what |
+|---|---|---|
+| `POST /auth/request` · `GET /auth/verify` | — | magic-link sign-in |
+| `GET /me` · `PATCH /me {handle}` | ✓ | who you are; one-word handle shown on the gallery |
+| `POST/GET/DELETE /songs…` · `POST /songs/{id}/publish` | ✓ | songs; publish puts one in the gallery |
+| `GET /gallery` | — | public songs |
+| `POST/GET/DELETE /takes…` | ✓ | takes: the command log as text (≤64KB), never audio |
+| `POST/GET/PATCH/DELETE /playlists…` · `PUT /playlists/{id}/items` | ✓ | ordered song lists; `public` makes them shareable |
+| `GET /playlists/public` · `GET /p/{id}` | — | what the landing page reads |
+| `POST /ai/ask` | — | AI proxy; honours `X-Anthropic-Key` (used, never stored or logged) |
+
+Run the tests with `python api/test_api.py` — they spawn a real uvicorn against a
+temp database and walk the whole loop, magic link included.
