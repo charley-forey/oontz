@@ -98,6 +98,7 @@
 <script src="copy.js"></script>
 <script src="oontz.js"></script>
 <script src="theory.js"></script>
+<script src="ear.js"></script>
 <script src="compose.js"></script>
 <script src="viz.js"></script>
 <script>
@@ -306,13 +307,68 @@ var CMDS = {
     Object.keys(CO.TEMPLATES).forEach(function(k){
       w('  <span class="k">'+esc(k)+'</span><span class="dim">'+
         esc(CO.TEMPLATES[k].join(' → '))+'</span>'); }); line(); },
-  grade: function(){ if(!song) return line(CP.err_nosong,'w');
+  /* Two halves: how it is built, and how it sounds. The second one renders the
+     loudest section and measures it, so every line carries a number. */
+  grade: async function(a){
+    if(!song) return line(CP.err_nosong,'w');
     var crit=CO.critique(song), sc=CO.score(crit); line();
-    w('<span class="b">'+esc(song.name)+' — '+sc+'/100</span>'); line();
-    crit.forEach(function(c){
-      var m={good:['ok','  ✓ '],warn:['w','  ! '],bad:['hot','  ✗ ']}[c[0]];
-      w('<span class="'+m[0]+'">'+m[1]+esc(c[1])+'</span>'); });
-    line(); },
+    w('<span class="b">'+esc(song.name)+' — arrangement '+sc+'/100</span>'); line();
+    crit.forEach(function(c){ w(sev(c[0]) + esc(c[1]) + '</span>'); });
+    if(a && a[0]==='arrangement') return line();
+    line();
+    var pr = w('<span class="dim">  listening…</span>');
+    try{
+      var m = await EAR.measure(song); EARLAST = m;
+      var mix = EAR.critiqueMix(m), ms = CO.score(mix);
+      pr.remove();
+      w('<span class="b">the mix — '+ms+'/100</span> <span class="dim">measured on <span class="a">'+
+        esc(m.section)+'</span>, the loudest section</span>'); line();
+      mix.forEach(function(c){ w(sev(c[0]) + esc(c[1]) + '</span>'); });
+      line(); EAR.table(m).forEach(function(r){ w('<span class="dim">  '+esc(r)+'</span>'); });
+      line();
+      w('<span class="dim">  <span class="a">improve</span> will fix the worst of it and measure again.</span>');
+      line();
+    }catch(e){ pr.remove(); line('  could not render to listen: '+(e.message||e),'w'); }
+  },
+  /* Render, grade, fix the worst thing, render again. Stops when the score stops
+     rising. No model call: theory plus measurement, on your machine. */
+  improve: async function(a){
+    if(!song) return line(CP.err_nosong,'w');
+    var rounds = Math.max(1, Math.min(12, parseInt(a[0],10) || 6));
+    snapshot(); line();
+    w('<span class="b">improving '+esc(song.name)+'</span> <span class="dim">render → measure → fix the worst → again</span>');
+    var last = -1, stall = 0, first = null, i;
+    for(i = 1; i <= rounds; i++){
+      var pr = w('<span class="dim">  ['+i+'] listening…</span>');
+      var m, sc;
+      try{ m = await EAR.measure(song); EARLAST = m;
+        sc = CO.score(EAR.critiqueMix(m)); }
+      catch(e){ pr.remove(); line('  could not render: '+(e.message||e),'w'); break; }
+      if(first === null) first = sc;
+      pr.innerHTML = '<span class="dim">  ['+i+'] mix '+sc+'/100</span>';
+      /* One flat round is normal - a fix can clear a fault without moving the
+         score until the next one lands. Two in a row means it is done. */
+      if(sc <= last){ if(++stall >= 2){ w('<span class="dim">  no further gain — stopping.</span>'); break; } }
+      else stall = 0;
+      last = Math.max(last, sc);
+      var did = EAR.fixWorst(song, m);
+      if(!did){ w('<span class="ok">  nothing left to fix at this threshold.</span>'); break; }
+      w('<span class="a">  → '+esc(did)+'</span>');
+      E.jump(E.songbar);                       // the live engine picks the edit up
+    }
+    try{ var fm = await EAR.measure(song); EARLAST = fm;
+      var fs = CO.score(EAR.critiqueMix(fm));
+      w('<span class="'+(fs>first?'ok':'dim')+'">  mix '+first+' → '+fs+'/100</span>');
+    }catch(e){}
+    line(); w('<span class="dim">  <span class="a">grade</span> for the full verdict · <span class="a">undo</span> puts it back</span>'); line();
+    draw();
+  },
+  freq: async function(){ if(!song) return line(CP.err_nosong,'w');
+    var pr = w('<span class="dim">  listening…</span>');
+    try{ var m = await EAR.measure(song); EARLAST = m; pr.remove(); line();
+      w('<span class="dim">  where each track actually lives, on <span class="a">'+esc(m.section)+'</span></span>'); line();
+      EAR.table(m).forEach(function(r){ w('<span class="dim">  '+esc(r)+'</span>'); }); line();
+    }catch(e){ pr.remove(); line('  could not render: '+(e.message||e),'w'); } },
   play: function(){ if(!song) return line(CP.err_nosong,'w'); E.play(); line('▸ playing','dim'); },
   stop: function(){ E.stop(); line('▸ stopped','dim'); },
   bpm: function(a){ var v=parseFloat(a[0]);
@@ -548,7 +604,10 @@ function deckKey(k){
   if(k==='<' || k==='>') return '→ '+d.seekMark(k==='>'?1:-1);
   return null;
 }
-var REC = null, PENDING = null, UNDO = [];
+var REC = null, PENDING = null, UNDO = [], EARLAST = null;
+var EAR = window.OONTZ_EAR;
+function sev(k){ return {good:'<span class="ok">  ✓ ', warn:'<span class="w">  ! ',
+                         bad:'<span class="hot">  ✗ '}[k] || '<span class="dim">  '; }
 var JAM = {on:false, bars:8, mark:0, turns:0, busy:false};
 setInterval(async function(){
   if(!JAM.on || JAM.busy || !E.playing || MODE === 'deck' || !song) return;

@@ -597,6 +597,36 @@ function renderSong(song, onProgress){
   });
 }
 
+/* A slice of the song, rendered offline. `only` mutes everything but one track
+   WITHOUT removing it from the state, so the kick still ducks what it ducks and
+   what you measure is the track as it sits in the mix, not in isolation. */
+function renderSlice(song, opts){
+  opts = opts || {};
+  var bar0 = opts.bar | 0, nBars = Math.max(1, opts.bars || 1), only = opts.only;
+  var C = global.OfflineAudioContext || global.webkitOfflineAudioContext;
+  var dur = 0, b;
+  for(b = 0; b < nBars; b++){
+    var s0 = stateAt(song, bar0 + b);
+    dur += 4 * 60 / ((s0 && s0.bpm) || song.bpm || 138);
+  }
+  var off = new C(opts.channels || 2, Math.ceil((dur + 1.2) * SR), SR);
+  var g = off.createGain(); g.gain.value = 0.85;
+  var comp = off.createDynamicsCompressor();
+  comp.threshold.value = -8; comp.ratio.value = 14; comp.attack.value = 0.002; comp.release.value = 0.10;
+  g.connect(comp); comp.connect(off.destination);
+  var fake = new Engine(); fake.ctx = off;
+  var t = 0;
+  for(b = 0; b < nBars; b++){
+    var st = stateAt(song, bar0 + b); if(!st) break;
+    var spb = 60 / (st.bpm || song.bpm || 138);
+    var order = only ? (st.order.indexOf(only) >= 0 ? [only] : []) : st.order;
+    for(var i = 0; i < 16; i++)
+      fake._hits(off, g, t + i * spb / 4, i, st.tracks, order, st.bpm || song.bpm || 138, st.swing || 0);
+    t += 4 * spb;
+  }
+  return off.startRendering();
+}
+
 /* A deck is a rendered song, a read position, and a rate. AudioBufferSourceNodes
    have no readable playhead, so position is anchor arithmetic and every seek
    makes a new source. Rate is native and sample-exact: that is the sync. */
@@ -798,7 +828,8 @@ Engine.prototype.stop = function(){
 
 global.oontz = {
   Engine: Engine, VOICES: VOICES, noteHz: noteHz, KEYS: KEYS, PADS: PADS,
-  Deck: Deck, gridFor: gridFor, renderSong: renderSong, xfGains: xfGains, wavBlob: wavBlob,
+  Deck: Deck, gridFor: gridFor, renderSong: renderSong, renderSlice: renderSlice,
+  xfGains: xfGains, wavBlob: wavBlob,
   stateAt: stateAt, sectionAt: sectionAt, totalBars: totalBars, SR: SR
 };
 })(typeof window !== "undefined" ? window : globalThis);

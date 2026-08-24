@@ -102,6 +102,12 @@ TEMPLATES = {
 ROLE_BARS = {"intro": 16, "build": 8, "drop": 32, "break": 8, "verse": 16,
              "fill": 4, "outro": 16}
 
+# The measurement grid. core.band_energy reports energy per entry, and
+# band_conflicts names them; the browser reads the same list out of theory.js so a
+# band means one thing in both languages.
+BANDS_HZ = [("sub", 20, 60), ("bass", 60, 250), ("low-mid", 250, 800),
+            ("mid", 800, 2500), ("presence", 2500, 8000), ("air", 8000, 20000)]
+
 # Which band an element owns. Two things fighting for one band is the most common
 # way a mix turns to mud, and it is the thing you cannot hear until it is fixed.
 FREQ_ROLES = {
@@ -251,7 +257,8 @@ def prompt_text():
 def as_dict():
     return {"genres": GENRES, "freq_roles": FREQ_ROLES, "rhythm": RHYTHM,
             "arrangement": ARRANGEMENT, "mixing": MIXING, "dj": DJ,
-            "templates": TEMPLATES, "role_bars": ROLE_BARS}
+            "templates": TEMPLATES, "role_bars": ROLE_BARS,
+            "bands_hz": [list(b) for b in BANDS_HZ]}
 
 
 def export_files():

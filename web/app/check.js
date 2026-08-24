@@ -232,4 +232,88 @@ A.strictEqual(html.split("OUT.scrollTop = OUT.scrollHeight").length - 1, 1,
     v + " deserves its own circuit, not an alias");
 });
 
-console.log("web checks pass  ·  write-through · pads · viz · touch · voices · notes · roll · jumps · decks · theory (" + checked + " plans in window) · legible · " + OZ.KEYS.length + " keys listed");
+/* -- the ear: a spectrum, and what it concludes ---------------------------- */
+require("./ear.js");
+var EAR = globalThis.OONTZ_EAR;
+var SR = 44100;
+function sine(hz, n){ var x = new Float32Array(n);
+  for(var i = 0; i < n; i++) x[i] = Math.sin(2 * Math.PI * hz * i / SR); return x; }
+
+var lo = EAR.bandEnergy(sine(50, 8192), SR), hi = EAR.bandEnergy(sine(12000, 8192), SR);
+A.ok(lo[0] > 0.95, "a 50Hz tone must read as sub, got " + lo[0].toFixed(3));
+A.ok(hi[5] > 0.95, "a 12kHz tone must read as air, got " + hi[5].toFixed(3));
+A.ok(Math.abs(lo.reduce(function(a, b){ return a + b; }, 0) - 1) < 0.02, "bands should sum to ~1");
+A.strictEqual(EAR.bandEnergy(new Float32Array(8192), SR)[0], 0, "silence has no energy anywhere");
+
+/* A hit that is not on the downbeat must still be measured. One 8192-sample
+   window covers 0.19s of a 1.6s bar, so measuring one window heard only step 0
+   and reported every offbeat track as silent. */
+var late = new Float32Array(SR);                 // one second, a 12kHz burst at 0.7s
+var burst = sine(12000, 4096);
+for(var b2 = 0; b2 < burst.length; b2++) late[Math.floor(SR * 0.7) + b2] = burst[b2];
+var lateBands = EAR.bandEnergy(late, SR);
+A.ok(lateBands[5] > 0.9, "a burst at 0.7s must be heard, got air=" + lateBands[5].toFixed(3));
+
+/* mid/side: the same signal in both ears has no side energy; opposite is all side */
+var t1 = sine(50, 8192), t2 = new Float32Array(t1.length);
+for(var q = 0; q < t1.length; q++) t2[q] = -t1[q];
+A.ok(EAR.lowMidSide(t1, t1, SR, 120).ratio < 0.01, "identical channels are mono");
+A.ok(EAR.lowMidSide(t1, t2, SR, 120).ratio > 10, "inverted channels are all side");
+
+/* the band a role owns, derived from theory's own numbers */
+A.strictEqual(EAR.ownerOf("bass"), "kick", "the kick owns 60-250Hz, so a bass there is the guest");
+A.strictEqual(EAR.ownerOf("air"), "hat", "the hat owns the air band");
+
+/* fixWorst picks the worst thing and makes one real move */
+function fakeSong(){
+  return {name: "x", bpm: 140, order: ["drop"], sections: {drop: {bars: 8, role: "drop", energy: 1,
+    order: ["kick", "bass", "hat"],
+    tracks: {kick: {voice: "kick", pat: "x...x...x...x...", gain: 1},
+             bass: {voice: "bass", pat: "x.x.x.x.x.x.x.x.", gain: 1, sc: 0, pan: 0.6},
+             hat:  {voice: "hat",  pat: "..x...x...x...x.", gain: 1}}}}};
+}
+function meas(over){
+  var m = {section: "drop", bar: 0, order: ["kick", "bass", "hat"],
+    tracks: {kick: [0.5, 0.45, 0.03, 0.01, 0.01, 0], bass: [0.1, 0.6, 0.2, 0.05, 0.03, 0.02],
+             hat: [0, 0.01, 0.02, 0.05, 0.2, 0.7]},
+    master: {peak: 0.5, peakDb: -6, rms: 0.2, bands: [0.3, 0.3, 0.2, 0.1, 0.05, 0.05],
+             low: {mid: 1, side: 0.01, ratio: 0.01}}};
+  if(over) Object.keys(over).forEach(function(k){ m[k] = over[k]; });
+  return m;
+}
+
+/* clipping outranks everything */
+var sg3 = fakeSong();
+var did = EAR.fixWorst(sg3, meas({master: {peak: 1.1, peakDb: 0.8, rms: 0.4,
+  bands: [0.3, 0.3, 0.2, 0.1, 0.05, 0.05], low: {mid: 1, side: 0.01, ratio: 0.01}}}));
+A.ok(/dB/.test(did), "a clipped master must be pulled down first: " + did);
+A.ok(sg3.sections.drop.tracks.kick.gain < 1, "the pull must actually change gains");
+
+/* then a wide low end gets centred */
+var sg4 = fakeSong();
+did = EAR.fixWorst(sg4, meas({master: {peak: 0.5, peakDb: -6, rms: 0.2,
+  bands: [0.3, 0.3, 0.2, 0.1, 0.05, 0.05], low: {mid: 1, side: 0.5, ratio: 0.5}}}));
+A.ok(/centred/.test(did), "a wide low end must be centred: " + did);
+A.strictEqual(sg4.sections.drop.tracks.bass.pan, 0, "the offending track is panned back to centre");
+
+/* then kick vs bass in the same band is a sidechain problem, not a level one */
+var sg5 = fakeSong();
+did = EAR.fixWorst(sg5, meas());
+A.ok(/sidechain/.test(did) && /bass/.test(did), "kick and bass in one band want ducking: " + did);
+A.strictEqual(sg5.sections.drop.tracks.bass.sc, 0.8, "the guest gets ducked");
+
+/* and it must eventually run out of things to say */
+var sg6 = fakeSong();
+sg6.sections.drop.tracks.bass.sc = 0.8; sg6.sections.drop.tracks.bass.pan = 0;
+var clean = meas();
+clean.tracks.bass = [0.05, 0.2, 0.4, 0.2, 0.1, 0.05];   // out of the kick's way
+A.strictEqual(EAR.fixWorst(sg6, clean), null, "a clean mix has nothing left to fix");
+
+/* the critique says what it measured, with the number */
+var crit = EAR.critiqueMix(meas());
+A.ok(crit.some(function(c){ return c[0] === "bad" && /kick and bass/.test(c[1]); }),
+  "the conflict must be reported: " + JSON.stringify(crit));
+A.ok(crit.every(function(c){ return ["good", "warn", "bad"].indexOf(c[0]) >= 0; }), "levels are good/warn/bad");
+A.ok(EAR.critiqueMix(meas()).some(function(c){ return /-6.00 dBFS/.test(c[1]); }), "headroom is quoted");
+
+console.log("web checks pass  ·  write-through · pads · viz · touch · voices · notes · roll · jumps · decks · theory (" + checked + " plans in window) · legible · ear · " + OZ.KEYS.length + " keys listed");

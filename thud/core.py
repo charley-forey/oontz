@@ -231,7 +231,11 @@ def apply_fx(x, chain, bpm):
     return x
 
 
-BANDS_HZ = [(20, 60), (60, 250), (250, 800), (800, 2500), (2500, 8000), (8000, 20000)]
+try:                                    # one grid, defined in theory.py
+    from .theory import BANDS_HZ as _BHZ
+    BANDS_HZ = [(lo, hi) for _n, lo, hi in _BHZ]
+except ImportError:
+    BANDS_HZ = [(20, 60), (60, 250), (250, 800), (800, 2500), (2500, 8000), (8000, 20000)]
 _BAND_BINS = {}
 
 

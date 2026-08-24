@@ -42,6 +42,38 @@
    "why": "Repetition is what makes a track memorable. A new idea every section is eight loops, not a song."
   }
  ],
+ "bands_hz": [
+  [
+   "sub",
+   20,
+   60
+  ],
+  [
+   "bass",
+   60,
+   250
+  ],
+  [
+   "low-mid",
+   250,
+   800
+  ],
+  [
+   "mid",
+   800,
+   2500
+  ],
+  [
+   "presence",
+   2500,
+   8000
+  ],
+  [
+   "air",
+   8000,
+   20000
+  ]
+ ],
  "dj": [
   {
    "id": "phrase_align",
