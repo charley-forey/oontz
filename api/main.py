@@ -103,6 +103,10 @@ def init():
           playlist_id TEXT NOT NULL, pos INTEGER NOT NULL, song_id TEXT NOT NULL,
           PRIMARY KEY(playlist_id, pos));
         """)
+        try:                                     # lineage arrived after the table did
+            c.execute("ALTER TABLE songs ADD COLUMN remix_of TEXT")
+        except sqlite3.OperationalError:
+            pass
         c.commit()
 
 
@@ -204,6 +208,7 @@ class SongIn(BaseModel):
     title: str = Field(default="untitled", max_length=120)
     data: dict
     public: bool = False
+    remix_of: str | None = Field(default=None, max_length=32)
 
 
 class MeIn(BaseModel):
@@ -357,18 +362,23 @@ def save_song(body: SongIn, request: Request, user=Depends(current_user)):
     bpm, kkey, seconds, nsec = _meta(body.data)
     now = time.time()
     with closing(db()) as c:
+        if body.remix_of:                        # credit must point at a real, hearable track
+            src = c.execute("SELECT public,user_id FROM songs WHERE id=?",
+                            (body.remix_of,)).fetchone()
+            if not src or (not src["public"] and src["user_id"] != user["id"]):
+                raise HTTPException(400, "remix_of must name a public track (or one of yours)")
         row = c.execute("SELECT id FROM songs WHERE user_id=? AND title=?",
                         (user["id"], body.title)).fetchone()
         if row:                                  # same title from the same user updates
             sid = row["id"]
             c.execute("""UPDATE songs SET data=?,bpm=?,kkey=?,seconds=?,sections=?,
-                         public=?,updated=? WHERE id=?""",
-                      (blob, bpm, kkey, seconds, nsec, int(body.public), now, sid))
+                         public=?,remix_of=?,updated=? WHERE id=?""",
+                      (blob, bpm, kkey, seconds, nsec, int(body.public), body.remix_of, now, sid))
         else:
             c.execute("""INSERT INTO songs(id,user_id,title,data,bpm,kkey,seconds,
-                         sections,public,created,updated) VALUES(?,?,?,?,?,?,?,?,?,?,?)""",
+                         sections,public,remix_of,created,updated) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)""",
                       (sid, user["id"], body.title, blob, bpm, kkey, seconds, nsec,
-                       int(body.public), now, now))
+                       int(body.public), body.remix_of, now, now))
         c.commit()
     return {"id": sid, "title": body.title, "public": body.public,
             "url": "%s/?song=%s" % (APP_URL, sid)}
@@ -397,7 +407,14 @@ def get_song(sid: str, request: Request, user=Depends(optional_user)):
         author = c.execute("SELECT handle,email FROM users WHERE id=?",
                            (row["user_id"],)).fetchone()
     who = (author["handle"] if author and author["handle"] else "anon")
+    with closing(db()) as c:
+        parent = c.execute("""SELECT s.id,s.title,u.handle FROM songs s
+                              JOIN users u ON u.id=s.user_id WHERE s.id=?""",
+                           (row["remix_of"],)).fetchone() if row["remix_of"] else None
+        n_remixes = c.execute("SELECT COUNT(*) n FROM songs WHERE remix_of=? AND public=1",
+                              (row["id"],)).fetchone()["n"]
     return {"id": row["id"], "title": row["title"], "bpm": row["bpm"],
+            "remix_of": dict(parent) if parent else None, "remixes": n_remixes,
             "key": row["kkey"], "seconds": row["seconds"], "sections": row["sections"],
             "public": bool(row["public"]), "plays": row["plays"] + 1, "by": who,
             "data": json.loads(row["data"])}
@@ -435,7 +452,7 @@ def gallery(sort: str = "new", limit_n: int = 40, request: Request = None):
              "long": "seconds DESC"}.get(sort, "updated DESC")
     with closing(db()) as c:
         rows = c.execute("""SELECT s.id,s.title,s.bpm,s.kkey,s.seconds,s.sections,
-                            s.plays,s.updated,u.handle,u.email
+                            s.plays,s.updated,s.remix_of,u.handle,u.email
                             FROM songs s JOIN users u ON u.id=s.user_id
                             WHERE s.public=1 ORDER BY %s LIMIT ?""" % order,
                          (limit_n,)).fetchall()

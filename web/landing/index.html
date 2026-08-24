@@ -258,6 +258,7 @@ const CMDS = {
       j.songs.forEach(function(sg){
         const mm = Math.floor((sg.seconds||0)/60), ss = String(Math.floor((sg.seconds||0)%60)).padStart(2,'0');
         w(`  <span data-cmd="play ${esc(sg.id)}"><span class="a">${esc(String(sg.id).padEnd(13))}</span>`+
+          (sg.remix_of ? `<span class="dim">↻</span>` : ` `)+
           `<span class="b">${esc(String(sg.title).slice(0,20).padEnd(20))}</span>`+
           `<span class="a">${String(Math.round(sg.bpm)).padStart(5)}</span>  `+
           `<span class="w">${esc(String(sg.kkey||'').slice(0,5).padEnd(5))}</span>`+
@@ -311,6 +312,8 @@ async function playTrack(id, fromQueue){
     E.loadSong(j.data); E.play();
     w(`<span class="ok">▸ ${esc(j.title)}</span> <span class="dim">· ${Math.round(j.bpm||0)} BPM · ${esc(j.key||'?')}`+
       ` · by ${esc(j.by||'?')} · \`stop\` ends it</span>`);
+    if(j.remix_of) w(`  <span class="dim">↻ a remix of <span class="b">${esc(j.remix_of.title)}</span> by ${esc(j.remix_of.handle||'?')} · play ${esc(j.remix_of.id)}</span>`);
+    if(j.remixes) w(`  <span class="dim">↻ remixed ${j.remixes} time${j.remixes>1?'s':''} by other people</span>`);
     w(`  <span class="dim">${CP.play_note}</span> <a href="https://oontz.sh/?song=${encodeURIComponent(id)}" target="_blank" rel="noopener">oontz.sh/?song=${esc(id)}</a>`);
     if(EQ.length && EQi + 1 < EQ.length){
       const next = EQ[++EQi];

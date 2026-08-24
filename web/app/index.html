@@ -280,6 +280,7 @@ var LOGO = ["  ▄▄▄   ▄▄▄  ▄▄▄▄▄ ▄▄▄▄▄ ▄▄▄�
             "  ▀▀▀   ▀▀▀  ▀   ▀   ▀   ▀▀▀▀▀▀   ▀ ▀▀▀▀ ▀   ▀"];
 
 function loadSong(sg, why){
+  REMIX_OF = null;                               /* a fresh song owes nobody, until `remix` says so */
   song = sg; E.loadSong(sg); E.play();
   if(window.OONTZ_VIZ) OONTZ_VIZ.song(sg);
   var crit = CO.critique(sg), sc = CO.score(crit);
@@ -439,7 +440,7 @@ var CMDS = {
     if(!token) return line('you need an account to publish. `login you@example.com`','w');
     try{ var r=await fetch(API+'/songs',{method:'POST',
         headers:{'content-type':'application/json','authorization':'Bearer '+token},
-        body:JSON.stringify({title:song.name, data:song, public:true})});
+        body:JSON.stringify({title:song.name, data:song, public:true, remix_of:REMIX_OF||undefined})});
       var j=await r.json();
       if(j.id) w('<span class="ok">▸ published.</span> <span class="dim">'+esc(j.url||'')+'</span>');
       else line('▸ '+(j.error||'could not publish'),'w');
@@ -577,6 +578,17 @@ var CMDS = {
     if(!E.playing) line('  '+CP.jam_needs_play,'dim');
   },
   real: function(){ line('▸ '+CP.real_go,'ok'); location.href='/py/'; },
+  remix: async function(a){
+    var id = (a[0]||'').trim();
+    if(!id) return line(CP.remix_usage,'w');
+    var d = w('<span class="dim">  fetching the source…</span>');
+    try{
+      var r = await fetch(API+'/songs/'+encodeURIComponent(id)); var j = await r.json(); d.remove();
+      if(!r.ok || !j.data) return line('▸ '+esc(j.error||'not found'),'w');
+      loadSong(j.data, 'a remix begins');
+      REMIX_OF = id; song.name = (j.title||'untitled')+' (flip)';
+      line('▸ '+CP.remix_on(j.title, j.by),'ok');
+    }catch(e){ d.remove(); line('could not reach the server','w'); } },
   midi: function(a){
     var M = window.OONTZ_MIDI; if(!M) return;
     if((a[0]||'') === 'off'){ M.off(); return line('▸ midi off','dim'); }
@@ -751,6 +763,7 @@ function deckKey(k){
   return null;
 }
 var REC = null, PENDING = null, UNDO = [], EARLAST = null;
+var REMIX_OF = null;                             /* set by `remix`, carried by `publish` */
 
 /* The model proposes music, never account actions. It has no business reaching
    `publish`, `login`, `key`, `playlist del` or `rec`, and the server prompt already

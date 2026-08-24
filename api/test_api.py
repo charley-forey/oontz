@@ -107,7 +107,7 @@ def main():
         st, g, _ = call("GET", "/songs/" + sid, token=tok)
         assert st == 200 and g["bpm"] == 140 and g["sections"] == 2 and g["seconds"] == round(48 * 240 / 140, 1), g
         st, p, _ = call("POST", "/songs/%s/publish" % sid, token=tok)
-        assert st == 200 and p["public"] is True and p["url"].endswith("#s=" + sid), p
+        assert st == 200 and p["public"] is True and p["url"].endswith("/t/" + sid), p
 
         # -- handle -------------------------------------------------------------------
         assert call("PATCH", "/me", {"handle": "x"}, token=tok)[0] == 400, "2 chars must fail"
@@ -179,8 +179,21 @@ def main():
         assert st != 503 and NOKEY not in j.get("error", ""), ("BYO key must reach upstream", st, j)
         assert 400 <= st < 600, ("a bogus key fails upstream, it does not succeed", st, j)
 
+        # -- remix lineage ------------------------------------------------------------
+        st, ra, _ = call("POST", "/songs", {"title": "original", "data": song, "public": True}, token=tok)
+        assert st == 200, ra
+        st, rb, _ = call("POST", "/songs", {"title": "the flip", "data": song,
+                                            "public": True, "remix_of": ra["id"]}, token=tok)
+        assert st == 200, rb
+        st, gb, _ = call("GET", "/songs/" + rb["id"])
+        assert st == 200 and gb["remix_of"] and gb["remix_of"]["id"] == ra["id"], ("lineage lost", gb)
+        st, ga, _ = call("GET", "/songs/" + ra["id"])
+        assert st == 200 and ga["remixes"] == 1, ("the original should count its remixes", ga)
+        st, bad, _ = call("POST", "/songs", {"title": "x", "data": song, "remix_of": "nope404"}, token=tok)
+        assert st == 400, ("remix_of accepted a ghost", st, bad)
+
         print("api checks pass  ·  link -> sqlite -> verify · save · publish · handle · "
-              "playlist · /p/{id} · takes · BYO key (upstream said %s)" % st)
+              "playlist · /p/{id} · takes · remix · BYO key (upstream said %s)" % st)
     finally:
         proc.terminate()
         try:
