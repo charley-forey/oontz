@@ -212,6 +212,19 @@ stale; `qa` runs 192 arrangements through both composers and requires identical 
   Learned twice over that a shared checkout means anchors drift under your feet:
   add only the files you touched, and re-read before you patch.
 
+- 2026-08-24 -- cycle 12: sounds and sights, both sites. Four voices join BOTH
+  engines in the same commit -- bell (inharmonic FM, 3.53), donk (an octave-up
+  sine falling home through a resonant band), wob (a reese with an LFO on its
+  filter) and air (noise breathing through a narrow band) -- python renders
+  sanity-checked (air clipped at 1.72 until tanh), browser twins instantiated
+  live. The canvas learns `viz auto`: the section picks the mode (builds run,
+  drops blow out, breaks drift) and a new `terrain` mode draws a wireframe
+  landscape the bass builds. Landscape phones get a 16-wide deck row and a
+  shorter rack. And oontz.music catches up to the .sh look: the SAME viz.js
+  (engine-copy gate now guards both files) starts in auto the moment a gallery
+  track plays, plus a manifest and icon so the gallery installs. Verified live
+  on both pages; landing engine playing with viz auto attached.
+
 ## Cycle log
 
 Append one line per completed cycle: what changed, what it measured, what it learned.

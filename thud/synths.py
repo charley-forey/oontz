@@ -190,10 +190,65 @@ def v_chord(hz, dur, accent=False, quality="min", cutoff=2200.0, res=0.35):
 CHORDS = {"min": (0, 3, 7), "maj": (0, 4, 7), "min7": (0, 3, 7, 10),
           "sus4": (0, 5, 7), "dim": (0, 3, 6)}
 
+@functools.lru_cache(maxsize=1024)
+def v_bell(hz, dur, accent=False, ratio=3.53, shimmer=7.0):
+    """Inharmonic FM bell. 3.53 is the classic clangorous ratio; a whisper of a
+    second partial at 7.0 gives it air. The index dies fast - strike, then ring."""
+    n = max(64, int(SR * dur))
+    t = np.arange(n) / SR
+    idx = (9.0 if accent else 6.0) * np.exp(-t / (dur * 0.12))
+    mod = np.sin(TAU * hz * ratio * t) * idx + np.sin(TAU * hz * shimmer * t) * idx * 0.15
+    x = np.sin(TAU * hz * t + mod) * np.exp(-t / (dur * 0.45))
+    return np.tanh(x * 1.2) * 0.6
+
+
+@functools.lru_cache(maxsize=1024)
+def v_donk(hz, dur, accent=False):
+    """The donk: a sine an octave up that falls home through a resonant bandpass.
+    Bouncy, rude, unmistakable. Nobody ever used one tastefully; do not start."""
+    n = max(64, int(SR * dur))
+    t = np.arange(n) / SR
+    sweep = hz * 2 * (2.0 ** (-t / max(dur * 0.18, 1e-3)))    # octave drop, fast
+    ph = np.cumsum(np.maximum(sweep, hz * 2)) / SR
+    x = np.sin(TAU * ph) * env(n, dur * 0.3)
+    x = svf(x, float(hz * 4), 0.9, "bp")
+    return np.tanh(x * (3.2 if accent else 2.2)) * 0.7
+
+
+@functools.lru_cache(maxsize=1024)
+def v_wob(hz, dur, accent=False, rate=3.0, cutoff=1400.0):
+    """A reese with an LFO on its filter - the wob. The rate is in Hz, not synced;
+    at bar lengths it lands near 8ths anyway, and drift is character here."""
+    n = max(64, int(SR * dur))
+    t = np.arange(n) / SR
+    x = saw(hz, n) + saw(hz * 1.01, n) + saw(hz * 0.5, n) * 0.6
+    lfo = 0.5 - 0.5 * np.cos(TAU * rate * t)                  # starts closed, opens
+    lo, hi = 180.0, cutoff * (1.6 if accent else 1.0)
+    out = np.empty(n)
+    step = 512                                                 # ponytail: block-wise svf, per-sample cutoff not needed
+    for i in range(0, n, step):
+        j = min(n, i + step)
+        fc = lo + (hi - lo) * float(lfo[(i + j) // 2])
+        out[i:j] = svf(x[i:j], fc, 0.7, "lp")
+    return np.tanh(out * 0.8 * env(n, dur * 0.8)) * 0.62
+
+
+@functools.lru_cache(maxsize=1024)
+def v_air(hz, dur, accent=False):
+    """Air: noise breathing through a narrow band four octaves up, with a faint
+    root sine so it still belongs to the key. A texture, not a note."""
+    n = max(64, int(SR * dur))
+    t = np.arange(n) / SR
+    x = svf(noise(n, "air"), float(min(hz * 8, 12000)), 0.95, "bp") * 2.2
+    x += np.sin(TAU * hz * 2 * t) * 0.12
+    return np.tanh(x * _atk(n, dur * 0.4) * env(n, dur * 0.9)) * (0.5 if accent else 0.38)
+
+
 VOICES.update({
     "sub": v_sub, "reese": v_reese, "hoover": v_hoover, "pluck": v_pluck,
     "lead": v_lead, "screech": v_screech, "pad": v_pad, "atmos": v_atmos,
     "fm": v_fm, "chord": v_chord,
+    "bell": v_bell, "donk": v_donk, "wob": v_wob, "air": v_air,
 })
 
 

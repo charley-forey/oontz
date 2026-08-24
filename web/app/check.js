@@ -412,4 +412,13 @@ var sw = fs2.readFileSync(path2.join(__dirname, "sw.js"), "utf8");
   A.ok(fs2.existsSync(path2.join(__dirname, f)), "sw.js precaches " + f + " but it does not exist");
 });
 
-console.log("web checks pass  ·  write-through · pads · viz · touch · midi · voices · pwa · notes · roll · jumps · decks · theory (" + checked + " plans in window) · legible · ear · " + OZ.KEYS.length + " keys listed");
+/* -- new circuits and the auto canvas --------------------------------------- */
+["bell", "donk", "wob", "air"].forEach(function(v){
+  A.ok(typeof OZ.VOICES[v] === "function", v + " is missing from the browser bank");
+});
+A.ok(V.MODES.terrain, "terrain mode exists");
+A.strictEqual(V.autoFor("drop"), "tunnel", "a drop blows out");
+A.strictEqual(V.autoFor("break"), "particles", "a break drifts");
+A.strictEqual(V.autoFor("nosuchrole"), "tunnel", "unknown roles still draw");
+
+console.log("web checks pass  ·  write-through · pads · viz · touch · midi · voices+4 · viz-auto · pwa · notes · roll · jumps · decks · theory (" + checked + " plans in window) · legible · ear · " + OZ.KEYS.length + " keys listed");

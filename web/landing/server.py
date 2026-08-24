@@ -68,6 +68,8 @@ def share(kind, sid):
 
 
 class Handler(http.server.SimpleHTTPRequestHandler):
+    extensions_map = dict(http.server.SimpleHTTPRequestHandler.extensions_map,
+                          **{".webmanifest": "application/manifest+json"})
     def __init__(self, *a, **kw):
         super().__init__(*a, directory=ROOT, **kw)
 

@@ -1,0 +1,13 @@
+{
+  "name": "oontz — techno from a command line",
+  "short_name": "oontz.music",
+  "description": "The story, the gallery, and every track playable in the page — each one is its own source code.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#07090b",
+  "theme_color": "#07090b",
+  "icons": [
+    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" },
+    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "maskable" }
+  ]
+}

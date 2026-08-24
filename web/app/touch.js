@@ -33,7 +33,9 @@ css.textContent =
   "#touch button{font:inherit;font-size:12px;color:var(--fg);background:rgba(255,255,255,.04);" +
     "border:1px solid var(--line);border-radius:6px;padding:9px 0;touch-action:manipulation;min-height:40px}" +
   "#touch button:active,#touch button.held{background:var(--accent);color:var(--bg);border-color:var(--accent)}" +
-  "#touch .pad{color:var(--accent)} #touch .trk{opacity:.75;min-height:32px;padding:5px 0}";
+  "#touch .pad{color:var(--accent)} #touch .trk{opacity:.75;min-height:32px;padding:5px 0}" +
+  "@media (orientation: landscape){#touch{grid-template-columns:repeat(16,1fr);gap:4px;padding:4px 0 0}" +
+    "#touch button{min-height:30px;padding:4px 0;font-size:11px}#rack{max-height:22vh}}";
 document.head.appendChild(css);
 
 var deck = document.createElement("div");

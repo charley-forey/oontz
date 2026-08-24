@@ -2,6 +2,9 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<meta name="theme-color" content="#07090b">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>oontz — techno from a command line</title>
 <meta name="description" content="A terminal instrument for making and mixing techno. Text patterns are the interface. Free, runs in your browser.">
@@ -21,6 +24,7 @@
     overflow:hidden;
   }
   #bg{position:fixed;inset:0;z-index:0;opacity:.5}
+  #viz{position:fixed;inset:0;z-index:0}
   #scan{position:fixed;inset:0;z-index:2;pointer-events:none;
     background:repeating-linear-gradient(180deg,rgba(0,0,0,0) 0 2px,rgba(0,0,0,.28) 2px 4px);
     mix-blend-mode:multiply}
@@ -55,7 +59,7 @@
 </style>
 </head>
 <body>
-<canvas id="bg"></canvas>
+<canvas id="bg"></canvas><canvas id="viz"></canvas>
 <div id="scan"></div><div id="vig"></div>
 <div id="wrap">
   <div id="out"></div>
@@ -64,6 +68,7 @@
 </div>
 <script src="copy.js"></script>
 <script src="/engine/oontz.js"></script>
+<script src="/engine/viz.js"></script>
 <script>
 "use strict";
 const OUT = document.getElementById('out'), IN = document.getElementById('in');
@@ -308,7 +313,9 @@ async function playTrack(id, fromQueue){
     const r = await fetch(API + '/songs/' + encodeURIComponent(id));
     const j = await r.json(); d.remove();
     if(!r.ok || !j.data) return line('▸ ' + esc(j.detail||'not found'), 'w');
-    if(!E) E = new oontz.Engine();
+    if(!E){ E = new oontz.Engine();
+      if(window.OONTZ_VIZ){ OONTZ_VIZ.start(E); OONTZ_VIZ.mode('auto'); }   /* the canvas reads the score */
+    }
     E.loadSong(j.data); E.play();
     w(`<span class="ok">▸ ${esc(j.title)}</span> <span class="dim">· ${Math.round(j.bpm||0)} BPM · ${esc(j.key||'?')}`+
       ` · by ${esc(j.by||'?')} · \`stop\` ends it</span>`);

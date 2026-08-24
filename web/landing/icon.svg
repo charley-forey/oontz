@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <rect width="512" height="512" rx="96" fill="#07090b"/>
+  <!-- a bar of the grid: four kicks and the hats between them -->
+  <g fill="#22e0d0">
+    <rect x="72"  y="216" width="56" height="80" rx="10"/>
+    <rect x="168" y="236" width="40" height="40" rx="8" fill="#46545f"/>
+    <rect x="232" y="216" width="56" height="80" rx="10"/>
+    <rect x="328" y="236" width="40" height="40" rx="8" fill="#46545f"/>
+    <rect x="392" y="216" width="56" height="80" rx="10"/>
+  </g>
+  <rect x="72" y="344" width="376" height="14" rx="7" fill="#ff4fa3"/>
+  <rect x="72" y="154" width="180" height="14" rx="7" fill="#46545f"/>
+</svg>

@@ -414,6 +414,60 @@ VOICES.chord = function(e, t, o){               /* stab's warmer cousin: minor7 
   });
 };
 
+VOICES.bell = function(e, t, o){            /* inharmonic FM: strike, then ring */
+  var c = e.ctx, hz = o.hz || 440, dur = o.dur || 0.6;
+  var car = c.createOscillator(), mod = c.createOscillator(), mg = c.createGain(), g = c.createGain();
+  car.frequency.value = hz; mod.frequency.value = hz * 3.53;
+  mg.gain.setValueAtTime(hz * (o.accent ? 9 : 6), t);
+  mg.gain.exponentialRampToValueAtTime(hz * 0.05, t + dur * 0.4);
+  mod.connect(mg); mg.connect(car.frequency);
+  envTo(g, t, 0.002, dur, 0.14);
+  car.connect(g); g.connect(o.dest);
+  car.start(t); mod.start(t); car.stop(t + dur + 0.05); mod.stop(t + dur + 0.05);
+};
+
+VOICES.donk = function(e, t, o){            /* an octave-up sine falling home through a resonant band */
+  var c = e.ctx, hz = o.hz || 220, dur = o.dur || 0.22;
+  var osc = c.createOscillator(), f = c.createBiquadFilter(), g = c.createGain();
+  osc.type = "sine";
+  osc.frequency.setValueAtTime(hz * 4, t);
+  osc.frequency.exponentialRampToValueAtTime(hz * 2, t + dur * 0.18);
+  f.type = "bandpass"; f.frequency.value = hz * 4; f.Q.value = 8;
+  envTo(g, t, 0.002, dur * 0.6, o.accent ? 0.26 : 0.2);
+  osc.connect(f); f.connect(g); g.connect(o.dest);
+  osc.start(t); osc.stop(t + dur + 0.05);
+};
+
+VOICES.wob = function(e, t, o){             /* a reese with an LFO on its filter: the wob */
+  var c = e.ctx, hz = o.hz || 55, dur = o.dur || 0.5;
+  var f = c.createBiquadFilter(), g = c.createGain(), lfo = c.createOscillator(), lg = c.createGain();
+  f.type = "lowpass"; f.Q.value = 6;
+  f.frequency.value = 700;
+  lfo.frequency.value = 3; lg.gain.value = (o.accent ? 900 : 550);
+  lfo.connect(lg); lg.connect(f.frequency);
+  envTo(g, t, 0.01, dur * 0.85, 0.16);
+  f.connect(g); g.connect(o.dest);
+  [1, 1.01, 0.5].forEach(function(m, i){
+    var osc = c.createOscillator(); osc.type = "sawtooth"; osc.frequency.value = hz * m;
+    osc.connect(f); osc.start(t); osc.stop(t + dur + 0.05);
+  });
+  lfo.start(t); lfo.stop(t + dur + 0.05);
+};
+
+VOICES.air = function(e, t, o){             /* noise breathing through a narrow band, four octaves up */
+  var c = e.ctx, hz = o.hz || 220, dur = o.dur || 0.8;
+  var n = Math.max(1, Math.floor(c.sampleRate * dur)), buf = c.createBuffer(1, n, c.sampleRate);
+  var d = buf.getChannelData(0);
+  for(var i = 0; i < n; i++) d[i] = Math.random() * 2 - 1;
+  var src = c.createBufferSource(); src.buffer = buf;
+  var f = c.createBiquadFilter(), g = c.createGain(), root = c.createOscillator(), rg = c.createGain();
+  f.type = "bandpass"; f.frequency.value = Math.min(hz * 8, 12000); f.Q.value = 12;
+  envTo(g, t, dur * 0.35, dur * 0.6, 0.12);
+  root.frequency.value = hz * 2; rg.gain.value = 0.03;
+  src.connect(f); f.connect(g); root.connect(rg); rg.connect(g); g.connect(o.dest);
+  src.start(t); root.start(t); root.stop(t + dur + 0.05);
+};
+
 VOICES.kick_dist = VOICES.kick_hard; VOICES.reese = VOICES.bass;
 VOICES.ride = VOICES.oh; VOICES.crash = VOICES.oh; VOICES.metal = VOICES.perc;
 VOICES.rim = VOICES.perc; VOICES.noise_hit = VOICES.perc; VOICES.tom = VOICES.perc;

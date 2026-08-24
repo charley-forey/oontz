@@ -235,6 +235,7 @@ C.help = [
   ["theory",                "what the machine knows"],
   ["rules",                 "every rule it grades you by, with the reason"],
   ["bands",                 "who owns which frequencies, and why"],
+  ["viz auto",              "the section picks the visual: builds run, drops blow out"],
   ["viz tunnel",            "the canvas. it knows where the drop is"],
   ["theme acid",            "colours. a song remembers its own"],
   ["calm",                  "dim the visuals when you want to read"],
