@@ -184,6 +184,23 @@ stale; `qa` runs 192 arrangements through both composers and requires identical 
   song played. Learned that a hidden tab can be silently DISCARDED by Chrome, not
   just throttled -- state you proved one call ago may be a fresh boot now.
 
+- 2026-08-24 -- cycle 11: the seven, greenlit and shipped in order. (1) /py/ is
+  reachable (`real` on oontz.sh) and verified: a typed :compose built 112 bars and
+  render_bar streamed stereo through the worker; the SPA rewrite ate /py/?query and
+  was fixed. (2) breakbeat, electro and ambient join theory.py with style packs --
+  264 arrangements identical cross-language, and the qa fuzzer caught 'compose -1
+  inf' overflowing (minutes clamp now). (3) jam has ears: the grade rides each turn,
+  `jam style <mood>` leans it, and the model answers with a six-word '# why' the
+  page prints. (4) mix <playlist>: deck b renders ahead, syncs 16 bars out, an eased
+  crossfade walks over, the freed deck loads the next track -- blend, handover and
+  preload verified with faked positions. (5) WebMIDI by the touch.js trick: notes
+  dispatch the KeyboardEvents the keys would have sent; pads 36-51 are steps, the
+  sustain pedal is play. (6) A manifest, a grid-bar icon and a network-first service
+  worker: oontz.sh installs and serves offline. (7) remix <id> + automatic lineage:
+  the API validates credit, counts flips both directions, the landing page says so.
+  Learned twice over that a shared checkout means anchors drift under your feet:
+  add only the files you touched, and re-read before you patch.
+
 ## Cycle log
 
 Append one line per completed cycle: what changed, what it measured, what it learned.
