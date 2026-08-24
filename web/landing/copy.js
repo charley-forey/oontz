@@ -37,6 +37,49 @@ C.menu = [
   ["help",  "everything else"]
 ];
 
+/* The whole surface, grouped by what you want to do. Every row runs on tap. */
+C.groups = [
+  {h: "LISTEN", items: [
+    ["tour",      "the guided walk. two minutes; one of them is a banger"],
+    ["demo",      "a beat in this tab, right now"],
+    ["gallery",   "what people made - every track plays right here"],
+    ["charts",    "most forked, most-shared patterns, the tempo spread"],
+    ["playlists", "bundles people shared, start to finish"]]},
+  {h: "UNDERSTAND", items: [
+    ["what",      "what this is, in sixty seconds"],
+    ["spec",      "why a song here is source code, and what that buys"],
+    ["why",       "why a command line and not, you know, a real interface"],
+    ["theory",    "what the machine knows about music"]]},
+  {h: "MAKE", items: [
+    ["open",      "oontz.sh - the actual instrument, whole, in a tab"],
+    ["help",      "every command, including the sharp ones"]]}
+];
+C.first_visit = "type `tour` and the site walks you through itself.";
+C.tour_off = "wandering off - the tour will be here.";
+C.tour_1 = [
+  {t: "The tour. Step one: it makes noise.", cls: "b"},
+  {s: "This is not a video of the product. It is the product."}
+];
+C.tour_2 = [
+  {t: "Step two: the whole idea in one character.", cls: "b"},
+  {s: "That kick pattern is text. Change one character, the song changes:"}
+];
+C.tour_3 = [
+  {t: "Step three: everything anyone publishes is source.", cls: "b"},
+  {s: "Tap any row and the actual track plays here - the recipe, not a recording."}
+];
+C.tour_4 = [
+  {t: "Step four: because songs are source, music has charts.", cls: "b"},
+  {s: "Which pattern is most shared. Which track got forked most. Tap and hear."}
+];
+C.tour_done = [
+  {},
+  {t: "That is the story. The rest is you.", cls: "b"},
+  {s: "The full instrument is one tab away - free, no account, phone included:"},
+  {c: "open", d: "oontz.sh - pads, decks, an AI bandmate, rooms for two"},
+  {}
+];
+
 C.help = [
   ["demo",                  "start the loop"],
   ["stop",                  "end it"],
@@ -57,6 +100,8 @@ C.help = [
   ["tree <id>",             "the remix family tree: who flipped what"],
   ["charts",                "what the source graph knows: most forked, most-shared patterns, tempos"],
   ["(at oontz.sh) room new", "two browsers, one track, live — the AI is in the room too"],
+  ["tour",                  "the guided two-minute walk through everything"],
+  ["watch",                 "nothing but the visuals while a track plays. Esc returns"],
   ["open",                  "go to oontz.sh, where the real one lives"],
   ["clear",                 "tidy up"]
 ];

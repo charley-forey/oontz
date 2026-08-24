@@ -346,6 +346,19 @@ stale; `qa` runs 192 arrangements through both composers and requires identical 
   hard way: a .song is 15-40KB and the relay's 16KB cap CLOSED the sender - the
   retry then double-counted presence. 128KB cap, oversize dropped not executed.
 
+- 2026-08-24 -- cycle 20: oontz.music wears the same glass. The landing adopts the
+  instrument's design language - unified tokens, the --plate panels with blur on a
+  new live status strip and the prompt bar - and becomes a guided journey: the menu
+  is grouped LISTEN / UNDERSTAND / MAKE (every row a tap target), `tour` walks demo
+  -> the one-character moment -> the spec story -> the live gallery -> charts ->
+  the invite (Enter advances, anything else wanders off politely), first visitors
+  get one nudge, and the strip fills with live numbers (track count, most-shared
+  pattern, most-forked track) once the API answers. Also: local dev ports joined
+  the CORS regex - the strip's 'Failed to fetch' on localhost was CORS, not code,
+  and the production fallback origins were already allowed by the loop's earlier
+  fix. Reminder recorded again: oontz.music THE DOMAIN cannot render any version
+  until Railway's edge is fixed; the railway.app URL is the truth.
+
 ## Cycle log
 
 Append one line per completed cycle: what changed, what it measured, what it learned.

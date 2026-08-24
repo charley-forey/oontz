@@ -12,9 +12,10 @@
 <meta property="og:description" content="Techno from a command line. Type a pattern, hear it.">
 <style>
   :root{
-    --bg:#080a0c; --surface:#0e1216; --line:#1c2530; --dim:#4a5866;
+    --bg:#07090b; --surface:#0e1216; --line:#1c2530; --dim:#4a5866;
     --fg:#c8d4de; --bright:#f2f7fb; --accent:#22e0d0; --accent2:#ff4fa3;
     --warn:#ffb020; --hot:#ff3b3b; --ok:#4ade80;
+    --plate:rgba(6,9,12,.62);          /* the same glass the instrument wears */
     --mono:ui-monospace,"SF Mono",Menlo,Consolas,"DejaVu Sans Mono",monospace;
   }
   *{box-sizing:border-box}
@@ -35,9 +36,14 @@
   #out{flex:1;overflow-y:auto;white-space:pre-wrap;word-break:break-word;
     scrollbar-width:thin;scrollbar-color:var(--line) transparent}
   #out::-webkit-scrollbar{width:8px}
-  #out::-webkit-scrollbar-thumb{background:var(--line);border-radius:4px}
-  #bar{display:flex;align-items:center;gap:8px;border-top:1px solid var(--line);
-    padding-top:10px;margin-top:8px}
+  #out::-webkit-scrollbar-thumb{background:var(--line);border-radius:5px}
+  #hud{padding:5px 9px;margin-bottom:8px;font-size:.92em;min-height:1.5em;
+    background:var(--plate);border:1px solid var(--line);border-radius:5px;
+    backdrop-filter:blur(7px);-webkit-backdrop-filter:blur(7px);
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  #bar{display:flex;align-items:center;gap:8px;margin-top:8px;padding:8px 9px;
+    background:var(--plate);border:1px solid var(--line);border-radius:5px;
+    backdrop-filter:blur(7px);-webkit-backdrop-filter:blur(7px)}
   #ps1{color:var(--accent);white-space:nowrap}
   #in{flex:1;background:none;border:0;outline:0;color:var(--bright);
     font:inherit;caret-color:var(--accent)}
@@ -62,6 +68,7 @@
 <canvas id="bg"></canvas><canvas id="viz"></canvas>
 <div id="scan"></div><div id="vig"></div>
 <div id="wrap">
+  <div id="hud"><span class="dim">oontz · source code for music</span></div>
   <div id="out"></div>
   <div id="bar"><span id="ps1">oontz&nbsp;&gt;</span><input id="in" autocomplete="off"
     autocapitalize="off" spellcheck="false" aria-label="terminal input"></div>
@@ -246,6 +253,15 @@ const CMDS = {
   open(){ block(CP.open);
     w(`  <a href="https://oontz.sh" target="_blank" rel="noopener">https://oontz.sh →</a>`);
     line(); },
+  tour(){
+    TOURQ = [
+      function(){ block(CP.tour_1); CMDS.demo(); },
+      function(){ stop(); block(CP.tour_2); run('kick x...x...x...x..x'); },
+      function(){ stop(); stopTrack(); block(CP.spec); },
+      function(){ block(CP.tour_3); CMDS.gallery([]); },
+      function(){ block(CP.tour_4); CMDS.charts(); },
+    ];
+    tourNext(); },
   async charts(){
     const d = w('<span class="dim">  reading the source graph…</span>');
     try{
@@ -422,9 +438,44 @@ function run(raw){
   line(`${v0}: no such command. type help`, 'w');
 }
 
+/* -- the tour: Enter walks, anything else wanders off ---------------------- */
+let TOURQ = [];
+function tourNext(){
+  const step = TOURQ.shift();
+  if(!step) return;
+  step();
+  if(TOURQ.length) w('<span class="dim">  Enter continues the tour · type anything else to wander off</span>');
+  else block(CP.tour_done);
+}
 IN.addEventListener('keydown', e=>{
-  if(e.key==='Enter'){ const v=IN.value; IN.value=''; run(v); }
+  if(e.key==='Enter'){ const v=IN.value; IN.value='';
+    if(!v.trim() && TOURQ.length) return tourNext();
+    if(v.trim() && TOURQ.length){ TOURQ = []; line(CP.tour_off,'dim'); }
+    run(v); }
 });
+
+/* -- the strip: the site says it is alive, with numbers -------------------- */
+const HUD = document.getElementById('hud');
+let STRIP_TRIED = false;
+async function strip(){
+  let bits = ['<span class="b">oontz</span> <span class="dim">· source code for music</span>'];
+  try{
+    const g = await (await fetch(API+'/gallery?limit_n=1')).json();
+    const n = (await (await fetch(API+'/gallery?limit_n=100')).json()).songs.length;
+    bits.push('<span data-cmd="gallery"><span class="a">'+n+' tracks</span></span>');
+  }catch(e){}
+  try{
+    const c = await (await fetch(API+'/charts')).json();
+    if(c.top_patterns && c.top_patterns.length)
+      bits.push('<span data-cmd="gallery pat '+esc(c.top_patterns[0].pat)+'"><span class="dim">most shared</span> <span class="a">'+esc(c.top_patterns[0].pat)+'</span></span>');
+    if(c.most_remixed && c.most_remixed.length)
+      bits.push('<span data-cmd="tree '+esc(c.most_remixed[0].id)+'"><span class="dim">most forked</span> <span class="a">'+esc(String(c.most_remixed[0].title).slice(0,18))+'</span></span>');
+  }catch(e){}
+  bits.push('<span data-cmd="charts"><span class="a">charts</span></span>');
+  bits.push('<a href="https://oontz.sh" target="_blank" rel="noopener">open the real one →</a>');
+  HUD.innerHTML = bits.join(' <span class="dim">·</span> ');
+  if(bits.length < 4 && !STRIP_TRIED){ STRIP_TRIED = true; setTimeout(strip, 6000); }  /* the API fallback may still be settling */
+}
 const COARSE = matchMedia('(pointer: coarse)').matches;
 addEventListener('click', e=>{
   if(e.target.tagName==='A') return;
@@ -441,9 +492,15 @@ addEventListener('click', e=>{
  await type(CP.tagline||"techno from a command line.",'b',14);line();await sleep(120);
  (CP.boot||[]).forEach(function(t){ w(`<span class="dim">  ${esc(t)}</span>`); });
  line();
- (CP.menu||[]).forEach(function(kv){
-   w(`  <span class="k">${esc(kv[0])}</span><span class="dim">${esc(kv[1])}</span>`); });
+ (CP.groups||[]).forEach(function(g){
+   w(`  <span class="dim" style="letter-spacing:2px">${esc(g.h)}</span>`);
+   g.items.forEach(function(kv){
+     w(`    <span class="k">${esc(kv[0])}</span><span class="dim">${esc(kv[1])}</span>`); });
+ });
  line();IN.focus();
+ strip();
+ try{ if(!localStorage.getItem('oontz_seen')){ localStorage.setItem('oontz_seen','1');
+   w(`  <span class="a">first time?</span> <span class="dim">${esc(CP.first_visit)}</span>`); line(); } }catch(e){}
  if(window.OONTZ_BOOT){
    if(window.OONTZ_WATCH){
      line('▸ tap anywhere for the light show','a');

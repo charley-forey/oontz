@@ -59,7 +59,7 @@ app = FastAPI(title="oontz", docs_url=None, redoc_url=None)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[APP_URL, SITE_URL, "http://localhost:3000", "http://localhost:5173"],
-    allow_origin_regex=r"https://[a-z0-9-]+\.up\.railway\.app",   # the hostnames that work when a custom domain does not
+    allow_origin_regex=r"https://[a-z0-9-]+\.up\.railway\.app|http://localhost:\d+",  # fallback hosts + local dev
     allow_credentials=False,
     allow_methods=["GET", "POST", "PATCH", "PUT", "DELETE", "OPTIONS"],
     allow_headers=["*"],
