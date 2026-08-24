@@ -30,6 +30,9 @@ Everything except the first two is optional; the service starts and works withou
 | `POST/GET/DELETE /takes…` | ✓ | takes: the command log as text (≤64KB), never audio |
 | `POST/GET/PATCH/DELETE /playlists…` · `PUT /playlists/{id}/items` | ✓ | ordered song lists; `public` makes them shareable |
 | `GET /playlists/public` · `GET /p/{id}` | — | what the landing page reads |
+| `GET /search?pat=&track=&bpm=&key=` | — | find tracks by the music itself: exact pattern, BPM window, key |
+| `GET /similar/{id}` | — | more like this one, scored on structure, reasons included |
+| `GET /songs/{id}/remixes` | — | the family tree: ancestors up, public flips down |
 | `POST /ai/ask` | — | AI proxy; honours `X-Anthropic-Key` (used, never stored or logged) |
 
 Run the tests with `python api/test_api.py` — they spawn a real uvicorn against a

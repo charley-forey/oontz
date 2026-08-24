@@ -147,7 +147,7 @@ What is true today vs. future (kept honest so the loop builds in order):
 | AI edits source in the open; user vetoes | shipped (jam/produce/dream) |
 | Provenance: remix lineage both directions | shipped |
 | In-instrument structural diff, source export/import | shipped this cycle |
-| Search by bpm/key | shipped; by pattern/structure | later |
+| Search by bpm/key/pattern/structure + similarity + family tree | shipped |
 | Module registry, marketplace, PR merge UI | later |
 | Adaptive/game runtime (music as logic reacting to state) | later |
 | Deliberate edit-history dataset (RLHF-for-music) | later; needs a privacy decision first |

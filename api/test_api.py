@@ -192,8 +192,30 @@ def main():
         st, bad, _ = call("POST", "/songs", {"title": "x", "data": song, "remix_of": "nope404"}, token=tok)
         assert st == 400, ("remix_of accepted a ghost", st, bad)
 
+        # -- structural search --------------------------------------------------------
+        songp = dict(song, name="patterned",
+                     sections={"intro": {"bars": 16, "role": "intro",
+                                         "tracks": {"kick": {"voice": "kick", "pat": "x...x...x...x..."}}},
+                               "drop": {"bars": 32, "role": "drop",
+                                        "tracks": {"kick": {"voice": "kick", "pat": "x...x...x...x..."},
+                                                   "hat": {"voice": "hat", "pat": "..x...x...x...x."}}}})
+        st, sp, _ = call("POST", "/songs", {"title": "patterned", "data": songp, "public": True}, token=tok)
+        assert st == 200, sp
+        st, sr, _ = call("GET", "/search?pat=" + "x...x...x...x...")
+        assert st == 200 and sr["songs"] and sr["songs"][0]["hit"], ("pattern search missed", sr)
+        st, sr2, _ = call("GET", "/search?pat=zzzz")
+        assert st == 200 and sr2["songs"] == [], "a pattern nobody plays matches nothing"
+        st, sr3, _ = call("GET", "/search?bpm=137-143")
+        assert st == 200 and all(137 <= x["bpm"] <= 143 for x in sr3["songs"]), sr3
+        st, sim, _ = call("GET", "/similar/" + ra["id"])
+        assert st == 200 and sim["songs"] and sim["songs"][0]["why"], ("similar found nothing", sim)
+        st, tree, _ = call("GET", "/songs/%s/remixes" % ra["id"])
+        assert st == 200 and any(k["id"] == rb["id"] for k in tree["remixes"]), ("tree misses the flip", tree)
+        st, tree2, _ = call("GET", "/songs/%s/remixes" % rb["id"])
+        assert st == 200 and tree2["ancestors"] and tree2["ancestors"][0]["id"] == ra["id"], ("no ancestor", tree2)
+
         print("api checks pass  ·  link -> sqlite -> verify · save · publish · handle · "
-              "playlist · /p/{id} · takes · remix · BYO key (upstream said %s)" % st)
+              "playlist · /p/{id} · takes · remix · search/similar/tree · BYO key (upstream said %s)" % st)
     finally:
         proc.terminate()
         try:

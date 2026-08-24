@@ -297,6 +297,19 @@ stale; `qa` runs 192 arrangements through both composers and requires identical 
   -> compose something else -> load restored the exact song, and diff named the
   bpm and kick changes.
 
+- 2026-08-24 -- cycle 16: structural search, the ecosystem layer's first rung.
+  Because songs are source, the API can read the music instead of the metadata:
+  `GET /search` matches an exact pattern (optionally per track) plus BPM window
+  and key; `GET /similar/{id}` scores structural likeness (bpm distance, key,
+  role-sequence shape, shared patterns) and says WHY - "within 1 BPM, same key,
+  same shape, shares 2 patterns"; `GET /songs/{id}/remixes` walks the family
+  tree both directions. oontz.music grew `gallery pat x...x...x...x...`,
+  `gallery like <id>` and `tree <id>`, every result a tap-to-play row. Full
+  scan per query, ponytail-marked, an index when the gallery outgrows it.
+  Verified against a seeded api: the accented kick variant was correctly NOT
+  a match for the plain pattern - the search reads accents because the music
+  does. Also checked the ticked search box off the thesis table in PLAN.md.
+
 ## Cycle log
 
 Append one line per completed cycle: what changed, what it measured, what it learned.

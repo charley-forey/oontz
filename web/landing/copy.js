@@ -52,6 +52,9 @@ C.help = [
   ["gallery top",           "most played · also: gallery bpm 140-150 · gallery key 8a"],
   ["playlists",             "what people bundled together, playable start to finish"],
   ["spec",                  "why a song here is source code, and what that buys you"],
+  ["gallery pat x...x...x...x...", "search the actual music: every track playing that pattern"],
+  ["gallery like <id>",     "more like this one, scored on structure, reasons included"],
+  ["tree <id>",             "the remix family tree: who flipped what"],
   ["open",                  "go to oontz.sh, where the real one lives"],
   ["clear",                 "tidy up"]
 ];

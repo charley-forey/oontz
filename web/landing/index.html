@@ -246,7 +246,51 @@ const CMDS = {
   open(){ block(CP.open);
     w(`  <a href="https://oontz.sh" target="_blank" rel="noopener">https://oontz.sh →</a>`);
     line(); },
-  async gallery(a){ block(CP.gallery_head);
+  async tree(a){
+    if(!a[0]) return line('tree <track id> — the remix family tree','w');
+    try{
+      const r = await fetch(API+'/songs/'+encodeURIComponent(a[0])+'/remixes');
+      const j = await r.json();
+      if(!r.ok) return line('▸ '+esc((j&&j.error)||'not found'),'w');
+      line();
+      j.ancestors.slice().reverse().forEach(function(p, i){
+        w('  '+'  '.repeat(i)+'<span class="dim">↳</span> <span data-cmd="play '+esc(p.id)+'"><span class="a">'+esc(p.id)+'</span> '+esc(p.title)+'</span> <span class="dim">by '+esc(p.handle||'?')+'</span>'); });
+      const base = j.ancestors.length;
+      w('  '+'  '.repeat(base)+'<span class="b">● '+esc(a[0])+'</span> <span class="dim">this one</span>');
+      j.remixes.forEach(function(k){
+        w('  '+'  '.repeat(base+1)+'<span class="dim">↳</span> <span data-cmd="play '+esc(k.id)+'"><span class="a">'+esc(k.id)+'</span> '+esc(k.title)+'</span> <span class="dim">by '+esc(k.handle||'?')+(k.n?' · '+k.n+' further flip'+(k.n>1?'s':''):'')+'</span>'); });
+      if(!j.remixes.length)
+        w('  '+'  '.repeat(base+1)+'<span class="dim">no flips yet — `remix '+esc(a[0])+'` at oontz.sh would be the first</span>');
+      line();
+    }catch(e){ line('could not reach the api','w'); } },
+  async gallery(a){
+    /* structural search: read the music, not the metadata */
+    if(a[0] === 'pat' && a[1]){
+      const dp = w('<span class="dim">  reading the source of every public track…</span>');
+      try{
+        const rp = await fetch(API+'/search?pat='+encodeURIComponent(a[1])+(a[2]?'&track='+encodeURIComponent(a[2]):''));
+        const jp = await rp.json(); dp.remove();
+        if(!jp.songs || !jp.songs.length) return line('nobody plays that exact pattern yet. be first.','dim');
+        line('▸ tracks whose source contains <span class="a">'+esc(a[1])+'</span>:','b');
+        jp.songs.forEach(function(sg){
+          w(`  <span data-cmd="play ${esc(sg.id)}"><span class="a">${esc(sg.id)}</span> ${esc(sg.title)} <span class="dim">${Math.round(sg.bpm||0)} BPM · ${esc(sg.kkey||'?')} · in ${esc(sg.hit||'?')} · by ${esc(sg.handle||'?')}</span></span>`); });
+        return line();
+      }catch(e){ dp.remove(); return line('could not reach the api','w'); }
+    }
+    if(a[0] === 'like' && a[1]){
+      const dl = w('<span class="dim">  comparing structures…</span>');
+      try{
+        const rl = await fetch(API+'/similar/'+encodeURIComponent(a[1]));
+        const jl = await rl.json(); dl.remove();
+        if(!rl.ok) return line('▸ '+esc((jl&&jl.error)||'not found'),'w');
+        if(!jl.songs.length) return line('nothing structurally close yet — this one is one of a kind','dim');
+        line('▸ more like <span class="a">'+esc(a[1])+'</span>:','b');
+        jl.songs.forEach(function(sg){
+          w(`  <span data-cmd="play ${esc(sg.id)}"><span class="a">${esc(sg.id)}</span> ${esc(sg.title)} <span class="dim">${Math.round(sg.score*100)}% · ${esc((sg.why||[]).join(', '))} · by ${esc(sg.handle||'?')}</span></span>`); });
+        return line();
+      }catch(e){ dl.remove(); return line('could not reach the api','w'); }
+    }
+    block(CP.gallery_head);
     const d = w('<span class="dim">  loading…</span>');
     const sort = a[0]==='top' ? 'played' : 'new';
     let flt = function(){ return true; }, n = a[0] ? 40 : 12;

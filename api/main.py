@@ -448,6 +448,150 @@ def publish(sid: str, user=Depends(current_user)):
             "url": "%s/t/%s" % (SITE_URL, sid) if nxt else None}
 
 
+# ------------------------------------------------- structural search
+# Only possible because songs are source: these read the music, not metadata.
+# ponytail: full scan of public songs per query - an index when the gallery
+# outgrows a few thousand tracks.
+
+def _struct(data):
+    """The searchable skeleton of a .song document."""
+    secs = data.get("sections") or {}
+    order = data.get("order") or []
+    roles = [((secs.get(n) or {}).get("role") or "") for n in order]
+    pats = set()
+    for n in order:
+        for t, tr in (((secs.get(n) or {}).get("tracks")) or {}).items():
+            p = (tr or {}).get("pat")
+            if p:
+                pats.add((t, p))
+    return {"roles": roles, "pats": pats}
+
+
+def _similarity(a, b):
+    """0..1 with human reasons. Structure weighs most: a track IS its shape."""
+    import difflib
+    sa, sb = _struct(a), _struct(b)
+    why, score = [], 0.0
+    d = abs((a.get("bpm") or 0) - (b.get("bpm") or 0))
+    if d <= 6:
+        score += 0.25
+        why.append("within %g BPM" % d)
+    if a.get("key") and (a.get("key"), a.get("scale")) == (b.get("key"), b.get("scale")):
+        score += 0.2
+        why.append("same key")
+    r = difflib.SequenceMatcher(None, sa["roles"], sb["roles"]).ratio()
+    score += 0.35 * r
+    if r > 0.7:
+        why.append("same shape")
+    shared = sa["pats"] & sb["pats"]
+    if shared:
+        score += min(0.2, 0.05 * len(shared))
+        why.append("shares %d pattern%s" % (len(shared), "" if len(shared) == 1 else "s"))
+    return round(score, 3), why
+
+
+def _public_songs(c):
+    return c.execute("""SELECT s.id,s.title,s.bpm,s.kkey,s.seconds,s.plays,s.data,
+                        s.remix_of,u.handle FROM songs s JOIN users u ON u.id=s.user_id
+                        WHERE s.public=1""").fetchall()
+
+
+@app.get("/search")
+def search(pat: str = "", track: str = "", bpm: str = "", key: str = "",
+           limit_n: int = 20, request: Request = None):
+    """Find public tracks by what they ARE: an exact pattern (optionally on one
+    track), a BPM window ("140-150" or "142" meaning +-3), a key."""
+    limit(request, "get", 120)
+    lo = hi = None
+    if bpm:
+        try:
+            parts = bpm.split("-")
+            lo, hi = (float(parts[0]), float(parts[1])) if len(parts) == 2 else \
+                     (float(parts[0]) - 3, float(parts[0]) + 3)
+        except ValueError:
+            raise HTTPException(400, "bpm looks like 140-150, or 142 meaning give-or-take 3")
+    out = []
+    with closing(db()) as c:
+        for r in _public_songs(c):
+            if lo is not None and not (lo <= (r["bpm"] or 0) <= hi):
+                continue
+            if key and (r["kkey"] or "").lower() != key.lower():
+                continue
+            hit = None
+            if pat:
+                try:
+                    data = json.loads(r["data"])
+                except ValueError:
+                    continue
+                for n in (data.get("order") or []):
+                    for t, tr in ((((data.get("sections") or {}).get(n) or {}).get("tracks")) or {}).items():
+                        if track and t != track:
+                            continue
+                        if (tr or {}).get("pat") == pat:
+                            hit = "%s/%s" % (n, t)
+                            break
+                    if hit:
+                        break
+                if not hit:
+                    continue
+            out.append({"id": r["id"], "title": r["title"], "bpm": r["bpm"],
+                        "kkey": r["kkey"], "seconds": r["seconds"], "plays": r["plays"],
+                        "handle": r["handle"], "hit": hit})
+            if len(out) >= max(1, min(50, limit_n)):
+                break
+    return {"songs": out}
+
+
+@app.get("/similar/{sid}")
+def similar(sid: str, limit_n: int = 10, request: Request = None):
+    """More like this one - scored on structure, with the reasons said aloud."""
+    limit(request, "get", 60)
+    with closing(db()) as c:
+        row = c.execute("SELECT data,public FROM songs WHERE id=?", (sid,)).fetchone()
+        if not row or not row["public"]:
+            raise HTTPException(404, "no such public song")
+        target = json.loads(row["data"])
+        scored = []
+        for r in _public_songs(c):
+            if r["id"] == sid:
+                continue
+            try:
+                score, why = _similarity(target, json.loads(r["data"]))
+            except ValueError:
+                continue
+            if score > 0.15:
+                scored.append({"id": r["id"], "title": r["title"], "bpm": r["bpm"],
+                               "kkey": r["kkey"], "handle": r["handle"],
+                               "score": score, "why": why})
+        scored.sort(key=lambda x: -x["score"])
+    return {"songs": scored[:max(1, min(25, limit_n))]}
+
+
+@app.get("/songs/{sid}/remixes")
+def remix_tree(sid: str, request: Request = None):
+    """The family tree: ancestors walked up, public children listed."""
+    limit(request, "get", 60)
+    with closing(db()) as c:
+        row = c.execute("SELECT id,remix_of,public FROM songs WHERE id=?", (sid,)).fetchone()
+        if not row or not row["public"]:
+            raise HTTPException(404, "no such public song")
+        ancestors, cur, hops = [], row["remix_of"], 0
+        while cur and hops < 10:
+            p = c.execute("""SELECT s.id,s.title,s.remix_of,s.public,u.handle FROM songs s
+                             JOIN users u ON u.id=s.user_id WHERE s.id=?""", (cur,)).fetchone()
+            if not p or not p["public"]:
+                break
+            ancestors.append({"id": p["id"], "title": p["title"], "handle": p["handle"]})
+            cur, hops = p["remix_of"], hops + 1
+        kids = c.execute("""SELECT s.id,s.title,u.handle,
+                            (SELECT COUNT(*) FROM songs g WHERE g.remix_of=s.id AND g.public=1) n
+                            FROM songs s JOIN users u ON u.id=s.user_id
+                            WHERE s.remix_of=? AND s.public=1 ORDER BY s.updated DESC""",
+                         (sid,)).fetchall()
+    return {"id": sid, "ancestors": ancestors,
+            "remixes": [dict(k) for k in kids]}
+
+
 @app.get("/gallery")
 def gallery(sort: str = "new", limit_n: int = 40, request: Request = None):
     limit_n = max(1, min(100, limit_n))
