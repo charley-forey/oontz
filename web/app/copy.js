@@ -215,6 +215,8 @@ C.help = [
   ["mix <playlist id>",      "a playlist becomes a set: beat-synced 16-bar blends, decks stay yours"],
   ["midi",                   "plug a controller in. pads are steps, the sustain pedal is play"],
   ["remix <id>",             "any public track opens as source. publish credits the original"],
+  ["produce 90",             "the AI produces the track: grade, fix, regrade, until it holds up"],
+  ["dream driving acid at 3am", "a sentence in, an arranged track out"],
   ["sounds",                 "the whole voice bank on one line"],
   ["real",                   "the actual Python instrument, running in this browser. beta"],
   ["key sk-ant-…",          "your own AI key. this browser only, never our server"],
@@ -281,6 +283,10 @@ C.mix_on = function (title, n) { return "mixing " + title + " - " + n + " tracks
 
 C.remix_usage = "remix <track id> - a public track opens as source, yours to flip. `publish` credits the original. nobody storing audio can do this.";
 C.remix_on = function (t, by) { return "remixing " + t + " by " + (by || "?") + " - the whole source, playing. take it apart; `publish` credits them automatically."; };
+
+C.produce_on = function (sc, target, rounds) { return "producing: " + sc + "/100 now, aiming for " + target + ", up to " + rounds + " rounds. every move is graded; a round that makes it worse gets reverted. one `undo` takes back the whole pass."; };
+C.produce_done = function (sc, target) { return sc >= target ? "produced. " + sc + "/100 - it holds up. `publish` when you mean it." : "stopped at " + sc + "/100. the last mile is taste, and taste is yours."; };
+C.dream_usage = "dream <what you want> - driving acid at 3am, warehouse dub with air in it, 150bpm anger. a sentence in, a track out.";
 
 g.OONTZ_COPY = C;
 })(window);

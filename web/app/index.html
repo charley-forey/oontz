@@ -578,6 +578,68 @@ var CMDS = {
     if(!E.playing) line('  '+CP.jam_needs_play,'dim');
   },
   real: function(){ line('▸ '+CP.real_go,'ok'); location.href='/py/'; },
+  /* produce: the closed loop, watchable. grade -> worst fault -> one fix -> regrade,
+     until the target or the rounds run out. A round that makes it worse is reverted
+     on the spot. One `undo` takes back the whole pass. */
+  produce: async function(a){
+    if(!song) return line(CP.err_nosong,'w');
+    if(PRODUCING) return line('already producing — patience','w');
+    var target = Math.min(100, parseInt(a[0],10) || 90), rounds = Math.min(12, parseInt(a[1],10) || 6);
+    var sc = CO.score(CO.critique(song));
+    if(sc >= target) return line('▸ already at '+sc+'/100 — raise the bar: produce '+(Math.min(100,sc+5)),'ok');
+    PRODUCING = true; snapshot();
+    var passStart = UNDO.length;                  /* one undo returns here */
+    line('▸ '+CP.produce_on(sc, target, rounds),'ok');
+    var worse = 0;
+    for(var r = 1; r <= rounds && sc < target; r++){
+      var crit = CO.critique(song);
+      var faults = crit.filter(function(c){ return c[0]==='bad'; })
+                   .concat(crit.filter(function(c){ return c[0]==='warn'; }))
+                   .slice(0, 5).map(function(c){ return c[1]; });
+      if(!faults.length){ line('  round '+r+': the grader is out of complaints at '+sc+'/100','dim'); break; }
+      var pr = w('<span class="dim">  round '+r+': thinking about — '+esc(faults[0].slice(0,70))+'…</span>');
+      var j = null;
+      try{ j = await askAI('PRODUCE ROUND '+r+': the track scores '+sc+'/100. Open faults, worst first: '
+             +faults.join(' | ')+'. Fix the FIRST fault with the fewest commands (1-3 lines). Do not touch '
+             +'anything the grader is happy with. End with "# <six words on the fix>".',
+             {grade: {score: sc, faults: faults}, produce_round: r}); }catch(e){}
+      pr.remove();
+      if(!j || !j.commands || !j.commands.length){ line('  round '+r+': no move offered — stopping','dim'); break; }
+      snapshot();
+      j.commands.slice(0, 3).forEach(run);
+      var now = CO.score(CO.critique(song));
+      if(now < sc){ CMDS.undo(); worse++;
+        line('  round '+r+': '+sc+' → '+now+' — reverted'+(j.why?' ('+esc(j.why)+')':''),'w');
+        if(worse >= 2){ line('  two bad rounds — stopping while ahead','dim'); break; }
+      } else {
+        line('  round '+r+': '+sc+' → <span class="'+(now>sc?'ok':'dim')+'">'+now+'</span>'
+             +(j.why ? ' <span class="dim">· '+esc(j.why)+'</span>' : ''), now>sc?'ok':'dim');
+        sc = now; worse = 0;
+      }
+    }
+    UNDO.splice(passStart);                       /* collapse the pass to one undo step */
+    PRODUCING = false; draw();
+    line('▸ '+CP.produce_done(sc, target),'b');
+  },
+  /* dream: prose in, an arranged track out — compose first, then pushes toward the words. */
+  dream: async function(a){
+    var wish = a.join(' ').trim();
+    if(!wish) return line(CP.dream_usage,'w');
+    if(PRODUCING) return line('the producer is mid-pass — let it finish','w');
+    var d = w('<span class="dim">  dreaming…</span>');
+    var j = null;
+    try{ j = await askAI('DREAM: build a whole track from this wish: "'+wish+'". Reply with FIRST one line '
+           +'`compose <style> <minutes> <curve>` choosing style from ['+Object.keys(CO.GENRES).join(' ')
+           +'] and curve from ['+Object.keys(CO.TEMPLATES).join(' ')+'], THEN up to 8 command lines that '
+           +'push the result toward the wish (voices, patterns, bpm, swing, filters, gains). '
+           +'End with "# <six words on the vibe>".', {dream: wish}); }catch(e){}
+    d.remove();
+    if(!j || !j.commands || !j.commands.length) return line('▸ '+(j && j.error || 'the dream did not answer'),'w');
+    snapshot();
+    j.commands.slice(0, 9).forEach(run);
+    if(j.why) line('▸ '+esc(j.why),'b');
+    if(song) line('▸ theory says '+CO.score(CO.critique(song))+'/100 · `produce` to push it · `undo` to wake up','dim');
+  },
   remix: async function(a){
     var id = (a[0]||'').trim();
     if(!id) return line(CP.remix_usage,'w');
@@ -764,6 +826,19 @@ function deckKey(k){
 }
 var REC = null, PENDING = null, UNDO = [], EARLAST = null;
 var REMIX_OF = null;                             /* set by `remix`, carried by `publish` */
+var PRODUCING = false;                           /* produce owns the AI while it runs; jam waits */
+async function askAI(prompt, extraState){
+  var at = song ? OZ.sectionAt(song, E.songbar) : null;
+  var state = {bpm: E.bpm, swing: E.swing, key: song && song.key, scale: song && song.scale,
+    section: at && at.name, role: at && at.sec.role, bar: E.songbar, tracks: E.tracks, order: E.order,
+    commands: Object.keys(CMDS).concat(E.order)};
+  if(extraState) Object.keys(extraState).forEach(function(k){ state[k] = extraState[k]; });
+  var hdr = {'content-type':'application/json'};
+  var myKey = localStorage.getItem('oontz_key'); if(myKey) hdr['x-anthropic-key'] = myKey;
+  var r = await fetch(API+'/ai/ask', {method:'POST', headers:hdr,
+    body: JSON.stringify({prompt: prompt, state: state})});
+  return r.json();
+}
 
 /* The model proposes music, never account actions. It has no business reaching
    `publish`, `login`, `key`, `playlist del` or `rec`, and the server prompt already
@@ -880,7 +955,7 @@ function sev(k){ return {good:'<span class="ok">  ✓ ', warn:'<span class="w"> 
                          bad:'<span class="hot">  ✗ '}[k] || '<span class="dim">  '; }
 var JAM = {on:false, bars:8, mark:0, turns:0, busy:false, style:''};
 setInterval(async function(){
-  if(!JAM.on || JAM.busy || !E.playing || MODE === 'deck' || !song) return;
+  if(!JAM.on || JAM.busy || PRODUCING || !E.playing || MODE === 'deck' || !song) return;
   var total = OZ.totalBars(song), gone = (E.songbar - JAM.mark + total) % total;
   if(gone < JAM.bars) return;
   JAM.mark = E.songbar; JAM.busy = true;

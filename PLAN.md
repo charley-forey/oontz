@@ -119,6 +119,29 @@ visuals can *anticipate* the drop instead of detecting it late.
 - Every agent works on a branch in its own worktree; main only moves by a
   fast-forward after the gate passes.
 
+## The next level (added 2026-08-24)
+
+The ladder of intelligence, each rung shipped on the one below:
+
+1. **ask** — the AI proposes, you press Enter. *(shipped)*
+2. **jam** — a bandmate: one move every N bars, graded ears, a mood, a six-word why. *(shipped)*
+3. **produce** — a producer: the closed loop made watchable. grade → worst fault →
+   fewest-commands fix → regrade; a round that makes it worse is reverted on the
+   spot; two bad rounds and it stops while ahead; one `undo` takes back the pass. *(shipped)*
+4. **dream** — prose in, arranged track out: the AI picks style, length and curve,
+   then pushes the result toward the words. `dream driving acid at 3am`. *(shipped)*
+5. Next up: **produce with reference** (the loop's reference-matching lands, and
+   produce aims at a record you love, not just the rulebook); **rooms** (two
+   browsers, one clock, jam together); **the /py/ default swap** once the real
+   engine's transport is as polished as the port it replaces.
+
+Design/UI direction, in one sentence each:
+- The terminal is the identity; polish means fewer, better words and exact color
+  discipline, not more chrome.
+- Every capability must be reachable three ways: typed, tapped, and through the
+  palette — no feature exists until all three know it.
+- The stage (HUD + rack) never scrolls; the conversation always does.
+
 ## What would make it amazing
 
 1. **The recipe, not the cake.** Every public track is its source. "Remix" is one
