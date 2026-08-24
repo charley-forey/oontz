@@ -158,4 +158,14 @@ var up = V.upcoming(vsg, 7.5, 0.5);
 A.ok(up.section === "intro" && up.next === "drop" && Math.abs(up.left) < 1e-9, "upcoming sees the drop coming");
 A.ok(V.upcoming(vsg, 9, 0).energy === 1, "the drop carries its energy");
 
-console.log("web checks pass  ·  write-through · pads · viz · notes · roll · jumps · decks · theory (" + checked + " plans in window) · " + OZ.KEYS.length + " keys listed");
+/* -- touch deck: the tables a phone plays from ----------------------------- */
+require("./touch.js");
+var TD = globalThis.OONTZ_TOUCH;
+A.strictEqual(TD.PADS.join(""), "qwertyuiasdfghjk", "the 16 pads are the 16 pad keys");
+A.strictEqual(TD.TRACKS.join(""), "12345678", "track buttons are the focus keys");
+TD.ROW_MAIN.concat(TD.ROW_FX).forEach(function(k){
+  A.ok(typeof k[0] === "string" && k[0].length === 1 && k[1], "every button is one real key with a label: " + k);
+});
+A.ok(TD.ROW_FX.filter(function(k){ return k[2]; }).length === 3, "exactly [ ] / are hold keys");
+
+console.log("web checks pass  ·  write-through · pads · viz · touch · notes · roll · jumps · decks · theory (" + checked + " plans in window) · " + OZ.KEYS.length + " keys listed");

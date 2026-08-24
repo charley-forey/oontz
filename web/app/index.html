@@ -41,7 +41,9 @@
   a:hover{color:var(--bright)}
   .big{font-size:min(2.4vw,15px);line-height:1.05;letter-spacing:.5px}
   .grid{font-size:13px;letter-spacing:1px}
+  .k{cursor:pointer}
   @media (max-width:640px){body{font-size:12px}#wrap{padding:10px}.k{min-width:12ch}}
+  @media (pointer: coarse){ #in,#bar{font-size:16px} #out .k{padding:5px 0} }
   @media (prefers-reduced-motion:reduce){#bg{display:none}}
 </style>
 </head>
@@ -522,7 +524,13 @@ addEventListener('keydown', function(e){
   draw();
 });
 addEventListener('keyup', function(e){ if(document.activeElement!==IN){ var m=E.key(e.key,false); if(m) w('<span class="dim">  '+esc(m)+'</span>'); } });
-addEventListener('click', function(e){ if(e.target.tagName!=='A') IN.focus(); });
+var COARSE = matchMedia('(pointer: coarse)').matches;
+addEventListener('click', function(e){
+  if(e.target.tagName==='A') return;
+  var k = e.target.closest('.k');                 /* tap a listed command: it runs */
+  if(k && OUT.contains(k)){ run(k.textContent.trim()); return; }
+  if(COARSE && !e.target.closest('#bar')) return; /* a phone tap should not summon the keyboard */
+  IN.focus(); });
 
 /* the working song survives a refresh */
 addEventListener('beforeunload', function(){ try{ if(song) localStorage.setItem('oontz_song', JSON.stringify(song)); }catch(e){} });
@@ -555,5 +563,6 @@ addEventListener('beforeunload', function(){ try{ if(song) localStorage.setItem(
 })();
 </script>
 <script src="account.js"></script>
+<script src="touch.js"></script>
 </body>
 </html>

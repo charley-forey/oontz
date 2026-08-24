@@ -134,6 +134,20 @@ stale; `qa` runs 192 arrangements through both composers and requires identical 
   loop instead of a thread. web/app/py/ is the proof page. Next cycle: wire the
   worklet transport end to end and start retiring the JS engine per PLAN.md.
 
+- 2026-08-24 -- cycle 9: the phone pass. Every command printed on either page is
+  now a tap target (one delegated click handler; tapping `grade` in help runs it),
+  gallery and playlist rows tap to play, and oontz.sh grows a touch deck on coarse
+  pointers only -- 40 buttons (transport, sections, 16 pads, 8 track selects, hold
+  keys for filter/roll) that each dispatch the KeyboardEvent the desktop key would
+  have sent, so the entire keyboard path is reused and the deck knows nothing about
+  music. Phone taps no longer summon the keyboard unless they land on the input
+  bar, and inputs are 16px under coarse pointers so iOS stops zooming the page on
+  focus. Verified in Chrome by driving the synthetic path: space toggled the
+  transport, a pad edited the live pattern, trk 2 moved focus, taps ran commands
+  on both pages. Learned that the landing server caches index.html at import and
+  the page caches for 60s -- two layers that can both serve you the past while
+  you debug the present.
+
 ## Cycle log
 
 Append one line per completed cycle: what changed, what it measured, what it learned.

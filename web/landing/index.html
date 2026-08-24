@@ -48,7 +48,9 @@
     vertical-align:-2px;animation:bl 1.1s steps(2) infinite}
   @keyframes bl{50%{opacity:0}}
   .grid{font-size:13px;letter-spacing:1px}
+  .k,[data-cmd]{cursor:pointer}
   @media (max-width:640px){ body{font-size:12px} #wrap{padding:10px} .k{min-width:11ch} }
+  @media (pointer: coarse){ #in,#bar{font-size:16px} #out .k,#out [data-cmd]{display:inline-block;padding:5px 0} }
   @media (prefers-reduced-motion:reduce){ #bg{display:none} .cursor{animation:none} }
 </style>
 </head>
@@ -255,11 +257,11 @@ const CMDS = {
       w(`  <span class="dim">${'id'.padEnd(13)}${'track'.padEnd(20)}${'bpm'.padStart(5)}  ${'key'.padEnd(5)}${'len'.padStart(6)}${'plays'.padStart(7)}  by</span>`);
       j.songs.forEach(function(sg){
         const mm = Math.floor((sg.seconds||0)/60), ss = String(Math.floor((sg.seconds||0)%60)).padStart(2,'0');
-        w(`  <span class="a">${esc(String(sg.id).padEnd(13))}</span>`+
+        w(`  <span data-cmd="play ${esc(sg.id)}"><span class="a">${esc(String(sg.id).padEnd(13))}</span>`+
           `<span class="b">${esc(String(sg.title).slice(0,20).padEnd(20))}</span>`+
           `<span class="a">${String(Math.round(sg.bpm)).padStart(5)}</span>  `+
           `<span class="w">${esc(String(sg.kkey||'').slice(0,5).padEnd(5))}</span>`+
-          `<span class="dim">${(mm+':'+ss).padStart(6)}${String(sg.plays||0).padStart(7)}  ${esc(sg.handle||sg.by||'')}</span>`);
+          `<span class="dim">${(mm+':'+ss).padStart(6)}${String(sg.plays||0).padStart(7)}  ${esc(sg.handle||sg.by||'')}</span></span>`);
       });
       line();
       w(`  <span class="dim">${esc(CP.gallery_hint)}</span>`);
@@ -275,8 +277,8 @@ const CMDS = {
       if(!r.ok || !j.playlists || !j.playlists.length) return block(CP.playlists_empty);
       block(CP.playlists_head);
       j.playlists.forEach(function(p){
-        w(`  <span class="a">${esc(p.id)}</span> <span class="b">${esc(String(p.title).slice(0,28))}</span>`+
-          ` <span class="dim">${p.count||p.n||0} tracks · by ${esc(p.handle||'someone')} · playlist ${esc(p.id)}</span>`); });
+        w(`  <span data-cmd="playlist ${esc(p.id)}"><span class="a">${esc(p.id)}</span> <span class="b">${esc(String(p.title).slice(0,28))}</span>`+
+          ` <span class="dim">${p.count||p.n||0} tracks · by ${esc(p.handle||'someone')} · playlist ${esc(p.id)}</span></span>`); });
       line();
     }catch(e){ d.remove(); block(CP.playlists_empty); } },
   async playlist(a){
@@ -334,7 +336,15 @@ function run(raw){
 IN.addEventListener('keydown', e=>{
   if(e.key==='Enter'){ const v=IN.value; IN.value=''; run(v); }
 });
-addEventListener('click', ()=>IN.focus());
+const COARSE = matchMedia('(pointer: coarse)').matches;
+addEventListener('click', e=>{
+  if(e.target.tagName==='A') return;
+  const cmd = e.target.closest('[data-cmd]');     /* tap a gallery row: it plays */
+  if(cmd){ run(cmd.dataset.cmd); return; }
+  const k = e.target.closest('.k');               /* tap a listed command: it runs */
+  if(k && OUT.contains(k)){ run(k.textContent.trim()); return; }
+  if(COARSE && !e.target.closest('#bar')) return; /* no keyboard unless asked */
+  IN.focus(); });
 
 /* -------------------------------------------------------------- boot */
 (async function boot(){
