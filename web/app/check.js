@@ -36,6 +36,15 @@ A.strictEqual(E.key("w", true), "kick x.x.x.x.x.x.x.x.", "pad w a third time sho
 A.strictEqual(E.key("2", true), "focus hat", "2 focuses the second track");
 A.strictEqual(E.key("q", true), "hat x.x...x...x...x.", "pads follow focus");
 
+/* -- a click on the rack takes the same path as the pad key ---------------- */
+E.focus = "kick";
+var before = E.tracks.kick.pat;
+var viaClick = E.toggleStep("kick", 1);
+A.strictEqual(viaClick, "kick " + E.tracks.kick.pat, "toggleStep reports what it did");
+A.notStrictEqual(E.tracks.kick.pat, before, "a click must change the pattern");
+A.strictEqual(OZ.stateAt(sg, 0).tracks.kick.pat, E.tracks.kick.pat, "a click writes through to the song");
+E.key("w", true); E.key("w", true);            // cycle back to where it started
+
 /* -- a pitched track keeps notes aligned to hits --------------------------- */
 E.jump(8);                                   // into the drop, where bass lives
 A.strictEqual(E.songbar, 8);

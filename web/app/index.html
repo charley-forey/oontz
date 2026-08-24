@@ -73,6 +73,8 @@
   a:hover{color:var(--bright)}
   .big{font-size:min(2.4vw,15px);line-height:1.05;letter-spacing:.5px}
   .grid{font-size:.95em;letter-spacing:1px}
+  #rack .st{cursor:pointer} #rack .st:hover{outline:1px solid var(--accent);border-radius:2px}
+  #rack .trk{cursor:pointer}
   /* `calm` for anyone who wants the words to win outright */
   body.calm #bg{opacity:.16} body.calm #viz{opacity:.2} body.calm #scan{display:none}
   body.calm #vig{background:radial-gradient(ellipse at 50% 45%,transparent 60%,rgba(0,0,0,.5) 100%)}
@@ -192,11 +194,11 @@ function draw(){
       var ch = tr.pat[q % tr.pat.length] || '.';
       var on = ch !== '.' && ch !== '-';
       var cur = q === i && E.playing;
-      cells += '<span style="color:var('+(on?col:'--dim')+')'+
+      cells += '<span class="st" data-t="'+n+'" data-i="'+q+'" style="color:var('+(on?col:'--dim')+')'+
         (cur?';background:var('+(on?col:'--line')+');color:#000':'')+'">'+
         (on?'█':'·')+'</span>' + (q%4===3?' ':'');
     }
-    h += '<div><span class="'+(n===foc?'a2':'dim')+'">'+(n===foc?'▸ ':'  ')+n.padEnd(7)+'</span>'+cells+'</div>';
+    h += '<div><span class="trk '+(n===foc?'a2':'dim')+'" data-t="'+n+'">'+(n===foc?'▸ ':'  ')+n.padEnd(7)+'</span>'+cells+'</div>';
   });
   RACK.innerHTML = h;
   RACK.classList.toggle('on', !!h);        // no rack until there is something in it
@@ -657,6 +659,15 @@ addEventListener('keydown', function(e){
   draw();
 });
 addEventListener('keyup', function(e){ if(document.activeElement!==IN){ var m=E.key(e.key,false); if(m) w('<span class="dim">  '+esc(m)+'</span>'); } });
+/* The rack is not a readout, it is the instrument: click a step to toggle it,
+   click a track name to focus it. Same edit path as the pads. */
+RACK.addEventListener('click', function(e){
+  var st = e.target.closest('.st');
+  if(st){ e.stopPropagation(); snapshot();
+    line('▸ ' + E.toggleStep(st.dataset.t, +st.dataset.i), 'dim'); draw(); return; }
+  var tk = e.target.closest('.trk');
+  if(tk){ e.stopPropagation(); E.focus = tk.dataset.t; draw(); } });
+
 OUT.addEventListener('scroll', function(){ TAIL.classList.toggle('on', !atBottom()); });
 TAIL.addEventListener('click', function(e){ e.stopPropagation(); tail(); });
 var COARSE = matchMedia('(pointer: coarse)').matches;

@@ -665,6 +665,27 @@ var KEYS = [
   ["Esc", "leave the prompt and play the keys"], [":", "back to the prompt"], ["?", "this table"]
 ];
 
+/* One step, cycled . -> x -> X -> . The pads, a click on the rack and a phone tap
+   all land here, so the rules about keeping notes aligned live in one place. */
+Engine.prototype.toggleStep = function(name, i){
+  var tr = this.tracks[name];
+  if(!tr) return "no track to edit";
+  var pat = (tr.pat || "").padEnd(16, ".").slice(0, 16).split("");   // ponytail: pads see 16 steps; polymeter stays a typed thing
+  var ch = pat[i], nx = ch === "." || ch === "-" ? "x" : (ch === "x" ? "X" : ".");
+  pat[i] = nx;
+  var patch = {pat: pat.join("")};
+  if(tr.notes){                                // a pitched track keeps its notes aligned to its hits
+    var notes = tr.notes.slice(0, 16); while(notes.length < 16) notes.push(".");
+    var rest = function(x){ return x === "." || x === "-"; };
+    if(nx === ".") notes[i] = ".";
+    else { if(rest(notes[i])) notes[i] = (notes.filter(function(x){ return !rest(x); })[0] || "a1").replace(/[~!]+$/, "");
+           notes[i] = notes[i].replace("!", "") + (nx === "X" ? "!" : ""); }
+    patch.notes = notes;
+  }
+  this.setTrack(name, patch); this.focus = name;
+  return name + " " + patch.pat;
+};
+
 Engine.prototype.key = function(k, down){
   var self = this, foc = this.focus && this.tracks[this.focus] ? this.focus : this.order[0];
   var tr = foc && this.tracks[foc];
@@ -672,23 +693,7 @@ Engine.prototype.key = function(k, down){
   if(k === " "){ if(this.playing) this.stop(); else this.play(); return this.playing ? "play" : "stop"; }
   if(/^[1-8]$/.test(k)){ var n = this.order[+k - 1]; if(!n) return "no track " + k; this.focus = n; return "focus " + n; }
   var pi = PADS.indexOf(k);
-  if(pi >= 0){
-    if(!tr) return "no track to edit";
-    var pat = (tr.pat || "").padEnd(16, ".").slice(0, 16).split("");   // ponytail: pads see 16 steps; polymeter stays a typed thing
-    var ch = pat[pi], nx = ch === "." || ch === "-" ? "x" : (ch === "x" ? "X" : ".");
-    pat[pi] = nx;
-    var patch = {pat: pat.join("")};
-    if(tr.notes){                              // a pitched track keeps its notes aligned to its hits
-      var notes = tr.notes.slice(0, 16); while(notes.length < 16) notes.push(".");
-      var rest = function(x){ return x === "." || x === "-"; };
-      if(nx === ".") notes[pi] = ".";
-      else { if(rest(notes[pi])) notes[pi] = (notes.filter(function(x){ return !rest(x); })[0] || "a1").replace(/[~!]+$/, "");
-             notes[pi] = notes[pi].replace("!", "") + (nx === "X" ? "!" : ""); }
-      patch.notes = notes;
-    }
-    this.setTrack(foc, patch); this.focus = foc;
-    return foc + " " + patch.pat;
-  }
+  if(pi >= 0) return this.toggleStep(foc, pi);
   if(k === "z"){ if(!tr) return null; this.setTrack(foc, {mute: !tr.mute}); return foc + (tr.mute ? " muted" : " on"); }
   if(k === "x"){ if(!tr) return null; var solo = !this._solo; this._solo = solo;
     this.order.forEach(function(nm){ self.setTrack(nm, {mute: solo && nm !== foc}); });
