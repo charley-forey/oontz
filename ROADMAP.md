@@ -359,6 +359,18 @@ stale; `qa` runs 192 arrangements through both composers and requires identical 
   fix. Reminder recorded again: oontz.music THE DOMAIN cannot render any version
   until Railway's edge is fixed; the railway.app URL is the truth.
 
+- 2026-08-24 -- cycle 21: the film lifts and the bar earns trust. The landing's CRT
+  overlays sat ABOVE the text (z2 over z1) - the app fixed that stack long ago and
+  the landing never got it - so every character rendered through a 0.75 vignette;
+  text now sits at z4 like the app's. The status strip stops racing the API probe
+  (it awaits it), its fetches get 4s timeouts, segments look pressable (underline +
+  hover), and a skeleton keeps the bar honest while loading. Biggest catch: every
+  link to https://oontz.sh - including the strip's flagship 'open the real one' -
+  pointed at the edge-dead domain; an APP fallback probe now heals those links at
+  click time to the address that works, and heals back automatically once Railway
+  fixes their edge. Tokens finished matching the app exactly; returning visitors
+  (and reduced-motion) skip the typewriter and boot instantly.
+
 ## Cycle log
 
 Append one line per completed cycle: what changed, what it measured, what it learned.

@@ -12,8 +12,8 @@
 <meta property="og:description" content="Techno from a command line. Type a pattern, hear it.">
 <style>
   :root{
-    --bg:#07090b; --surface:#0e1216; --line:#1c2530; --dim:#4a5866;
-    --fg:#c8d4de; --bright:#f2f7fb; --accent:#22e0d0; --accent2:#ff4fa3;
+    --bg:#07090b; --surface:#0e1216; --line:#18212b; --dim:#46545f;
+    --fg:#c6d2dc; --bright:#f4f9fc; --accent:#22e0d0; --accent2:#ff4fa3;
     --warn:#ffb020; --hot:#ff3b3b; --ok:#4ade80;
     --plate:rgba(6,9,12,.62);          /* the same glass the instrument wears */
     --mono:ui-monospace,"SF Mono",Menlo,Consolas,"DejaVu Sans Mono",monospace;
@@ -26,12 +26,12 @@
   }
   #bg{position:fixed;inset:0;z-index:0;opacity:.5}
   #viz{position:fixed;inset:0;z-index:0}
-  #scan{position:fixed;inset:0;z-index:2;pointer-events:none;
+  #scan{position:fixed;inset:0;z-index:3;pointer-events:none;
     background:repeating-linear-gradient(180deg,rgba(0,0,0,0) 0 2px,rgba(0,0,0,.28) 2px 4px);
     mix-blend-mode:multiply}
-  #vig{position:fixed;inset:0;z-index:2;pointer-events:none;
-    background:radial-gradient(ellipse at 50% 45%,transparent 40%,rgba(0,0,0,.75) 100%)}
-  #wrap{position:relative;z-index:1;height:100%;display:flex;flex-direction:column;
+  #vig{position:fixed;inset:0;z-index:3;pointer-events:none;
+    background:radial-gradient(ellipse at 50% 45%,transparent 38%,rgba(0,0,0,.8) 100%)}
+  #wrap{position:relative;z-index:4;height:100%;display:flex;flex-direction:column;
     max-width:1100px;margin:0 auto;padding:16px 20px}
   #out{flex:1;overflow-y:auto;white-space:pre-wrap;word-break:break-word;
     scrollbar-width:thin;scrollbar-color:var(--line) transparent}
@@ -41,6 +41,8 @@
     background:var(--plate);border:1px solid var(--line);border-radius:5px;
     backdrop-filter:blur(7px);-webkit-backdrop-filter:blur(7px);
     white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  #hud [data-cmd]{cursor:pointer;border-bottom:1px solid rgba(34,224,208,.25)}
+  #hud [data-cmd]:hover .a, #hud [data-cmd]:hover .dim{color:var(--bright)}
   #bar{display:flex;align-items:center;gap:8px;margin-top:8px;padding:8px 9px;
     background:var(--plate);border:1px solid var(--line);border-radius:5px;
     backdrop-filter:blur(7px);-webkit-backdrop-filter:blur(7px)}
@@ -50,7 +52,7 @@
   .dim{color:var(--dim)} .b{color:var(--bright)} .a{color:var(--accent)}
   .a2{color:var(--accent2)} .w{color:var(--warn)} .ok{color:var(--ok)} .hot{color:var(--hot)}
   .row{display:flex;gap:10px;align-items:baseline}
-  .k{color:var(--accent);min-width:15ch;display:inline-block}
+  .k{color:var(--accent);min-width:22ch;display:inline-block}
   a{color:var(--accent);text-decoration:none;border-bottom:1px solid rgba(34,224,208,.3)}
   a:hover{color:var(--bright);border-color:var(--bright)}
   .big{font-size:min(2.6vw,15px);line-height:1.05;letter-spacing:.5px}
@@ -59,7 +61,7 @@
   @keyframes bl{50%{opacity:0}}
   .grid{font-size:13px;letter-spacing:1px}
   .k,[data-cmd]{cursor:pointer}
-  @media (max-width:640px){ body{font-size:12px} #wrap{padding:10px} .k{min-width:11ch} }
+  @media (max-width:640px){ body{font-size:12px} #wrap{padding:10px} .k{min-width:12ch} }
   @media (pointer: coarse){ #in,#bar{font-size:16px} #out .k,#out [data-cmd]{display:inline-block;padding:5px 0} }
   @media (prefers-reduced-motion:reduce){ #bg{display:none} .cursor{animation:none} }
 </style>
@@ -68,7 +70,7 @@
 <canvas id="bg"></canvas><canvas id="viz"></canvas>
 <div id="scan"></div><div id="vig"></div>
 <div id="wrap">
-  <div id="hud"><span class="dim">oontz · source code for music</span></div>
+  <div id="hud"><span class="b">oontz</span> <span class="dim">· source code for music · … · </span><a href="https://oontz.sh" target="_blank" rel="noopener">open the real one →</a></div>
   <div id="out"></div>
   <div id="bar"><span id="ps1">oontz&nbsp;&gt;</span><input id="in" autocomplete="off"
     autocapitalize="off" spellcheck="false" aria-label="terminal input"></div>
@@ -421,8 +423,19 @@ var API = "https://api.oontz.sh";
 /* If the custom domain's edge is having a day, fall back to the address that
    always works. Four seconds, once, at boot - then every call rides the winner. */
 var API_FALLBACK = 'https://api-production-bd3d8.up.railway.app';
+var API_READY = (function(){ var c = new AbortController(); setTimeout(function(){ c.abort(); }, 4000);
+  return fetch(API + '/health', {signal: c.signal}).catch(function(){ API = API_FALLBACK; }); })();
+
+/* The instrument's link gets the same treatment: if oontz.sh's edge is down,
+   every link to it heals to the address that works, at click time. */
+var APP = 'https://oontz.sh';
+var APP_FALLBACK = 'https://app-production-ca85.up.railway.app';
 (function(){ var c = new AbortController(); setTimeout(function(){ c.abort(); }, 4000);
-  fetch(API + '/health', {signal: c.signal}).catch(function(){ API = API_FALLBACK; }); })();
+  fetch(APP + '/health', {signal: c.signal, mode: 'no-cors'}).catch(function(){ APP = APP_FALLBACK; }); })();
+addEventListener('click', function(e){
+  var a = e.target.closest && e.target.closest('a[href^="https://oontz.sh"]');
+  if(a && APP !== 'https://oontz.sh') a.href = APP + a.getAttribute('href').slice('https://oontz.sh'.length);
+}, true);
 
 const ALIAS={'?':'help','ls':'help','start':'demo','about':'what',
   'sh':'open','app':'open','quit':'stop','exit':'stop','cls':'clear','music':'theory'};
@@ -457,15 +470,17 @@ IN.addEventListener('keydown', e=>{
 /* -- the strip: the site says it is alive, with numbers -------------------- */
 const HUD = document.getElementById('hud');
 let STRIP_TRIED = false;
+function tfetch(url){ const c = new AbortController(); setTimeout(function(){ c.abort(); }, 4000);
+  return fetch(url, {signal: c.signal}); }
 async function strip(){
+  await API_READY;                              /* never race the fallback probe */
   let bits = ['<span class="b">oontz</span> <span class="dim">· source code for music</span>'];
   try{
-    const g = await (await fetch(API+'/gallery?limit_n=1')).json();
-    const n = (await (await fetch(API+'/gallery?limit_n=100')).json()).songs.length;
+    const n = (await (await tfetch(API+'/gallery?limit_n=100')).json()).songs.length;
     bits.push('<span data-cmd="gallery"><span class="a">'+n+' tracks</span></span>');
   }catch(e){}
   try{
-    const c = await (await fetch(API+'/charts')).json();
+    const c = await (await tfetch(API+'/charts')).json();
     if(c.top_patterns && c.top_patterns.length)
       bits.push('<span data-cmd="gallery pat '+esc(c.top_patterns[0].pat)+'"><span class="dim">most shared</span> <span class="a">'+esc(c.top_patterns[0].pat)+'</span></span>');
     if(c.most_remixed && c.most_remixed.length)
@@ -489,7 +504,11 @@ addEventListener('click', e=>{
 /* -------------------------------------------------------------- boot */
 (async function boot(){
  for(const l of LOGO)w(`<span class="a">${esc(l)}</span>`,'big');line();
- await type(CP.tagline||"techno from a command line.",'b',14);line();await sleep(120);
+ const seenIt = (function(){ try{ return !!localStorage.getItem('oontz_seen'); }catch(e){ return false; } })()
+   || matchMedia('(prefers-reduced-motion: reduce)').matches;
+ if(seenIt) w(`<span class="b">${esc(CP.tagline||"techno from a command line.")}</span>`);
+ else { await type(CP.tagline||"techno from a command line.",'b',14); await sleep(120); }
+ line();
  (CP.boot||[]).forEach(function(t){ w(`<span class="dim">  ${esc(t)}</span>`); });
  line();
  (CP.groups||[]).forEach(function(g){
