@@ -212,6 +212,7 @@ C.help = [
   ["ask make it darker",    "the AI proposes, you press Enter"],
   ["jam on 8",               "the AI plays WITH you: one small move every 8 bars, undo vetoes"],
   ["jam style darker",       "lean the jam somewhere. it hears the grade and fixes faults first"],
+  ["mix <playlist id>",      "a playlist becomes a set: beat-synced 16-bar blends, decks stay yours"],
   ["sounds",                 "the whole voice bank on one line"],
   ["real",                   "the actual Python instrument, running in this browser. beta"],
   ["key sk-ant-…",          "your own AI key. this browser only, never our server"],
@@ -272,6 +273,9 @@ C.jam_needs_play = "(a jam needs a running song - press space)";
 C.sounds_hint = "voice <track> <sound> swaps a circuit. track add <name> [sound] makes room for one.";
 
 C.real_go = "loading the real one - the desktop Python instrument, whole, in this tab. ~10MB once, then it's yours.";
+
+C.mix_usage = "mix <playlist id> · mix off. your playlists: `playlists`; public ones play too.";
+C.mix_on = function (title, n) { return "mixing " + title + " - " + n + " tracks, beat-synced, 16-bar blends. grab the crossfader whenever; `mix off` makes it fully yours."; };
 
 g.OONTZ_COPY = C;
 })(window);

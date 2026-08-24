@@ -118,6 +118,11 @@ Engine.prototype.start = function(){
    the browser already has. After `dur` the head snaps back to live. */
 Engine.prototype.rateFx = function(rate, dur){
   var c = this.ctx; if(!c || !this.fx) return;
+  /* Value curves may not overlap - scheduling a second one inside a live one
+     throws, and the throw escapes the keydown handler, so holding the key broke
+     preventDefault and the redraw too. One guard, since every caller repeats. */
+  if(this._fxUntil > c.currentTime) return;
+  this._fxUntil = c.currentTime + dur + 0.05;
   var n = Math.ceil(dur * 1000), d = new Float32Array(n + 1), acc = 0, dt = dur / n;
   for(var k = 0; k <= n; k++){ d[k] = Math.max(0, Math.min(3.9, k * dt - acc)); acc += rate(k * dt) * dt; }
   var t0 = c.currentTime + 0.01, p = this.fx.delayTime, g = this.out.gain;
@@ -657,11 +662,15 @@ function gridFor(song){
 
 /* The whole song, offline, through the same _hits the live clock uses. Mono:
    ponytail: nothing sets pan yet and two 5-minute stereo decks are 200MB. */
-function renderSong(song, onProgress){
+function renderSong(song, onProgress, opts){
   var g0 = gridFor(song), total = totalBars(song);
   var C = global.OfflineAudioContext || global.webkitOfflineAudioContext;
   var off = new C(1, Math.ceil((g0.seconds + 1.5) * SR), SR);
-  var g = buildMaster(off, off.destination);
+  /* `raw` skips the master chain: a deck plays through the LIVE one, and mastering
+     the same audio twice glue-compresses and limits it twice, which pumps. */
+  var g;
+  if(opts && opts.raw){ g = off.createGain(); g.gain.value = 0.85; g.connect(off.destination); }
+  else g = buildMaster(off, off.destination);
   var fake = new Engine(); fake.ctx = off; fake.groove = grooveOf(song);
   var t = 0;
   for(var bar = 0; bar < total; bar++){
@@ -716,7 +725,10 @@ Deck.prototype._chain = function(){
   lo.type = "lowshelf"; lo.frequency.value = 200;
   mid.type = "peaking"; mid.frequency.value = 1000; mid.Q.value = 0.7;
   hi.type = "highshelf"; hi.frequency.value = 4000;
-  var gain = c.createGain(); gain.gain.value = 1;
+  var gain = c.createGain();
+  /* start where the crossfader actually is, or the HUD says 71%/71% while both
+     decks run at unity into the limiter */
+  gain.gain.value = xfGains(this.e._decks ? this.e._decks.xf : 0)[this.name === "a" ? 0 : 1];
   lo.connect(mid); mid.connect(hi); hi.connect(gain); gain.connect(this.e.master);
   return (this.nodes = {lo: lo, mid: mid, hi: hi, gain: gain});
 };
@@ -771,6 +783,7 @@ Deck.prototype.syncTo = function(o){
   var p = this.posAt(when), g = this.r.grid, i = this.beatAt(p);
   var a = g[i], b = i + 1 < g.length ? g[i + 1] : a + 60 / this.r.bpm;
   var target = a + o.phaseAt(when) * (b - a);
+  this.loop = null;                              // syncing can land outside the loop
   if(this.playing) this.play(target, when); else this.pos0 = target;
 };
 Deck.prototype.loopBeats = function(n){
@@ -790,7 +803,10 @@ Deck.prototype.eq = function(band, v){
   return v;
 };
 Deck.prototype.seekMark = function(dir){
-  if(!this.r) return null; var p = this.pos(), m = this.r.marks, k = 0;
+  if(!this.r) return null;
+  var m = this.r.marks; if(!m || !m.length) return null;
+  this.loop = null;                              // an explicit seek leaves the loop
+  var p = this.pos(), k = 0;
   for(var i = 0; i < m.length; i++) if(m[i][0] <= p + 0.01) k = i;
   k = Math.max(0, Math.min(m.length - 1, k + dir));
   if(this.playing) this.play(m[k][0]); else this.pos0 = m[k][0];
@@ -807,9 +823,10 @@ Engine.prototype.decks = function(){
 };
 Engine.prototype.crossfade = function(p){
   var d = this.decks(), g = xfGains(p); d.xf = p;
+  var ca = d.a._chain(), cb = d.b._chain();      // these create the context
   var now = this.ctx ? this.ctx.currentTime : 0;
-  d.a._chain().gain.gain.setTargetAtTime(g[0], now, 0.01);
-  d.b._chain().gain.gain.setTargetAtTime(g[1], now, 0.01);
+  ca.gain.gain.setTargetAtTime(g[0], now, 0.01);
+  cb.gain.gain.setTargetAtTime(g[1], now, 0.01);
   return g;
 };
 
@@ -821,9 +838,10 @@ function wavBlob(buf){
   out.setUint32(16, 16, true); out.setUint16(20, 1, true); out.setUint16(22, ch, true);
   out.setUint32(24, buf.sampleRate, true); out.setUint32(28, buf.sampleRate * ch * 2, true);
   out.setUint16(32, ch * 2, true); out.setUint16(34, 16, true); w(36, "data"); out.setUint32(40, n * ch * 2, true);
-  var o = 44;
-  for(var i = 0; i < n; i++) for(var c = 0; c < ch; c++){
-    var v = Math.max(-1, Math.min(1, buf.getChannelData(c)[i]));
+  var o = 44, data = [];
+  for(var c = 0; c < ch; c++) data.push(buf.getChannelData(c));
+  for(var i = 0; i < n; i++) for(c = 0; c < ch; c++){
+    var v = Math.max(-1, Math.min(1, data[c][i]));
     out.setInt16(o, v < 0 ? v * 32768 : v * 32767, true); o += 2; }
   return new Blob([out], {type: "audio/wav"});
 }
@@ -855,7 +873,11 @@ Engine.prototype.toggleStep = function(name, i){
   pat[i] = nx;
   var patch = {pat: pat.join("")};
   if(tr.notes){                                // a pitched track keeps its notes aligned to its hits
-    var notes = tr.notes.slice(0, 16); while(notes.length < 16) notes.push(".");
+    /* pad to the PATTERN, not to 16: editing bar 2 of a 128-step pattern used to
+       write past the end of a 16-long notes array, leaving holes that silenced
+       the track wherever they landed */
+    var notes = tr.notes.slice(0, pat.length);
+    while(notes.length < pat.length) notes.push(".");
     var rest = function(x){ return x === "." || x === "-"; };
     if(nx === ".") notes[i] = ".";
     else { if(rest(notes[i])) notes[i] = (notes.filter(function(x){ return !rest(x); })[0] || "a1").replace(/[~!]+$/, "");

@@ -232,6 +232,43 @@ A.strictEqual(html.split("OUT.scrollTop = OUT.scrollHeight").length - 1, 1,
     v + " deserves its own circuit, not an alias");
 });
 
+/* -- a pitched track survives an edit in a later bar -------------------------
+   toggleStep padded the notes lane to 16 while a pattern can be 128 long, so
+   editing bar 2+ wrote past the end and left holes that silenced the track. */
+var pe = new OZ.Engine();
+var psong = song();
+psong.sections.drop.tracks.bass.pat = new Array(9).join("x.x.x.x.x.x.x.x.");  // 8 bars
+psong.sections.drop.bars = 8;
+pe.loadSong(psong); pe.jump(8); pe.songbar = 10;                 // three bars into the drop
+pe.focus = "bass";
+pe.toggleStep("bass", 2);
+var bt = pe.tracks.bass;
+A.strictEqual(bt.notes.length, bt.pat.length, "the notes lane must match the pattern length");
+A.ok(bt.notes.every(function(x){ return typeof x === "string"; }), "a hole was left in the notes lane");
+A.strictEqual(bt.notes.indexOf(undefined), -1, "undefined in the notes lane silences the track");
+
+/* -- the page must not run what a stranger published -------------------------
+   A track name comes out of published JSON and lands in innerHTML; everything
+   else in draw() was escaped and these two were not. And the model proposes
+   music, never account actions - the server prompt claims the client refuses,
+   so the client has to actually refuse. */
+var drawFn = html.slice(html.indexOf("function draw()"), html.indexOf("psychedelic bg"));
+A.strictEqual(drawFn.split("data-t=").length - 1, 2, "expected two data-t sites in draw()");
+drawFn.split("data-t=").slice(1).forEach(function(chunk, i){
+  A.ok(chunk.indexOf("esc(n)") === 1 || chunk.slice(0, 12).indexOf("esc(n)") >= 0,
+    "data-t site " + (i + 1) + " does not escape the track name: " + chunk.slice(0, 30));
+});
+A.ok(html.indexOf("ps.filter(musical).forEach(run)") >= 0,
+  "AI output must be filtered before it runs");
+
+var mlist = html.slice(html.indexOf("var MUSICAL ="), html.indexOf("function musical("));
+["publish", "login", "key", "handle", "playlist", "take", "rec", "export", "clear", "undo", "dload"]
+  .forEach(function(v){
+    A.ok(mlist.indexOf(v) < 0, "the AI allowlist must not contain " + v);
+  });
+["bpm", "gain", "sidechain", "compose", "grade"].forEach(function(v){
+  A.ok(mlist.indexOf(v) >= 0, "the AI allowlist should contain " + v); });
+
 /* -- the ear: a spectrum, and what it concludes ---------------------------- */
 require("./ear.js");
 var EAR = globalThis.OONTZ_EAR;

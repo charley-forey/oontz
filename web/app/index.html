@@ -179,6 +179,7 @@ function draw(){
     for(var q = 0; q < 21; q++) xfbar += (Math.round((D.xf+1)*10) === q ? '┃' : '─');
     HUD.innerHTML = deckLine(D.a,'a') + '<br>' + deckLine(D.b,'b') + '<br><span class="dim">A </span><span class="a2">'+
       xfbar+'</span><span class="dim"> B   ' + Math.round(g[0]*100) + '% / ' + Math.round(g[1]*100) + '%</span>';
+    RACK.classList.remove('on');                 // the studio grid is not the deck
     return;
   }
   /* HUD: where we are in the whole song */
@@ -265,7 +266,7 @@ function frame(){ requestAnimationFrame(frame); if(reduce) return;
 frame();
 E.onbar = function(bar, st){ if(st && st.role === 'drop' && st.within === 0) flash = 1; draw(); };
 E.onstep = function(i, tracks){ var k = tracks && tracks.kick;
-  if(k && k.pat && !k.mute){ var ch = k.pat[i % k.pat.length]; if(ch && ch !== '.' && ch !== '-') pulse = 1; }
+  if(k && k.pat && !k.mute){ var ch = k.pat[OZ.patIndex(k.pat, E.songbar, i)]; if(ch && ch !== '.' && ch !== '-') pulse = 1; }
   draw(); };
 
 /* ------------------------------------------------------------- commands */
@@ -501,18 +502,22 @@ var CMDS = {
   /* R / `rec`: what you hear, effects and all, tapped after the compressor. `rec screen`
      adds a screen capture and lets the browser mux the two. */
   rec: async function(a){
-    if(REC){ REC.stop(); return; }
+    if(REC){ if(REC !== 'pending') REC.stop(); return; }
+    if(!window.MediaRecorder) return line('this browser cannot record','w');
+    REC = 'pending';                              // claim it before any await
     var c = E.start(), video = a[0]==='screen' || a[0]==='video';
     var dst = c.createMediaStreamDestination(); E.analyser.connect(dst);
     var stream = dst.stream;
     if(video){ try{ var disp = await navigator.mediaDevices.getDisplayMedia({video:true, audio:false, preferCurrentTab:true});
         stream = new MediaStream(disp.getVideoTracks().concat(dst.stream.getAudioTracks()));
         disp.getVideoTracks()[0].onended = function(){ if(REC) REC.stop(); };
-      }catch(e){ E.analyser.disconnect(dst); return line('screen capture was refused','w'); } }
+      }catch(e){ REC = null; try{ E.analyser.disconnect(dst); }catch(_e){} return line('screen capture was refused','w'); } }
     var want = video ? ['video/webm;codecs=vp9,opus','video/webm','video/mp4'] : ['audio/webm;codecs=opus','audio/webm','audio/mp4'];
-    var mime = want.filter(function(m){ return window.MediaRecorder && MediaRecorder.isTypeSupported(m); })[0];
-    if(!window.MediaRecorder) return line('this browser cannot record','w');
-    var chunks = [], r = new MediaRecorder(stream, mime ? {mimeType: mime} : {});
+    var mime = want.filter(function(m){ return MediaRecorder.isTypeSupported(m); })[0];
+    var chunks = [], r;
+    try{ r = new MediaRecorder(stream, mime ? {mimeType: mime} : {}); }
+    catch(e){ REC = null; try{ E.analyser.disconnect(dst); }catch(_e){}
+      return line('could not start a recorder: '+(e.message||e),'w'); }
     r.ondataavailable = function(ev){ if(ev.data && ev.data.size) chunks.push(ev.data); };
     r.onstop = function(){ REC = null; PS1.style.color = '';
       try{ E.analyser.disconnect(dst); }catch(e){} stream.getTracks().forEach(function(t){ t.stop(); });
@@ -520,6 +525,7 @@ var CMDS = {
       var name = 'oontz-' + (song ? song.name : 'session').replace(/[^\w-]+/g,'_') + '.' + ext;
       var el = document.createElement('a'); el.href = URL.createObjectURL(new Blob(chunks, {type: r.mimeType}));
       el.download = name; document.body.appendChild(el); el.click(); el.remove();
+      setTimeout(function(){ URL.revokeObjectURL(el.href); }, 30000);
       w('<span class="ok">■ saved '+esc(name)+'</span> <span class="dim">exactly what you heard</span>'); };
     r.start(1000); REC = r; PS1.style.color = 'var(--hot)';
     if(!E.playing) line('  (nothing is playing yet - space or `play`)','dim');
@@ -594,7 +600,27 @@ var CMDS = {
     if(m!=='deck' && m!=='studio') return line('mode deck|studio','w');
     MODE = m; if(m==='deck'){ E.stop(); E.start(); if(!DECKTIMER) DECKTIMER = setInterval(function(){ if(MODE==='deck') draw(); }, 100);
       line('▸ DECK. dload a this · dload b hardtechno · deck b sync · xf 0.5 · M to go back','dim'); }
-    else { var D = E.decks(); D.a.stop(); D.b.stop(); line('▸ STUDIO','dim'); }
+    else { var D = E.decks(); D.a.stop(); D.b.stop();
+      if(DECKTIMER){ clearInterval(DECKTIMER); DECKTIMER = null; }
+      line('▸ STUDIO','dim'); }
+    draw(); },
+  mix: async function(a){
+    var v = (a[0]||'').toLowerCase();
+    if(v === 'off' || v === 'stop'){ mixStop(); return line('▸ mix off — the decks are yours','dim'); }
+    if(!v) return line(CP.mix_usage,'w');
+    var pl = null;
+    try{ if(token && window.OONTZ_ACCOUNT) pl = await OONTZ_ACCOUNT.req('GET','/playlists/'+v); }catch(e){}
+    if(!pl){ try{ var r = await fetch(API+'/p/'+encodeURIComponent(v)); if(r.ok) pl = await r.json(); }catch(e){} }
+    if(!pl || !pl.songs || !pl.songs.length) return line('no playable playlist with that id. `playlists` lists yours.','w');
+    mixStop(); MIX.q = pl.songs; MIX.i = 0; MIX.deck = 'a'; MIX.on = true;
+    if(MODE !== 'deck') CMDS.mode(['deck']);
+    line('▸ '+CP.mix_on(pl.title, pl.songs.length),'ok');
+    var pr = w('<span class="dim">  rendering '+esc(MIX.q[0].title||MIX.q[0].id)+'…</span>');
+    var ok0 = await mixLoad('a', MIX.q[0]); pr.remove();
+    if(!ok0){ mixStop(); return line('could not render the first track','w'); }
+    E.crossfade(-1); E.decks().a.play(0); MIX.phase = 'play';
+    if(MIX.q[1]) mixLoad('b', MIX.q[1]);
+    MIX.t = setInterval(mixTick, 400);
     draw(); },
   dload: async function(a){
     var name = (a[0]||'').toLowerCase(), what = a[1]||'this', D = E.decks(), d = D[name];
@@ -608,7 +634,7 @@ var CMDS = {
     if(MODE!=='deck') CMDS.mode(['deck']);
     var pr = w('<span class="dim">  rendering '+esc(sg.name)+' onto '+name+'…</span>');
     try{ var t0 = performance.now();
-      var rr = await OZ.renderSong(sg, function(f){ pr.innerHTML='<span class="dim">  rendering '+esc(sg.name)+' onto '+name+'… '+Math.round(f*100)+'%</span>'; });
+      var rr = await OZ.renderSong(sg, null, {raw: true});   // the live master chain does the mastering
       d.load(rr); DECKFOC = name;
       pr.innerHTML = '<span class="ok">  '+name.toUpperCase()+' ← '+esc(sg.name)+'</span> <span class="dim">'+mmss(rr.seconds)+' · '+rr.grid.length+' beats on the grid · rendered in '+((performance.now()-t0)/1000).toFixed(1)+'s</span>';
     }catch(e){ pr.innerHTML = '<span class="w">  render failed: '+esc(e.message||e)+'</span>'; }
@@ -643,10 +669,53 @@ var CMDS = {
     try{ var rr = await OZ.renderSong(song); var name = 'oontz-'+song.name.replace(/[^\w-]+/g,'_')+'.wav';
       var el = document.createElement('a'); el.href = URL.createObjectURL(OZ.wavBlob(rr.buf)); el.download = name;
       document.body.appendChild(el); el.click(); el.remove();
+      setTimeout(function(){ URL.revokeObjectURL(el.href); }, 30000);
       pr.innerHTML = '<span class="ok">  saved '+esc(name)+'</span> <span class="dim">'+mmss(rr.seconds)+' · 16-bit · the same render the decks use</span>';
     }catch(e){ pr.innerHTML = '<span class="w">  render failed: '+esc(e.message||e)+'</span>'; } }
 };
 var MODE = 'studio', DECKFOC = 'a', DECKTIMER = null;
+
+/* -- mix: a playlist becomes a set. The scheduler only owns the crossfader while
+   a blend is running; grab it (or `mix off`) and the set is yours. -- */
+var MIX = {on:false, q:[], i:0, deck:'a', phase:'idle', t:0, b0:0, bms:1};
+function mixEase(p){ return p * p * (3 - 2 * p); }
+async function mixLoad(name, item){
+  try{
+    var r = await fetch(API + '/songs/' + encodeURIComponent(item.id));
+    var j = await r.json(); if(!j.data) return false;
+    var rr = await OZ.renderSong(j.data, null, {raw: true});
+    E.decks()[name].load(rr);
+    return true;
+  }catch(e){ return false; }
+}
+function mixStop(){ MIX.on = false; MIX.phase = 'idle'; if(MIX.t){ clearInterval(MIX.t); MIX.t = 0; } }
+function mixTick(){
+  if(!MIX.on || MODE !== 'deck') return;
+  var D = E.decks(), cur = D[MIX.deck], oth = D[MIX.deck === 'a' ? 'b' : 'a'];
+  if(MIX.phase === 'play'){
+    if(!cur.r || !cur.playing) return;
+    var left = cur.r.seconds - cur.pos();
+    var lead = Math.min(16 * 240 / cur.bpm(), cur.r.seconds / 3);   /* 16 bars, or a third of a short track */
+    if(oth.r && !oth.playing && left <= lead){          /* time to begin the blend */
+      MIX.phase = 'blend'; MIX.b0 = Date.now(); MIX.bms = Math.max(3000, left * 1000 - 500);
+      oth.syncTo(cur); oth.play();
+      w('<span class="dim">  ♪ mix: <span class="b">'+esc(oth.r.name)+'</span> coming in over '+Math.round(MIX.bms/1000)+'s</span>');
+    } else if(!oth.r && left <= 0.3){                    /* nothing next: the set ends */
+      cur.stop(); mixStop(); w('<span class="ok">  ♪ mix done — '+(MIX.i+1)+' tracks.</span>');
+    }
+  } else if(MIX.phase === 'blend'){
+    var p = mixEase(Math.min(1, (Date.now() - MIX.b0) / MIX.bms));
+    var from = MIX.deck === 'a' ? -1 : 1;
+    E.crossfade(from * (1 - 2 * p));
+    if(p >= 1){
+      cur.stop(); var freed = MIX.deck;
+      MIX.deck = MIX.deck === 'a' ? 'b' : 'a'; MIX.i++; MIX.phase = 'play';
+      var nxt = MIX.q[MIX.i + 1];
+      if(nxt) mixLoad(freed, nxt); else D[freed].r = null;
+      draw();
+    }
+  }
+}
 var DECK_KEYS = [
   ["1 / 2", "focus deck A / B"], ["space", "play / pause the focused deck"], ["s", "sync it to the other deck"],
   ["l / u", "4-beat loop / unloop"], [", .", "crossfader toward A / B"], ["7 8 9", "kill low / mid / high"],
@@ -987,7 +1056,7 @@ addEventListener('beforeunload', function(){ try{ if(song) localStorage.setItem(
 /* magic-link return: #token=... */
 (function(){ var m=(location.hash||'').match(/token=([^&]+)/);
   if(m){ token=m[1]; localStorage.setItem('oontz_token',token);
-    history.replaceState(null,'',location.pathname); } })();
+    history.replaceState(null,'',location.pathname+location.search); } })();
 
 (async function boot(){
   LOGO.forEach(function(l){ w('<span class="a2">'+esc(l)+'</span>','big'); });

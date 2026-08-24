@@ -371,7 +371,7 @@ def save_song(body: SongIn, request: Request, user=Depends(current_user)):
                        int(body.public), now, now))
         c.commit()
     return {"id": sid, "title": body.title, "public": body.public,
-            "url": "%s/#s=%s" % (APP_URL, sid)}
+            "url": "%s/?song=%s" % (APP_URL, sid)}
 
 
 @app.get("/songs")
@@ -425,7 +425,7 @@ def publish(sid: str, user=Depends(current_user)):
                   (nxt, time.time(), sid))
         c.commit()
     return {"id": sid, "public": bool(nxt),
-            "url": "%s/#s=%s" % (SITE_URL, sid) if nxt else None}
+            "url": "%s/t/%s" % (SITE_URL, sid) if nxt else None}
 
 
 @app.get("/gallery")
