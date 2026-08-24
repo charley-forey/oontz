@@ -105,6 +105,38 @@ GENRES = {
         "swing": (0, 10),
         "note": "A drop here is a tide, not a cliff. Chords carry the track and "
                 "the drums are weather."},
+    "garage": {
+        "bpm": (128, 138), "sweet": 133,
+        "key": "minor", "phrase": 16,
+        "intro_bars": (8, 16), "outro_bars": (16, 32),
+        "drop_at": (0.20, 0.40),
+        "swing": (25, 45),
+        "note": "Two-step: the kick skips beat three and the shuffle is the "
+                "groove. If it sounds straight, it is wrong."},
+    "psytrance": {
+        "bpm": (138, 148), "sweet": 142,
+        "key": "minor", "phrase": 16,
+        "intro_bars": (16, 32), "outro_bars": (16, 32),
+        "drop_at": (0.25, 0.45),
+        "swing": (0, 4),
+        "note": "The rolling offbeat bass IS the track - a sixteenth-note "
+                "machine that never stops. Everything else decorates it."},
+    "jungle": {
+        "bpm": (158, 175), "sweet": 168,
+        "key": "minor", "phrase": 16,
+        "intro_bars": (8, 16), "outro_bars": (16, 32),
+        "drop_at": (0.15, 0.35),
+        "swing": (5, 18),
+        "note": "The break dances on top; the sub walks underneath at half "
+                "speed. Two tempos in one track, and both must groove."},
+    "downtempo": {
+        "bpm": (85, 105), "sweet": 95,
+        "key": "minor", "phrase": 16,
+        "intro_bars": (16, 32), "outro_bars": (16, 32),
+        "drop_at": (0.30, 0.55),
+        "swing": (15, 35),
+        "note": "Head-nod music. The kick lands late and heavy; the air "
+                "between hits does half the work."},
 }
 
 # Real dance tracks have known shapes. Walking a grammar produced technically

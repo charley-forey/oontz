@@ -375,6 +375,52 @@ STYLES = {
                      "filt": ("lp", 300, 0.5), "sc": 0.4},
         },
     },
+    "garage": {
+        "bpm": 133, "groove": "shuffle",
+        "tracks": {
+            "kick":  {"pat": "x.....x...x....."},
+            "clap":  {"pat": "....x.......x..."},
+            "hat":   {"euclid": (7, 16, 1), "filt": ("hp", 8500), "gain": 0.8},
+            "oh":    {"pat": "..x.......x.....", "gain": 0.5},
+            "bass":  {"melody": ("a", "minor", 16), "density": 0.5, "voice": "sub",
+                      "filt": ("lp", 320, 0.5), "sc": 0.5},
+            "stab":  {"melody": ("a", "dorian", 16), "density": 0.3, "voice": "chord",
+                      "filt": ("lp", 1800, 0.4), "sc": 0.4},
+        },
+    },
+    "psytrance": {
+        "bpm": 142, "groove": "straight",
+        "tracks": {
+            "kick": {"euclid": (4, 16)},
+            "hat":  {"euclid": (8, 16, 1), "filt": ("hp", 9500), "gain": 0.7},
+            "perc": {"euclid": (5, 16, 3), "tune": 1200, "gain": 0.5},
+            "bass": {"melody": ("a", "phrygian", 16), "density": 0.95, "voice": "reese",
+                     "filt": ("lp", 480, 0.85), "sc": 0.9},
+        },
+    },
+    "jungle": {
+        "bpm": 168, "groove": "shuffle",
+        "tracks": {
+            "kick":  {"pat": "x.........x....."},
+            "snare": {"pat": "....x..x..x.x..."},
+            "hat":   {"euclid": (11, 16), "gain": 0.6, "filt": ("hp", 9000)},
+            "bass":  {"melody": ("a", "minor", 8), "density": 0.4, "voice": "wob",
+                      "filt": ("lp", 260, 0.6), "sc": 0.6},
+        },
+    },
+    "downtempo": {
+        "bpm": 95, "groove": "shuffle",
+        "tracks": {
+            "kick": {"pat": "x......x........"},
+            "snare": {"pat": "....x.......x..."},
+            "hat":  {"euclid": (5, 16, 2), "gain": 0.5, "filt": ("hp", 7000)},
+            "oh":   {"pat": "........x.......", "voice": "air", "gain": 0.6},
+            "stab": {"melody": ("a", "pentatonic", 16), "density": 0.25, "voice": "bell",
+                     "filt": ("lp", 3200, 0.3), "sc": 0.3},
+            "bass": {"melody": ("a", "minor", 16), "density": 0.35, "voice": "sub",
+                     "filt": ("lp", 240, 0.4), "sc": 0.5},
+        },
+    },
     "hypnotic": {
         "bpm": 128, "groove": "hypnotic",
         "tracks": {
@@ -390,6 +436,8 @@ STYLES = {
 
 def _track_cmds(track, spec):
     cmds = []
+    if "voice" in spec:                       # a pack may point a track at any circuit
+        cmds.append("voice %s %s" % (track, spec["voice"]))
     if "euclid" in spec:
         k, n, *rest = spec["euclid"]
         pat = euclid(k, n, rest[0] if rest else 0)

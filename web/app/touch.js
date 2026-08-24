@@ -34,12 +34,25 @@ css.textContent =
     "border:1px solid var(--line);border-radius:6px;padding:9px 0;touch-action:manipulation;min-height:40px}" +
   "#touch button:active,#touch button.held{background:var(--accent);color:var(--bg);border-color:var(--accent)}" +
   "#touch .pad{color:var(--accent)} #touch .trk{opacity:.75;min-height:32px;padding:5px 0}" +
+  "#touch .handle{grid-column:1/-1;min-height:22px;padding:2px 0;opacity:.6;border-style:dashed}" +
+  "#touch.shut button:not(.handle){display:none}" +
   "@media (orientation: landscape){#touch{grid-template-columns:repeat(16,1fr);gap:4px;padding:4px 0 0}" +
     "#touch button{min-height:30px;padding:4px 0;font-size:11px}#rack{max-height:22vh}}";
 document.head.appendChild(css);
 
 var deck = document.createElement("div");
 deck.id = "touch";
+var handle = document.createElement("button");
+handle.className = "handle";
+try{ if(localStorage.getItem("oontz_deck") === "shut") deck.classList.add("shut"); }catch(e){}
+function setHandle(){ handle.textContent = deck.classList.contains("shut") ? "▲ pads" : "▼ hide pads"; }
+handle.addEventListener("click", function(e){
+  e.stopPropagation();
+  deck.classList.toggle("shut"); setHandle();
+  try{ localStorage.setItem("oontz_deck", deck.classList.contains("shut") ? "shut" : "open"); }catch(e2){}
+});
+deck.appendChild(handle);
+setHandle();
 function btn(key, label, opts) {
   var b = document.createElement("button");
   b.textContent = label;
@@ -58,6 +71,7 @@ bar.parentNode.insertBefore(deck, bar);
 var timer = 0;
 deck.addEventListener("touchstart", function (e) {
   var b = e.target.closest("button"); if (!b) return;
+  if (b.classList.contains("handle")){ e.preventDefault(); b.click(); return; }
   e.preventDefault();                                   /* no ghost click, no zoom, no focus */
   b.classList.add("held");
   send("keydown", b.dataset.key);

@@ -288,6 +288,32 @@
     40
    ]
   },
+  "downtempo": {
+   "bpm": [
+    85,
+    105
+   ],
+   "drop_at": [
+    0.3,
+    0.55
+   ],
+   "intro_bars": [
+    16,
+    32
+   ],
+   "key": "minor",
+   "note": "Head-nod music. The kick lands late and heavy; the air between hits does half the work.",
+   "outro_bars": [
+    16,
+    32
+   ],
+   "phrase": 16,
+   "sweet": 95,
+   "swing": [
+    15,
+    35
+   ]
+  },
   "dubtechno": {
    "bpm": [
     118,
@@ -338,6 +364,32 @@
    "swing": [
     0,
     6
+   ]
+  },
+  "garage": {
+   "bpm": [
+    128,
+    138
+   ],
+   "drop_at": [
+    0.2,
+    0.4
+   ],
+   "intro_bars": [
+    8,
+    16
+   ],
+   "key": "minor",
+   "note": "Two-step: the kick skips beat three and the shuffle is the groove. If it sounds straight, it is wrong.",
+   "outro_bars": [
+    16,
+    32
+   ],
+   "phrase": 16,
+   "sweet": 133,
+   "swing": [
+    25,
+    45
    ]
   },
   "hardtechno": {
@@ -418,6 +470,32 @@
     3
    ]
   },
+  "jungle": {
+   "bpm": [
+    158,
+    175
+   ],
+   "drop_at": [
+    0.15,
+    0.35
+   ],
+   "intro_bars": [
+    8,
+    16
+   ],
+   "key": "minor",
+   "note": "The break dances on top; the sub walks underneath at half speed. Two tempos in one track, and both must groove.",
+   "outro_bars": [
+    16,
+    32
+   ],
+   "phrase": 16,
+   "sweet": 168,
+   "swing": [
+    5,
+    18
+   ]
+  },
   "minimal": {
    "bpm": [
     120,
@@ -442,6 +520,32 @@
    "swing": [
     8,
     20
+   ]
+  },
+  "psytrance": {
+   "bpm": [
+    138,
+    148
+   ],
+   "drop_at": [
+    0.25,
+    0.45
+   ],
+   "intro_bars": [
+    16,
+    32
+   ],
+   "key": "minor",
+   "note": "The rolling offbeat bass IS the track - a sixteenth-note machine that never stops. Everything else decorates it.",
+   "outro_bars": [
+    16,
+    32
+   ],
+   "phrase": 16,
+   "sweet": 142,
+   "swing": [
+    0,
+    4
    ]
   },
   "techno": {

@@ -225,6 +225,18 @@ stale; `qa` runs 192 arrangements through both composers and requires identical 
   track plays, plus a manifest and icon so the gallery installs. Verified live
   on both pages; landing engine playing with viz auto attached.
 
+- 2026-08-24 -- cycle 13: the stage becomes one thing, the deck folds, and four
+  more genres. The rack moved up under the HUD - song map and instrument rows are
+  one stationary stage, the conversation scrolls beneath it, and the touch deck
+  folds to a one-line "pads" handle (remembered per device) so the log gets the
+  room back. Style packs can now point a track at any circuit ("voice" in the
+  spec), and garage (two-step shuffle), psytrance (the rolling bass IS the track),
+  jungle (two tempos, both grooving) and downtempo (bell stabs, air hats, sub
+  bass at 95) join theory + gen - 15 genres, 360 arrangements identical across
+  both composers, 90 plans in their windows. Caught on the way: gen has its own
+  scale aliases (pentatonic, not pentatonic_min) and a pack that names an unknown
+  scale silently falls back to defaults - the tempo told on it.
+
 ## Cycle log
 
 Append one line per completed cycle: what changed, what it measured, what it learned.
