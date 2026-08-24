@@ -2,6 +2,9 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<meta name="theme-color" content="#07090b">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>oontz.sh — make techno in a terminal</title>
 <meta name="description" content="A terminal instrument for making and mixing techno. Whole songs, two DJ decks, an AI that grades your arrangement. Free, runs in your browser.">
@@ -1061,6 +1064,10 @@ addEventListener('click', function(e){
   IN.focus(); });
 
 /* the working song survives a refresh */
+/* installable, and offline once visited — the engine never needed a server */
+if('serviceWorker' in navigator && (location.protocol==='https:' || location.hostname==='localhost'))
+  addEventListener('load', function(){ navigator.serviceWorker.register('sw.js').catch(function(){}); });
+
 addEventListener('beforeunload', function(){ try{ if(song) localStorage.setItem('oontz_song', JSON.stringify(song)); }catch(e){} });
 
 /* magic-link return: #token=... */

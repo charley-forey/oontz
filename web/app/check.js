@@ -402,4 +402,14 @@ A.strictEqual(MD.keyForNote(52), "<", "note 52 walks a section back");
 A.strictEqual(MD.keyForNote(35), null, "below the pads is nobody's key");
 A.ok(MD.FILTER_CCS[74] && MD.FILTER_CCS[1], "cutoff and modwheel both sweep the filter");
 
-console.log("web checks pass  ·  write-through · pads · viz · touch · midi · voices · notes · roll · jumps · decks · theory (" + checked + " plans in window) · legible · ear · " + OZ.KEYS.length + " keys listed");
+var fs2 = require("fs"), path2 = require("path");
+/* -- pwa: the shell the service worker promises must exist ------------------ */
+var man = JSON.parse(fs2.readFileSync(path2.join(__dirname, "manifest.webmanifest"), "utf8"));
+A.ok(man.icons.length && man.display === "standalone", "manifest is installable");
+var sw = fs2.readFileSync(path2.join(__dirname, "sw.js"), "utf8");
+(sw.match(/"\/[a-z.]+"/g) || []).forEach(function(q){
+  var f = q.slice(2, -1); if(!f) return;
+  A.ok(fs2.existsSync(path2.join(__dirname, f)), "sw.js precaches " + f + " but it does not exist");
+});
+
+console.log("web checks pass  ·  write-through · pads · viz · touch · midi · voices · pwa · notes · roll · jumps · decks · theory (" + checked + " plans in window) · legible · ear · " + OZ.KEYS.length + " keys listed");
