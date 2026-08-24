@@ -376,8 +376,18 @@ function watch(on){
     document.head.appendChild(wcss); }
   document.body.classList.toggle("watching", !!on);
   if(on){
+    /* The command was typed, so the virtual keyboard is probably up. Dismiss it
+       BEFORE fullscreen, or the canvas sizes itself to a keyboard-shrunk
+       viewport and everything lands off-center when the keyboard collapses. */
+    try{ if(document.activeElement && document.activeElement.blur) document.activeElement.blur(); }catch(e){}
+    try{ window.scrollTo(0, 0); }catch(e){}
     if(S.mode === "off") VIZ.mode("auto");
     try{ document.documentElement.requestFullscreen && document.documentElement.requestFullscreen(); }catch(e){}
+    /* Re-size after fullscreen engages and again after the keyboard finishes
+       collapsing - the two settle at different times on different phones. */
+    [250, 700, 1400].forEach(function(ms){
+      setTimeout(function(){ try{ dispatchEvent(new Event("resize")); }catch(e){} }, ms);
+    });
     var exit = function(e){
       if(e.type === "keydown" && e.key !== "Escape" && e.key !== "Enter" && e.key !== ":") return;
       document.removeEventListener("keydown", exit, true);
@@ -391,7 +401,19 @@ function watch(on){
     }, 250);
   } else {
     try{ if(document.fullscreenElement) document.exitFullscreen(); }catch(e){}
+    setTimeout(function(){ try{ dispatchEvent(new Event("resize")); }catch(e){} }, 300);
   }
+}
+if(typeof document !== "undefined"){
+  /* fullscreen transitions and keyboard show/hide both change the real viewport;
+     the canvas re-measures on every one of them. */
+  document.addEventListener("fullscreenchange", function(){
+    try{ dispatchEvent(new Event("resize")); }catch(e){}
+  });
+  if(typeof window !== "undefined" && window.visualViewport)
+    window.visualViewport.addEventListener("resize", function(){
+      try{ dispatchEvent(new Event("resize")); }catch(e){}
+    });
 }
 
 var VIZ = {

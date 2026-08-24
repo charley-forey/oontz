@@ -414,6 +414,17 @@ stale; `qa` runs 192 arrangements through both composers and requires identical 
   brings the show back. Sweep note: pre-volume track ids died with the old
   database - the seeded corpus ids are the live ones.
 
+- 2026-08-24 -- cycle 25: watch stops fighting the keyboard. Typing `watch`
+  leaves the input focused, so the virtual keyboard was still up when fullscreen
+  engaged - the canvas measured a keyboard-shrunk viewport and everything landed
+  off-center when it collapsed. watch() now blurs the active element FIRST,
+  scrolls home, and re-measures the canvas in staggered kicks (250/700/1400ms)
+  because fullscreen and the keyboard settle at different times on different
+  phones; fullscreenchange and visualViewport resizes also re-measure, so the
+  canvas can never stay stale. Verified by sabotage: with the input focused and
+  the canvas forced to 300x200, watch blurred the input and restored the canvas
+  to the exact full viewport.
+
 ## Cycle log
 
 Append one line per completed cycle: what changed, what it measured, what it learned.
