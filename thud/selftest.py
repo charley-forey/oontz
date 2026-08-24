@@ -163,6 +163,9 @@ def selftest():
 
         # the exported theory the browser and the API read must match this module
         assert not theory.stale(), "stale: %s - run `python -m thud theory export`" % theory.stale()
+        # so must the package the browser fetches
+        from . import web
+        assert not web.stale(), "stale: %s - run `python scripts/pack_thud.py`" % web.stale()
 
         # the composer obeys the theory it is graded by: first drop inside the window
         for style, g in theory.GENRES.items():

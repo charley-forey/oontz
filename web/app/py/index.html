@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>oontz.sh/py — the real thud, in your browser</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  :root{ --bg:#07090b; --fg:#c6d2dc; }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--fg);height:100vh;overflow:hidden;
+    font:13px/1.25 ui-monospace,"SF Mono",Menlo,Consolas,"DejaVu Sans Mono",monospace}
+  #screen{white-space:pre;padding:8px 12px;height:100vh;overflow:hidden}
+  #status{position:fixed;right:12px;top:8px;color:#46545f}
+  b{font-weight:700} .inv{background:var(--fg);color:var(--bg)}
+</style>
+</head>
+<body>
+<pre id="screen">the real Python instrument is loading — numpy and all. ~10MB, once.</pre>
+<div id="status">booting…</div>
+<script>
+/* The spike page: the terminal is ui.build() rendered verbatim; this file only
+ * turns SGR codes into spans and ferries keys/bars. Space is the transport. */
+"use strict";
+var SCREEN = document.getElementById('screen'), STATUS = document.getElementById('status');
+var worker = new Worker('worker.js');
+var ctx = null, node = null, playing = false, step = -1, barsQueued = 0, ready = false;
+var SR = 44100, BAR_SEC = 1.6;                      /* refined from the first bar */
+
+/* -- ANSI (SGR) to HTML: 256-colour foreground, bold, inverse -------------- */
+function xterm(n){
+  var base = [0,0,0, 205,49,49, 13,188,121, 229,229,16, 36,114,200, 188,63,188, 17,168,205, 229,229,229,
+              102,102,102, 241,76,76, 35,209,139, 245,245,67, 59,142,234, 214,112,214, 41,184,219, 255,255,255];
+  if(n < 16) return 'rgb(' + base[n*3] + ',' + base[n*3+1] + ',' + base[n*3+2] + ')';
+  if(n < 232){ n -= 16; var q = [0,95,135,175,215,255];
+    return 'rgb(' + q[(n/36)|0] + ',' + q[((n/6)|0)%6] + ',' + q[n%6] + ')'; }
+  var g = 8 + (n - 232) * 10; return 'rgb(' + g + ',' + g + ',' + g + ')';
+}
+function esc(s){ return s.replace(/&/g,'&amp;').replace(/</g,'&lt;'); }
+function ansiToHtml(text){
+  var out = [], fg = null, bold = false, dim = false, inv = false;
+  function push(seg){
+    if(!seg) return;
+    var st = [], cls = inv ? ' class="inv"' : '';
+    if(fg !== null) st.push('color:' + xterm(fg));
+    if(bold) st.push('font-weight:700');
+    if(dim) st.push('opacity:.55');
+    out.push('<span' + cls + (st.length ? ' style="' + st.join(';') + '"' : '') + '>' + esc(seg) + '</span>');
+  }
+  var re = /\x1b\[([0-9;]*)m/g, last = 0, m;
+  while((m = re.exec(text))){
+    push(text.slice(last, m.index)); last = re.lastIndex;
+    var p = m[1] === '' ? [0] : m[1].split(';').map(Number);
+    for(var i = 0; i < p.length; i++){
+      var c = p[i];
+      if(c === 0){ fg = null; bold = dim = inv = false; }
+      else if(c === 1) bold = true;
+      else if(c === 2) dim = true;
+      else if(c === 7) inv = true;
+      else if(c === 22) bold = dim = false;
+      else if(c === 27) inv = false;
+      else if(c === 39) fg = null;
+      else if(c >= 30 && c <= 37) fg = c - 30;
+      else if(c >= 90 && c <= 97) fg = c - 90 + 8;
+      else if(c === 38 && p[i+1] === 5){ fg = p[i+2]; i += 2; }
+    }
+  }
+  push(text.slice(last));
+  return out.join('');
+}
+
+/* -- page refresh ---------------------------------------------------------- */
+var cols = 0, rows = 0;
+function size(){
+  var cw = 7.8, ch = 16.5;                          /* measured once below */
+  var probe = document.createElement('span'); probe.textContent = 'MMMMMMMMMM';
+  SCREEN.appendChild(probe); cw = probe.getBoundingClientRect().width / 10 || cw;
+  ch = probe.getBoundingClientRect().height || ch; probe.remove();
+  cols = Math.max(60, Math.floor((innerWidth - 24) / cw));
+  rows = Math.max(20, Math.floor((innerHeight - 16) / ch));
+}
+size(); addEventListener('resize', size);
+function askPage(){ if(ready) worker.postMessage({t: 'page', cols: cols, rows: rows, step: step}); }
+setInterval(askPage, 120);
+
+/* -- audio ----------------------------------------------------------------- */
+async function audio(){
+  if(ctx) return;
+  ctx = new (window.AudioContext || window.webkitAudioContext)({sampleRate: SR});
+  await ctx.audioWorklet.addModule('worklet.js');
+  node = new AudioWorkletNode(ctx, 'bar-player', {outputChannelCount: [2]});
+  node.connect(ctx.destination);
+  node.port.onmessage = function(e){
+    if(e.data.t === 'need'){ barsQueued = e.data.queued; pump(); stepClock(); }
+    if(e.data.t === 'drop') STATUS.textContent = 'drops ' + e.data.n;
+  };
+}
+function pump(){ if(playing && barsQueued < 2) worker.postMessage({t: 'bar'}); }
+function stepClock(){ /* the playhead the page shows: 16 steps per bar */ }
+var stepTimer = 0;
+function startSteps(){
+  stop16(); var per = BAR_SEC / 16 * 1000;
+  stepTimer = setInterval(function(){ step = (step + 1) % 1e9; }, per);
+}
+function stop16(){ if(stepTimer) clearInterval(stepTimer); stepTimer = 0; }
+
+async function toggle(){
+  await audio(); if(ctx.state === 'suspended') await ctx.resume();
+  playing = !playing;
+  if(playing){ step = 0; startSteps(); node.port.postMessage({t: 'start'});
+    worker.postMessage({t: 'bar'}); worker.postMessage({t: 'bar'}); }
+  else { stop16(); step = -1; node.port.postMessage({t: 'stop'}); }
+  STATUS.textContent = playing ? 'playing' : 'stopped';
+}
+
+/* -- worker ---------------------------------------------------------------- */
+worker.onmessage = function(e){
+  var m = e.data;
+  if(m.t === 'boot'){ ready = true;
+    STATUS.textContent = m.info.hello + ' · pyodide ' + (m.info.pyodide/1000).toFixed(1) + 's';
+    askPage(); }
+  else if(m.t === 'page') SCREEN.innerHTML = ansiToHtml(m.text);
+  else if(m.t === 'bar'){
+    BAR_SEC = m.buf.length / 2 / SR;
+    if(node) node.port.postMessage({t: 'bar', buf: m.buf}, [m.buf.buffer]);
+    barsQueued++; STATUS.textContent = 'render ' + m.ms.toFixed(0) + 'ms / bar ' + (BAR_SEC*1000).toFixed(0) + 'ms';
+    pump(); }
+  else if(m.t === 'key' && m.echo === 'toggle') toggle();
+  else if(m.t === 'error') STATUS.textContent = m.text.slice(0, 120);
+};
+worker.postMessage({t: 'boot'});
+
+/* -- keys ------------------------------------------------------------------ */
+addEventListener('keydown', function(e){
+  if(!ready) return;
+  if(e.ctrlKey || e.metaKey || e.altKey) return;
+  var ch = null;
+  if(e.key === ' '){ e.preventDefault(); return toggle(); }
+  if(e.key.length === 1) ch = e.key;
+  else if(e.key === 'Enter') ch = '\n';
+  else if(e.key === 'Backspace') ch = '\x7f';
+  else if(e.key === 'Escape') ch = '\x1b';
+  if(ch !== null){ e.preventDefault(); worker.postMessage({t: 'key', ch: ch}); askPage(); }
+});
+</script>
+</body>
+</html>

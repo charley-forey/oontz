@@ -14,7 +14,10 @@ import threading
 import functools
 import collections
 import numpy as np
-import sounddevice as sd
+try:
+    import sounddevice as sd
+except ImportError:                                  # browser (Pyodide) or no audio stack:
+    sd = None                                        # web.py drives render_next/bar_done itself
 
 from .contracts import (SR, SEED, Snapshot, TrackView, VOICES, FX, COMMANDS,
                         BAR_HOOKS, load_modules)
@@ -351,24 +354,46 @@ def _schedule():
     while True:
         _want.wait()
         _want.clear()
-        if not playing():
-            continue
-        try:
-            if ST.song is not None and ST.follow:
-                nxt = ST.songbar + 1
-                if ST.loop_section and ST.song.sections:
-                    _n, sec, within, _i = ST.song.section_at(ST.songbar)
-                    if sec and within + 1 >= sec.bars:
-                        nxt = ST.songbar - within     # back to the top of this section
-                ST.next = render_state(ST.song.state_at(nxt))
-            else:
-                idx = ST.bars + 1
-                for hook in BAR_HOOKS:               # arrange.py drives automation here
-                    for line in hook(idx) or ():
-                        do(line, log=False)
-                ST.next = render_bar()
-        except Exception:
-            ST.next = None                           # never let a bad hook kill the clock
+        if playing():
+            render_next()
+
+
+def render_next():
+    """Render bar N+1 into ST.next. The scheduler thread calls this; so does web.py."""
+    try:
+        if ST.song is not None and ST.follow:
+            nxt = ST.songbar + 1
+            if ST.loop_section and ST.song.sections:
+                _n, sec, within, _i = ST.song.section_at(ST.songbar)
+                if sec and within + 1 >= sec.bars:
+                    nxt = ST.songbar - within     # back to the top of this section
+            ST.next = render_state(ST.song.state_at(nxt))
+        else:
+            idx = ST.bars + 1
+            for hook in BAR_HOOKS:               # arrange.py drives automation here
+                for line in hook(idx) or ():
+                    do(line, log=False)
+            ST.next = render_bar()
+    except Exception:
+        ST.next = None                           # never let a bad hook kill the clock
+
+
+def bar_done():
+    """The bar boundary: count it, step the song, take the bar rendered ahead."""
+    ST.bars += 1
+    if ST.song is not None and ST.follow:
+        total = ST.song.total_bars() or 1
+        if ST.loop_section:
+            _nm, sec, within, _ix = ST.song.section_at(ST.songbar)
+            ST.songbar = (ST.songbar - within if sec and within + 1 >= sec.bars
+                          else ST.songbar + 1)
+        else:
+            ST.songbar = (ST.songbar + 1) % total
+    nxt = ST.pending if ST.pending is not None else ST.next
+    if nxt is not None:
+        ST.bar, ST.pending, ST.next, ST.pos = nxt, None, None, 0
+    else:
+        ST.drops += 1                            # render overran; reuse this bar
 
 # ------------------------------------------------------------------- engine
 
@@ -461,25 +486,14 @@ def _callback(out, frames, _t, _status):
     ST.pos = end % n
     _tap(seg, frames)
     if end >= n:                                     # bar boundary
-        ST.bars += 1
-        if ST.song is not None and ST.follow:
-            total = ST.song.total_bars() or 1
-            if ST.loop_section:
-                _nm, sec, within, _ix = ST.song.section_at(ST.songbar)
-                ST.songbar = (ST.songbar - within if sec and within + 1 >= sec.bars
-                              else ST.songbar + 1)
-            else:
-                ST.songbar = (ST.songbar + 1) % total
-        nxt = ST.pending if ST.pending is not None else ST.next
-        if nxt is not None:
-            ST.bar, ST.pending, ST.next, ST.pos = nxt, None, None, 0
-        else:
-            ST.drops += 1                            # render overran; reuse this bar
+        bar_done()
         _want.set()
 
 
 def play():
     global _stream, _sched
+    if sd is None:                                   # no device: the host (web.py) is the clock
+        return
     if _sched is None:
         _sched = threading.Thread(target=_schedule, daemon=True)
         _sched.start()

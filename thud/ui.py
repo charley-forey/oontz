@@ -18,9 +18,12 @@ from .contracts import VIEWS
 if os.name == "nt":
     import msvcrt
 else:
-    import tty
-    import termios
-    import select
+    try:
+        import tty
+        import termios
+        import select
+    except ImportError:                # the browser: no terminal to put in raw mode.
+        tty = termios = select = None  # build()/on_key() still work; run() cannot.
 
 from .term import ANSI, COL, DIM, OFF, INV, c, vlen, fit
 

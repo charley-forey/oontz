@@ -78,6 +78,8 @@ reports SUCCESS and the live file contains the change.
       buffer, a read position and a rate. `playbackRate` is the sync, `loopStart/End`
       is the beat loop, three biquads are the kills, two gains are the crossfader.
       `export` writes the same render as a WAV.
+- [x] **Pyodide spike: GO** -- the real thud runs in Chrome at median 185ms/bar
+      against a 1200ms threshold. See cycle 8 and PLAN.md; web/app/py/ is the proof.
 - [ ] **DNS** — the three custom domains are attached on Railway; the records are not
       set yet. Until they are, only the `*.up.railway.app` URLs work and `oontz.sh` has
       no reachable URL at all (Railway will not add a service domain beside a custom one).
@@ -119,6 +121,18 @@ reports SUCCESS and the live file contains the change.
 `api/theory.json` (the AI proxy appends its `prompt` to the system prompt). The
 desktop AI reads `theory.prompt_text()` directly. The selftest fails if an export is
 stale; `qa` runs 192 arrangements through both composers and requires identical plans.
+
+- 2026-08-24 -- cycle 8: the Pyodide spike, and its number. The real thud package
+  -- all 25 modules, numpy DSP, the composer, ui.build() -- imports and runs in
+  Chrome via Pyodide: `compose hardtechno 3` composed 112 bars in-page, and a full
+  1600ms bar renders in **min 124 / median 185 / max 212 ms** (native: ~94ms).
+  The go/no-go line in PLAN.md was 1200ms, so this is a **GO** with 8x headroom:
+  oontz.sh can be the actual software. Load cost: ~5s pyodide + numpy, 178KB
+  thud.zip, 660ms unpack+import. What it took: sounddevice behind a guard, the
+  POSIX tty/termios imports behind another (Pyodide has neither), thud/web.py as
+  the JS-facing seam (do/render_bar/page/key), and JS driving the render-ahead
+  loop instead of a thread. web/app/py/ is the proof page. Next cycle: wire the
+  worklet transport end to end and start retiring the JS engine per PLAN.md.
 
 ## Cycle log
 
