@@ -206,6 +206,17 @@ stale; `qa` runs 192 arrangements through both composers and requires identical 
   the page caches for 60s -- two layers that can both serve you the past while
   you debug the present.
 
+- 2026-08-24 -- cycle 10: jam, and six voices earn their circuits. `jam on 8` makes
+  the AI a bandmate: every N bars it makes exactly one small move through the same
+  /ai/ask path, out loud in the log, snapshot first, `undo` vetoes -- a duet with
+  the machine, not autocomplete. And the six voice aliases (hoover, lead, pluck,
+  fm, screech, chord) are now real WebAudio circuits: the hoover swoops, the pluck
+  snaps its filter, fm rides a real modulation index. `sounds` lists the bank.
+  Verified in Chrome: a stubbed jam turn fired on the bar boundary, applied
+  `swing 18`, and undo reverted it; all six voices rendered without error while a
+  song played. Learned that a hidden tab can be silently DISCARDED by Chrome, not
+  just throttled -- state you proved one call ago may be a fresh boot now.
+
 ## Cycle log
 
 Append one line per completed cycle: what changed, what it measured, what it learned.

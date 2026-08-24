@@ -291,9 +291,83 @@ VOICES.riser = function(e, t, o){
   s.connect(f); f.connect(g); g.connect(o.dest); s.start(t); s.stop(t + dur + 0.1);
 };
 /* aliases so a .song made in the desktop tool finds something sensible */
+VOICES.hoover = function(e, t, o){              /* the rave chord: detuned saws swooping up into place */
+  var c = e.ctx, hz = o.hz || 220, dur = o.dur || 0.4;
+  var g = c.createGain(), f = c.createBiquadFilter();
+  f.type = "lowpass"; f.Q.value = 4;
+  f.frequency.setValueAtTime(o.fc || 900, t);
+  f.frequency.exponentialRampToValueAtTime(Math.min(16000, (o.fc || 900) * 4), t + dur * 0.5);
+  envTo(g, t, 0.01, dur * 0.8, 0.14);
+  f.connect(g); g.connect(o.dest);
+  [-12, 0, 0, 0, 7].forEach(function(semi, i){
+    var osc = c.createOscillator(); osc.type = "sawtooth";
+    var target = hz * Math.pow(2, semi / 12) * (1 + (i - 2) * 0.008);
+    osc.frequency.setValueAtTime(target * 0.66, t);          /* the swoop IS the hoover */
+    osc.frequency.exponentialRampToValueAtTime(target, t + 0.09);
+    osc.connect(f); osc.start(t); osc.stop(t + dur + 0.05);
+  });
+};
+
+VOICES.lead = function(e, t, o){                /* square + saw an octave apart, bright and quick */
+  var c = e.ctx, hz = o.hz || 440, dur = o.dur || 0.22;
+  var g = c.createGain(), f = c.createBiquadFilter();
+  f.type = "lowpass"; f.frequency.value = o.fc || 4200; f.Q.value = 1.2;
+  envTo(g, t, 0.003, dur * 0.6, 0.15);
+  f.connect(g); g.connect(o.dest);
+  [["square", 1], ["sawtooth", 2]].forEach(function(v){
+    var osc = c.createOscillator(); osc.type = v[0]; osc.frequency.value = hz * v[1];
+    osc.connect(f); osc.start(t); osc.stop(t + dur + 0.05);
+  });
+};
+
+VOICES.pluck = function(e, t, o){               /* a saw with its filter snapped shut: the snap is the note */
+  var c = e.ctx, hz = o.hz || 330, dur = o.dur || 0.18;
+  var g = c.createGain(), f = c.createBiquadFilter();
+  f.type = "lowpass"; f.Q.value = 6;
+  f.frequency.setValueAtTime(o.accent ? 6000 : 3800, t);
+  f.frequency.exponentialRampToValueAtTime(260, t + 0.09);
+  envTo(g, t, 0.002, dur, 0.17);
+  var osc = c.createOscillator(); osc.type = "sawtooth"; osc.frequency.value = hz;
+  osc.connect(f); f.connect(g); g.connect(o.dest); osc.start(t); osc.stop(t + dur + 0.05);
+};
+
+VOICES.fm = function(e, t, o){                  /* two operators; the index rides the envelope, bright to sine */
+  var c = e.ctx, hz = o.hz || 220, dur = o.dur || 0.3;
+  var car = c.createOscillator(), mod = c.createOscillator(), mg = c.createGain(), g = c.createGain();
+  car.frequency.value = hz; mod.frequency.value = hz * 2;
+  mg.gain.setValueAtTime(hz * (o.accent ? 5 : 2.5), t);
+  mg.gain.exponentialRampToValueAtTime(hz * 0.2, t + dur);
+  mod.connect(mg); mg.connect(car.frequency);
+  envTo(g, t, 0.004, dur * 0.7, 0.18);
+  car.connect(g); g.connect(o.dest);
+  car.start(t); mod.start(t); car.stop(t + dur + 0.05); mod.stop(t + dur + 0.05);
+};
+
+VOICES.screech = function(e, t, o){             /* a saw fighting a resonance it cannot win */
+  var c = e.ctx, hz = o.hz || 440, dur = o.dur || 0.25;
+  var g = c.createGain(), f = c.createBiquadFilter();
+  f.type = "bandpass"; f.Q.value = 14;
+  f.frequency.setValueAtTime(hz * 3, t);
+  f.frequency.exponentialRampToValueAtTime(hz * (o.accent ? 9 : 5), t + dur * 0.6);
+  envTo(g, t, 0.004, dur * 0.8, 0.2);
+  var osc = c.createOscillator(); osc.type = "sawtooth"; osc.frequency.value = hz;
+  osc.connect(f); f.connect(g); g.connect(o.dest); osc.start(t); osc.stop(t + dur + 0.05);
+};
+
+VOICES.chord = function(e, t, o){               /* stab's warmer cousin: minor7 voicing, longer, darker */
+  var c = e.ctx, hz = o.hz || 220, dur = o.dur || 0.45;
+  var g = c.createGain(), f = c.createBiquadFilter();
+  f.type = "lowpass"; f.frequency.value = o.fc || 1500; f.Q.value = 0.8;
+  envTo(g, t, 0.008, dur * 0.85, 0.12);
+  f.connect(g); g.connect(o.dest);
+  [0, 3, 7, 10].forEach(function(semi){
+    var osc = c.createOscillator(); osc.type = "sawtooth";
+    osc.frequency.value = hz * Math.pow(2, semi / 12);
+    osc.connect(f); osc.start(t); osc.stop(t + dur + 0.05);
+  });
+};
+
 VOICES.kick_dist = VOICES.kick_hard; VOICES.reese = VOICES.bass;
-VOICES.hoover = VOICES.stab; VOICES.lead = VOICES.stab; VOICES.pluck = VOICES.stab;
-VOICES.screech = VOICES.bass; VOICES.chord = VOICES.stab; VOICES.fm = VOICES.stab;
 VOICES.ride = VOICES.oh; VOICES.crash = VOICES.oh; VOICES.metal = VOICES.perc;
 VOICES.rim = VOICES.perc; VOICES.noise_hit = VOICES.perc; VOICES.tom = VOICES.perc;
 VOICES.downlifter = VOICES.riser; VOICES.growl = VOICES.bass;

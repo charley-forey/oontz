@@ -435,6 +435,22 @@ var CMDS = {
   },
   undo: function(){ if(!UNDO.length) return line('nothing to undo','w');
     song = UNDO.pop(); E.loadSong(song); draw(); line('▸ undone','dim'); },
+  /* jam: the AI is a bandmate, not an oracle. Every N bars it makes one small
+     move, out loud, and `undo` vetoes it. */
+  jam: function(a){
+    var v = (a[0]||'').toLowerCase();
+    if(v === 'off'){ JAM.on = false; return line('▸ jam off','dim'); }
+    if(!v && JAM.on) return line('▸ jamming every '+JAM.bars+' bars · jam off ends it','dim');
+    var bars = parseInt(v === 'on' ? a[1] : v, 10);
+    if(v && v !== 'on' && !isFinite(bars)) return line(CP.jam_usage,'w');
+    JAM.on = true; JAM.bars = Math.max(2, Math.min(64, isFinite(bars) ? bars : 8));
+    JAM.mark = E.songbar; JAM.turns = 0;
+    line('▸ '+CP.jam_on(JAM.bars),'ok');
+    if(!E.playing) line('  '+CP.jam_needs_play,'dim');
+  },
+  sounds: function(){ line();
+    w('  <span class="dim">'+Object.keys(OZ.VOICES).sort().join(' · ')+'</span>');
+    w('  <span class="dim">'+CP.sounds_hint+'</span>'); line(); },
   viz: function(a){ var V = window.OONTZ_VIZ; if(!V) return;
     var v = (a[0]||'').toLowerCase();
     if(!v) return line('▸ '+CP.viz_status(V.status())+' · '+CP.viz_usage,'dim');
@@ -533,6 +549,34 @@ function deckKey(k){
   return null;
 }
 var REC = null, PENDING = null, UNDO = [];
+var JAM = {on:false, bars:8, mark:0, turns:0, busy:false};
+setInterval(async function(){
+  if(!JAM.on || JAM.busy || !E.playing || MODE === 'deck' || !song) return;
+  var total = OZ.totalBars(song), gone = (E.songbar - JAM.mark + total) % total;
+  if(gone < JAM.bars) return;
+  JAM.mark = E.songbar; JAM.busy = true;
+  try{
+    var at = OZ.sectionAt(song, E.songbar);
+    var state = {bpm: E.bpm, swing: E.swing, key: song.key, scale: song.scale,
+      section: at && at.name, role: at && at.sec.role, bar: E.songbar, tracks: E.tracks, order: E.order,
+      commands: Object.keys(CMDS).concat(E.order), jam_turn: ++JAM.turns};
+    var hdr = {'content-type':'application/json'};
+    var myKey = localStorage.getItem('oontz_key'); if(myKey) hdr['x-anthropic-key'] = myKey;
+    var r = await fetch(API+'/ai/ask', {method:'POST', headers:hdr,
+      body: JSON.stringify({prompt: 'JAM TURN '+JAM.turns+': you are playing live alongside a human, currently in the '
+        +(at ? at.name : 'song')+'. Make exactly ONE small, tasteful, reversible move that fits this moment - vary a pattern, '
+        +'nudge a filter or gain, thin or thicken one element. Two lines only if inseparable. Subtle beats clever; '
+        +'never touch more than one track.', state: state})});
+    var j = await r.json();
+    if(j.commands && j.commands.length){
+      snapshot();
+      w('<span class="dim">  ♪ jam:</span>');
+      j.commands.slice(0, 2).forEach(run);
+      w('<span class="dim">  ♪ <span class="a">undo</span> vetoes it · jam off ends it</span>');
+    }
+  }catch(e){}
+  JAM.busy = false;
+}, 700);
 function snapshot(){ if(song){ UNDO.push(JSON.parse(JSON.stringify(song))); if(UNDO.length > 20) UNDO.shift(); } }
 var GAL = [];
 var ALIAS = {'?':'help','ls':'help','start':'go','make':'go','song':'go','q':'stop','wav':'export','render':'export','crossfade':'xf',

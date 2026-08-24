@@ -226,4 +226,10 @@ A.ok(/RACK\.innerHTML = h;/.test(html), "the grid must render into the rack");
 A.strictEqual(html.split("OUT.scrollTop = OUT.scrollHeight").length - 1, 1,
   "exactly one place may jump the log to the bottom, and it is tail()");
 
-console.log("web checks pass  ·  write-through · pads · viz · touch · notes · roll · jumps · decks · theory (" + checked + " plans in window) · legible · " + OZ.KEYS.length + " keys listed");
+/* -- voices: the six former aliases now have their own circuits ------------- */
+["hoover", "lead", "pluck", "fm", "screech", "chord"].forEach(function(v){
+  A.ok(typeof OZ.VOICES[v] === "function" && OZ.VOICES[v] !== OZ.VOICES.stab && OZ.VOICES[v] !== OZ.VOICES.bass,
+    v + " deserves its own circuit, not an alias");
+});
+
+console.log("web checks pass  ·  write-through · pads · viz · touch · voices · notes · roll · jumps · decks · theory (" + checked + " plans in window) · legible · " + OZ.KEYS.length + " keys listed");

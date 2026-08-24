@@ -205,6 +205,8 @@ C.help = [
   ["bpm 150",               "faster"],
   ["grade",                 "get roasted by music theory"],
   ["ask make it darker",    "the AI proposes, you press Enter"],
+  ["jam on 8",               "the AI plays WITH you: one small move every 8 bars, undo vetoes"],
+  ["sounds",                 "the whole voice bank on one line"],
   ["key sk-ant-…",          "your own AI key. this browser only, never our server"],
   ["handle acid_mother",    "your name on the gallery"],
   ["take midnight v2",      "keep the current song server-side. it's text, it re-renders"],
@@ -256,6 +258,11 @@ C.err_cmd = function (v) {
 };
 C.err_bpm = "bpm goes 60 to 220. techno lives at 130-150. below 100 you've made dub, above 180 you've made a mistake or gabber, and those are the same thing to some people.";
 C.err_nosong = "there's no song yet. type `go` and one will appear, like magic, but with more maths.";
+
+C.jam_usage = "jam on [bars] / jam off. the AI takes a turn every N bars while the song runs.";
+C.jam_on = function (bars) { return "jam on. the AI makes one small move every " + bars + " bars, out loud, and `undo` vetoes it. a bandmate, not an oracle."; };
+C.jam_needs_play = "(a jam needs a running song - press space)";
+C.sounds_hint = "voice <track> <sound> swaps a circuit. track add <name> [sound] makes room for one.";
 
 g.OONTZ_COPY = C;
 })(window);
