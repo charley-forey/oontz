@@ -102,7 +102,8 @@
   .big{font-size:min(2.4vw,15px);line-height:1.05;letter-spacing:.5px}
   .grid{font-size:.95em;letter-spacing:1px}
   #rack .st{cursor:pointer} #rack .st:hover{outline:1px solid var(--accent);border-radius:2px}
-  #rack .trk{cursor:pointer}
+  #rack .trk{cursor:pointer;display:inline-block;min-width:9ch;max-width:9ch;
+    white-space:pre;overflow:hidden;text-overflow:ellipsis;vertical-align:bottom}
   /* `calm` for anyone who wants the words to win outright */
   body.calm #bg{opacity:.16} body.calm #viz{opacity:.2} body.calm #scan{display:none}
   body.calm #vig{background:radial-gradient(ellipse at 50% 45%,transparent 60%,rgba(0,0,0,.5) 100%)}
@@ -241,7 +242,7 @@ function draw(){
         (cur?';background:var('+(on?col:'--line')+');color:#000':'')+'">'+
         (maybeStep?'▒':(on?'█':'·'))+'</span>' + (q%4===3?' ':'');
     }
-    h += '<div><span class="trk '+(n===foc?'a2':'dim')+'" data-t="'+esc(n)+'">'+(n===foc?'▸ ':'  ')+esc(n.padEnd(7))+'</span>'+cells+'</div>';
+    h += '<div><span class="trk '+(n===foc?'a2':'dim')+'" data-t="'+esc(n)+'">'+(n===foc?'▸ ':'  ')+esc(n)+'</span>'+cells+'</div>';
   });
   RACK.innerHTML = h;
   RACK.classList.toggle('on', !!h);        // no rack until there is something in it

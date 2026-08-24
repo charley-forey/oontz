@@ -402,6 +402,18 @@ stale; `qa` runs 192 arrangements through both composers and requires identical 
   pitched tracks on their own channels, byte-asserted in the gate. The offline
   render's identical-state cache learned that ?-bars are never identical.
 
+- 2026-08-24 -- cycle 24: two paper cuts and a sweep. The rack misaligned because
+  track names were padded with SPACES inside normal-whitespace HTML - browsers
+  collapse the runs, so every row shifted by its name length; the fix is a real
+  CSS column (.trk inline-block, 9ch, ellipsis) and the padEnd is gone. Verified
+  by measurement: kick, hat, bass and a ten-character downlifter all start their
+  cells at the same pixel. And on oontz.music the visuals now follow the
+  transport: stopTrack turns the canvas off (and exits watch if stranded),
+  playTrack re-arms auto, and `watch` with nothing playing says so instead of
+  showing a still frame. Verified: stop leaves the center pixels black, replay
+  brings the show back. Sweep note: pre-volume track ids died with the old
+  database - the seeded corpus ids are the live ones.
+
 ## Cycle log
 
 Append one line per completed cycle: what changed, what it measured, what it learned.
