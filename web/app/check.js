@@ -437,4 +437,15 @@ A.ok(made && V.THEMES.teste2e && made.colors.length === 3, "a custom theme regis
 A.ok(V.unmake("teste2e") && !V.THEMES.teste2e, "and can be deleted");
 A.ok(/^#[0-9a-f]{6}$/.test(V.hslHex(200, 0.9, 0.55)), "hslHex emits hex");
 
-console.log("web checks pass  ·  write-through · pads · viz · touch · midi · voices+4 · viz-auto · themes · stage · pwa · notes · roll · jumps · decks · theory (" + checked + " plans in window) · legible · ear · " + OZ.KEYS.length + " keys listed");
+/* -- songDiff: the demo that sells the format ------------------------------- */
+var d1 = song(), d2 = JSON.parse(JSON.stringify(d1));
+d2.bpm = 132; d2.sections.drop.tracks.kick.pat = "x..xx...x...x...";
+d2.sections.break2 = {bars: 8, role: "break", tracks: {}, order: []};
+d2.order.push("break2");
+var dd = OZ.songDiff(d1, d2);
+A.ok(dd.indexOf("bpm 140 \u2192 132") >= 0, "diff sees the bpm: " + dd);
+A.ok(dd.some(function(l){ return l.indexOf("drop/kick:") === 0; }), "diff sees the pattern");
+A.ok(dd.some(function(l){ return l.indexOf("+ section break2") === 0; }), "diff sees the new section");
+A.deepStrictEqual(OZ.songDiff(d1, JSON.parse(JSON.stringify(d1))), ["identical, note for note"], "no-change is said plainly");
+
+console.log("web checks pass  ·  write-through · pads · viz · touch · midi · voices+4 · viz-auto · themes · stage · pwa · notes · roll · jumps · decks · diff · theory (" + checked + " plans in window) · legible · ear · " + OZ.KEYS.length + " keys listed");

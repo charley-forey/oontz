@@ -119,6 +119,39 @@ visuals can *anticipate* the drop instead of detecting it late.
 - Every agent works on a branch in its own worktree; main only moves by a
   fast-forward after the gate passes.
 
+## Source code for music — the thesis (added 2026-08-24)
+
+Git made source code collaborative. Oontz makes music **executable, inspectable,
+remixable, and machine-readable**. The closest analogy is not another live-coding
+language; it is HTML: not a screenshot of the website, the source of it, rendered
+by anything that speaks the format. The recording becomes a compiled artifact —
+a PDF generated from the document. The spec lives in `docs/OONTZ-FORMAT.md`.
+
+Three layers, in the order they compound:
+
+1. **The format.** `.thud` (command log) and `.song` (`format: "thud-song-1"`
+   JSON timeline) — tiny, deterministic, diffable, already real.
+2. **The ecosystem.** Fork/remix with provenance (shipped), playlists and share
+   pages (shipped), then: structural search, a module registry ("npm for
+   sounds" — behavior, not sample packs), PR-style collaboration on songs.
+3. **The intelligence layer.** AI that reads and edits the source and shows its
+   diff (ask/jam/produce/dream — shipped), then: agents that aim at references,
+   and the edit-history corpus (state → instruction → exact transformation →
+   accepted or vetoed) that nothing else in music has.
+
+What is true today vs. future (kept honest so the loop builds in order):
+
+| Claim | Status |
+|---|---|
+| Song as tiny executable text, deterministic renders | shipped |
+| AI edits source in the open; user vetoes | shipped (jam/produce/dream) |
+| Provenance: remix lineage both directions | shipped |
+| In-instrument structural diff, source export/import | shipped this cycle |
+| Search by bpm/key | shipped; by pattern/structure | later |
+| Module registry, marketplace, PR merge UI | later |
+| Adaptive/game runtime (music as logic reacting to state) | later |
+| Deliberate edit-history dataset (RLHF-for-music) | later; needs a privacy decision first |
+
 ## The next level (added 2026-08-24)
 
 The ladder of intelligence, each rung shipped on the one below:

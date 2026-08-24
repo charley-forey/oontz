@@ -51,6 +51,7 @@ C.help = [
   ["play w7k2…",            "hear one, right here. it's the source, not a recording"],
   ["gallery top",           "most played · also: gallery bpm 140-150 · gallery key 8a"],
   ["playlists",             "what people bundled together, playable start to finish"],
+  ["spec",                  "why a song here is source code, and what that buys you"],
   ["open",                  "go to oontz.sh, where the real one lives"],
   ["clear",                 "tidy up"]
 ];
@@ -154,6 +155,22 @@ C.free = [
 C.gallery_empty = [
   {s: "Nobody has published anything yet. You could be first, which is either"},
   {s: "an honour or a warning depending on your disposition. 🏆"}
+];
+C.spec = [
+  {t: "Source code for music.", cls: "b"},
+  {},
+  {s: "An MP3 tells you what happened. An oontz file tells you how."},
+  {},
+  {c: "kick x...x...x...x...", d: "press play. four on the floor"},
+  {c: "kick x...x...x...x..x", d: "one character changed. the song changed"},
+  {},
+  {s: "A complete track - arrangement, notes, automation, even its colors -"},
+  {s: "is a few KB of text that renders the same audio every time. So music"},
+  {s: "here is diffable, forkable with automatic credit, searchable by its"},
+  {s: "actual structure, and readable by the AI that jams alongside you."},
+  {},
+  {s: "The recording is just a compiled artifact, like a PDF from a document."},
+  {s: "The format is documented: github.com/charley-forey/oontz - docs/OONTZ-FORMAT.md"}
 ];
 C.play_note = "that was the recipe, not a recording — a few KB of text, rendered here. take it apart:";
 C.gallery_hint = "each id plays right here: play <the id>. every track is its own source code.";

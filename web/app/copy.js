@@ -215,6 +215,8 @@ C.help = [
   ["mix <playlist id>",      "a playlist becomes a set: beat-synced 16-bar blends, decks stay yours"],
   ["midi",                   "plug a controller in. pads are steps, the sustain pedal is play"],
   ["remix <id>",             "any public track opens as source. publish credits the original"],
+  ["source save",            "the whole song as a 15KB .oontz file. not a recording — the song"],
+  ["diff",                   "what changed, in plain lines: bpm, bars, patterns. music, diffed"],
   ["produce 90",             "the AI produces the track: grade, fix, regrade, until it holds up"],
   ["dream driving acid at 3am", "a sentence in, an arranged track out"],
   ["sounds",                 "the whole voice bank on one line"],
@@ -293,6 +295,9 @@ C.dream_usage = "dream <what you want> - driving acid at 3am, warehouse dub with
 
 C.watch_on = "just the visuals now. the keys still play - Esc or a tap brings the terminal back.";
 C.theme_make_usage = "theme make <name> <#hex> <#hex> [more...] - 2-6 colors, yours forever, travels with published songs.";
+
+C.source_hint = "`source save` downloads it · `source copy` copies it · `load <paste>` round-trips it · `diff` shows what changed.";
+C.load_usage = "load <pasted .oontz JSON> - a song someone `source copy`d, back to playing. the recipe, not the cake.";
 
 g.OONTZ_COPY = C;
 })(window);

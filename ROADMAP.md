@@ -37,6 +37,25 @@ no loop.
 - [ ] **Undo across song edits** — undo covers tracks; extend it to section edits.
 - [ ] **Cue-point hot keys in DECK** — 8 hot cues exist in `deck.py`, unbound.
 
+## Later — the source-code-for-music layers (see PLAN.md thesis, docs/OONTZ-FORMAT.md)
+
+- [ ] **Structural search** — the gallery filters on bpm/key because the fields are
+      real; extend the API to match patterns and section shapes ("every public track
+      using this exact kick pattern", "drop structure like this one").
+- [ ] **Module registry ("npm for sounds")** — publish reusable musical behavior, not
+      sample packs: a generative bassline with parameters, a genre template, a viz
+      theme. The format is small enough that a module is a JSON document.
+- [ ] **PR-style collaboration** — propose a change to someone's public track as a
+      structural diff they can hear, review line by line, and merge with credit.
+- [ ] **Adaptive runtime** — music as logic: expose the engine so a game/app can bind
+      energy, tempo and sections to its own state. A 15 KB file defining hours of music.
+- [ ] **Provenance graph UI** — the remix family tree, walkable: who forked what,
+      which bassline is the most forked in techno.
+- [ ] **Edit-history corpus** — takes, jam/produce accept-vs-undo already generate
+      (state, instruction, exact transformation, verdict) tuples. Deciding to keep
+      them is a privacy/consent decision to make deliberately, opt-in, before any
+      collection.
+
 ## Later
 
 - [ ] **A second output device** for cue/PFL, so you can pre-listen like real gear.
@@ -262,6 +281,21 @@ stale; `qa` runs 192 arrangements through both composers and requires identical 
   breathing mandala the symmetry folds). Verified visually - and learned that
   getComputedStyle lies under the dark-mode extension: when CSS seems impossible,
   screenshot the truth.
+
+- 2026-08-24 -- cycle 15: the thesis, named and shipped. Oontz is source code for
+  music - the essay's claims audited honestly (most were already true here), the
+  format specified in docs/OONTZ-FORMAT.md (.thud command log + thud-song-1 JSON,
+  determinism guaranteed by the gates), PLAN.md carries the three layers (format ->
+  ecosystem -> intelligence) with a real-vs-future table, and the Later backlog
+  gains structural search, the module registry, PR-style collab, the adaptive
+  runtime, the provenance graph and the (opt-in-first) edit corpus. In the
+  instrument: `source` / `source save` (a .oontz download) / `source copy`,
+  `load <paste>` round-trips a song, and `diff` says what changed in human lines -
+  bpm, bars, patterns - against the last snapshot, a take, or any gallery track.
+  publish stamps format: thud-song-1. oontz.music gains `spec`: the story in
+  sixty seconds, hello world included. Verified end to end in the browser: source
+  -> compose something else -> load restored the exact song, and diff named the
+  bpm and kick changes.
 
 ## Cycle log
 

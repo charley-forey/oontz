@@ -55,6 +55,10 @@ motif across the whole track, so the drop's bassline is recognisably the intro's
 
 ## The idea
 
+**Oontz is source code for music.** An MP3 tells you what happened; an oontz
+file tells you how — and renders to the same audio every time. The full spec:
+[`docs/OONTZ-FORMAT.md`](docs/OONTZ-FORMAT.md).
+
 Text patterns are the interface. `kick x...x...x...x...` is greppable, diffable
 and committable, and a whole session saves as a `.thud` file that is just the
 commands you ran — so a song is something you can read, diff and commit.

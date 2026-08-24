@@ -714,6 +714,38 @@ function gridFor(song){
   return {grid: grid, marks: marks, seconds: t, bpm: song.bpm || 138};
 }
 
+/* What changed between two songs, as human lines - the diff that sells the
+   format. Pure; both sides are .song documents. */
+function songDiff(a, b){
+  var out = [];
+  if(!a || !b) return ["nothing to compare"];
+  ["bpm", "swing", "key", "scale"].forEach(function(k){
+    if(String(a[k] == null ? "" : a[k]) !== String(b[k] == null ? "" : b[k]))
+      out.push(k + " " + a[k] + " \u2192 " + b[k]);
+  });
+  var an = a.order || [], bn = b.order || [];
+  bn.forEach(function(n){ if(an.indexOf(n) < 0){ var sb = (b.sections || {})[n] || {};
+    out.push("+ section " + n + " (" + (sb.bars || 0) + " bars, " + (sb.role || "?") + ")"); } });
+  an.forEach(function(n){ if(bn.indexOf(n) < 0) out.push("- section " + n); });
+  bn.forEach(function(n){
+    if(an.indexOf(n) < 0) return;
+    var sa = (a.sections || {})[n] || {}, sb = (b.sections || {})[n] || {};
+    if((sa.bars | 0) !== (sb.bars | 0)) out.push(n + ": " + sa.bars + " \u2192 " + sb.bars + " bars");
+    var ta = sa.tracks || {}, tb = sb.tracks || {};
+    Object.keys(tb).forEach(function(t){
+      if(!ta[t]) return out.push(n + ": + " + t + " (" + (tb[t].voice || t) + ")");
+      var x = ta[t], y = tb[t];
+      if((x.pat || "") !== (y.pat || "")) out.push(n + "/" + t + ": " + (x.pat || "\u00b7") + " \u2192 " + (y.pat || "\u00b7"));
+      if(String(x.notes || "") !== String(y.notes || "")) out.push(n + "/" + t + ": notes changed");
+      if((x.voice || t) !== (y.voice || t)) out.push(n + "/" + t + ": voice " + (x.voice || t) + " \u2192 " + (y.voice || t));
+      var gx = x.gain == null ? 1 : x.gain, gy = y.gain == null ? 1 : y.gain;
+      if(gx !== gy) out.push(n + "/" + t + ": gain " + gx + " \u2192 " + gy);
+    });
+    Object.keys(ta).forEach(function(t){ if(!tb[t]) out.push(n + ": - " + t); });
+  });
+  return out.length ? out : ["identical, note for note"];
+}
+
 /* The whole song, offline, through the same _hits the live clock uses. Mono:
    ponytail: nothing sets pan yet and two 5-minute stereo decks are 200MB. */
 function renderSong(song, onProgress, opts){
@@ -1018,6 +1050,7 @@ Engine.prototype.stop = function(){
 global.oontz = {
   Engine: Engine, VOICES: VOICES, noteHz: noteHz, KEYS: KEYS, PADS: PADS,
   Deck: Deck, gridFor: gridFor, renderSong: renderSong, renderSlice: renderSlice,
+  songDiff: songDiff,
   patIndex: patIndex, grooveOf: grooveOf, buildMaster: buildMaster, keepsLows: keepsLows,
   renderTracks: renderTracks,
   xfGains: xfGains, wavBlob: wavBlob,
