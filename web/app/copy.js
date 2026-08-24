@@ -221,8 +221,31 @@ C.help = [
   ["theory",                "what the machine knows"],
   ["rules",                 "every rule it grades you by, with the reason"],
   ["bands",                 "who owns which frequencies, and why"],
+  ["viz tunnel",            "the canvas. it knows where the drop is"],
+  ["theme acid",            "colours. a song remembers its own"],
   ["clear",                 "wipe the screen, keep the vibes"]
 ];
+
+/* -- viz ----------------------------------------------------------------- */
+C.viz_modes = [
+  ["spectrum",  "bars, mirrored. the 1998 winamp plugin, except it can see the sub"],
+  ["scope",     "the waveform, plus a lissajous loop so you can watch the bass get squarer"],
+  ["tunnel",    "rings on every beat. a build makes them run; the drop blows them out"],
+  ["particles", "every kick throws a handful. the hats keep them moving"],
+  ["feedback",  "last frame, turned and zoomed, under this one. trails. the legal kind"],
+  ["off",       "a terminal. black. you're a serious person"]
+];
+C.viz_status = function (s) {
+  return "viz " + s.mode + " · theme " + s.theme + " · intensity " + s.intensity +
+    " · decay " + s.decay + " · symmetry " + s.symmetry + (s.reduced ? " · your OS asked for less motion, so off is the default" : "");
+};
+C.viz_usage = "viz <mode> · viz set intensity|decay|symmetry|palette <value> · theme <name>";
+C.viz_why = "it never guesses where the beat is. we wrote the song, so the canvas knows the drop is 4 bars out and starts running at it. beat detection is for people who didn't write the song.";
+C.viz_set = function (k, v) { return "viz " + k + " " + v + " · saved with the song if there is one"; };
+C.err_viz = function (v) { return v + ": not a mode. spectrum, scope, tunnel, particles, feedback, off. the last one is the boring one."; };
+C.err_vizparam = "viz set intensity 0..2 · decay 0..1 · symmetry 1..8 · palette <theme>. out of range gets clamped, not judged.";
+C.theme_set = function (t) { return "theme " + t.name + " · " + t.colors.join(" ") + " · intensity " + t.intensity + " · symmetry " + t.symmetry; };
+C.err_theme = function (v) { return v + ": no such theme. type `theme` — the list is short and all of them are legal to look at."; };
 
 /* -- errors that still teach --------------------------------------------- */
 C.err_pattern = "a pattern is x for a hit and . for a rest. that's it. that's the syntax. try: kick x...x...x...x...";

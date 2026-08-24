@@ -136,4 +136,26 @@ Object.keys(T.genres).forEach(function(style){ var gnr = T.genres[style];
       style + "/" + curve + " drops at " + Math.round(at * 100) + "%, window " + gnr.drop_at);
     checked++; }); });
 
-console.log("web checks pass  ·  write-through · pads · notes · roll · jumps · decks · theory (" + checked + " plans in window) · " + OZ.KEYS.length + " keys listed");
+/* -- viz: the pure half of the canvas ------------------------------------- */
+require("./viz.js");
+var V = globalThis.OONTZ_VIZ;
+A.strictEqual(V.parseParam("symmetry", "5.4"), 5, "symmetry rounds to a mirror count");
+A.strictEqual(V.parseParam("intensity", "99"), 2, "intensity clamps");
+A.strictEqual(V.parseParam("decay", "junk"), null, "junk is not a param value");
+A.strictEqual(V.parseParam("palette", "acid"), "acid", "palette accepts a theme");
+A.strictEqual(V.parseParam("palette", "beige"), null, "beige is not a vibe");
+A.deepStrictEqual(V.mix(["#000000", "#ffffff"], 0), [0, 0, 0], "mix t=0 is the first colour");
+A.deepStrictEqual(V.mix(["#000000", "#ffffff"], 0.25), [128, 128, 128], "mix walks the palette");
+var ph = V.clockPhase(8, 1.0, 1.0, 150, 0);       /* next 16th is now: playhead sits on step 8 */
+A.ok(Math.abs(ph.beat - 2) < 1e-9 && ph.beatIndex === 2 && ph.beatPhase < 1e-9, "clockPhase: step 8 at 150bpm is beat 2");
+ph = V.clockPhase(8, 1.1, 1.0, 150, 0);           /* scheduled 100ms ahead: the ear is behind the clock */
+A.ok(ph.beat < 2, "clockPhase walks the lookahead back");
+var spec = new Uint8Array(128); spec.fill(255, 1, 4);   /* energy only in the lowest bins */
+var b = V.bands(spec, 43);                               /* ~43Hz per bin, like fftSize 1024 at 44.1k */
+A.ok(b.sub > 0.8 && b.high === 0, "bands: sub-only spectrum reads as sub-only");
+var vsg = song();
+var up = V.upcoming(vsg, 7.5, 0.5);
+A.ok(up.section === "intro" && up.next === "drop" && Math.abs(up.left) < 1e-9, "upcoming sees the drop coming");
+A.ok(V.upcoming(vsg, 9, 0).energy === 1, "the drop carries its energy");
+
+console.log("web checks pass  ·  write-through · pads · viz · notes · roll · jumps · decks · theory (" + checked + " plans in window) · " + OZ.KEYS.length + " keys listed");
