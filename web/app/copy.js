@@ -217,6 +217,7 @@ C.help = [
   ["remix <id>",             "any public track opens as source. publish credits the original"],
   ["source save",            "the whole song as a 15KB .oontz file. not a recording — the song"],
   ["export midi",            "the song as a .mid — it leaves for any DAW"],
+  ["tilt",                   "phone only: lean the phone to sweep the filter. shake = spinback"],
   ["hat ..?...?...?...?.",   "? is a maybe: 70% per bar, same answer every render"],
   ["kick x... *4",           "*N repeats a pattern. sugar, not magic"],
   ["diff",                   "what changed, in plain lines: bpm, bars, patterns. music, diffed"],
@@ -310,6 +311,8 @@ C.room_in = function (code) { return "in room " + code + ". your moves broadcast
 
 C.egg_sudo = "this incident will be reported to the groove authorities.";
 C.egg_konami = "you found the rave. blacklight, kaleido, ten seconds of hot pink. Esc turns the lights on.";
+
+C.egg_boots = "that is, verbatim, how techno is pronounced.";
 
 g.OONTZ_COPY = C;
 })(window);

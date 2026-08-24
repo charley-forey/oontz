@@ -17,9 +17,56 @@ var TRACKS   = "12345678".split("");
 var HOLD_MS  = 90;
 
 var TOUCH = { ROW_MAIN: ROW_MAIN, ROW_FX: ROW_FX, PADS: PADS, TRACKS: TRACKS };
+
+/* Tilt: the phone becomes the filter. gamma (side tilt) taps [ and ]; a hard
+   shake is a spinback. Behind an explicit command because iOS wants a
+   permission tap. Exposed for both the page command and check.js. */
+TOUCH.tiltState = {on: false, last: 0, shakeAt: 0};
+TOUCH.tiltStep = function(gamma, now){
+  var st2 = TOUCH.tiltState;
+  if(!st2.on || now - st2.last < 120) return null;
+  st2.last = now;
+  if(gamma > 12) return "]";
+  if(gamma < -12) return "[";
+  return null;
+};
+TOUCH.shakeStep = function(mag, now){
+  var st2 = TOUCH.tiltState;
+  if(!st2.on || mag < 28 || now - st2.shakeAt < 3000) return null;
+  st2.shakeAt = now;
+  return "\\";
+};
 g.OONTZ_TOUCH = TOUCH;
 if (typeof document === "undefined") return;           /* node: tables only, for the gate */
 if (!matchMedia("(pointer: coarse)").matches) return;  /* a mouse never needs this */
+
+function sendKeyTap(k){
+  dispatchEvent(new KeyboardEvent("keydown", { key: k, bubbles: true }));
+  dispatchEvent(new KeyboardEvent("keyup", { key: k, bubbles: true }));
+}
+TOUCH.tiltEnable = function(done){
+  function arm(){
+    TOUCH.tiltState.on = true;
+    addEventListener("deviceorientation", function(e){
+      var k = TOUCH.tiltStep(e.gamma || 0, Date.now());
+      if(k) sendKeyTap(k);
+    });
+    addEventListener("devicemotion", function(e){
+      var a = e.accelerationIncludingGravity || {};
+      var mag = Math.abs(a.x || 0) + Math.abs(a.y || 0) + Math.abs(a.z || 0);
+      var k = TOUCH.shakeStep(mag, Date.now());
+      if(k) sendKeyTap(k);
+    });
+    done(true);
+  }
+  if(typeof DeviceOrientationEvent !== "undefined" && DeviceOrientationEvent.requestPermission){
+    DeviceOrientationEvent.requestPermission().then(function(r){
+      if(r === "granted") arm(); else done(false);
+    }).catch(function(){ done(false); });
+  } else if(typeof DeviceOrientationEvent !== "undefined"){ arm(); }
+  else done(false);
+};
+TOUCH.tiltOff = function(){ TOUCH.tiltState.on = false; };
 
 function send(type, key, repeat) {
   var IN = document.getElementById("in");

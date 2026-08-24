@@ -101,7 +101,7 @@
   a:hover{color:var(--bright)}
   .big{font-size:min(2.4vw,15px);line-height:1.05;letter-spacing:.5px}
   .grid{font-size:.95em;letter-spacing:1px}
-  #rack .st{cursor:pointer} #rack .st:hover{outline:1px solid var(--accent);border-radius:2px}
+  #rack .st{cursor:pointer;touch-action:none} #rack .st:hover{outline:1px solid var(--accent);border-radius:2px}
   #rack .trk{cursor:pointer;display:inline-block;min-width:9ch;max-width:9ch;
     white-space:pre;overflow:hidden;text-overflow:ellipsis;vertical-align:bottom}
   /* `calm` for anyone who wants the words to win outright */
@@ -756,6 +756,15 @@ var CMDS = {
       REMIX_OF = id; song.name = (j.title||'untitled')+' (flip)';
       line('▸ '+CP.remix_on(j.title, j.by),'ok');
     }catch(e){ d.remove(); line('could not reach the server','w'); } },
+  tilt: function(a){
+    var T = window.OONTZ_TOUCH;
+    if(!T || !T.tiltEnable) return line('tilt is a phone thing — open this on one','w');
+    if((a[0]||'') === 'off'){ T.tiltOff(); return line('▸ tilt off','dim'); }
+    line('▸ asking for motion access…','dim');
+    T.tiltEnable(function(ok){
+      line(ok ? '▸ tilted: lean the phone to sweep the filter. a hard shake is a spinback. `tilt off` ends it.'
+              : 'motion access said no — tilt needs it','' + (ok?'ok':'w'));
+    }); },
   midi: function(a){
     var M = window.OONTZ_MIDI; if(!M) return;
     if((a[0]||'') === 'off'){ M.off(); return line('▸ midi off','dim'); }
@@ -1193,9 +1202,62 @@ function run(raw){
       E.setTrack(v,{pat:pat}); }
     if(!E.playing) E.play(); draw();
     line('▸ '+v+' '+args.join(' '),'dim'); teach(v); setTimeout(lessonCheck, 60); return; }
+  if(v === 'bpm' && args[0] === '420'){ var rr = CMDS.bpm(['420']); line('medicinal.','dim'); return rr; }
   if(CMDS[v]){ var r = CMDS[v](args); teach(v); setTimeout(lessonCheck, 60); return r; }
+  if(s.toLowerCase().indexOf('boots and cats') === 0){
+    snapshot(); run('kick x.x.x.x.x.x.x.x.'); run('hat .x.x.x.x.x.x.x.x');
+    return line(CP.egg_boots || 'that is, verbatim, how techno is pronounced.','ok'); }
+  if(v === 'dance') return dance();
+  if(v === 'credits') return credits();
   if(v === 'sudo') return line(CP.egg_sudo || 'this incident will be reported to the groove authorities.','w');
+  var dym = didYouMean(v, Object.keys(CMDS).concat(Object.keys(E.tracks || {})));
+  if(dym) return w('<span class="w">no `'+esc(v0)+'`. did you mean <span class="k">'+esc(dym)+'</span>?</span>');
   line(CP.err_cmd?CP.err_cmd(v0):v0+': no', 'w');
+}
+/* one-typo forgiveness: closest verb within edit distance 1 (2 for long words) */
+function didYouMean(v, verbs){
+  if(v.length < 3) return null;
+  var best = null, bestD = (v.length > 6 ? 2 : 1) + 1;
+  verbs.forEach(function(w2){
+    if(Math.abs(w2.length - v.length) >= bestD) return;
+    var d = lev(v, w2);
+    if(d < bestD){ bestD = d; best = w2; }
+  });
+  return bestD <= (v.length > 6 ? 2 : 1) ? best : null;
+}
+function lev(a, b){
+  var m = a.length, n = b.length, row = [];
+  for(var j = 0; j <= n; j++) row[j] = j;
+  for(var i = 1; i <= m; i++){
+    var prev = row[0]; row[0] = i;
+    for(var k = 1; k <= n; k++){
+      var cur = row[k];
+      row[k] = Math.min(row[k] + 1, row[k-1] + 1, prev + (a[i-1] === b[k-1] ? 0 : 1));
+      prev = cur;
+    }
+  }
+  return row[n];
+}
+var DANCER = ['(>\'-\')>','^(\'-\')^','<(\'-\'<)','^(\'-\')^'];
+var DANCE_T = 0;
+function dance(){
+  if(DANCE_T) clearInterval(DANCE_T);
+  var d = w('<span class="a">  '+esc(DANCER[0])+'</span>'), i2 = 0, beats = 0;
+  var per = Math.max(120, 60000 / (E.bpm || 128));
+  DANCE_T = setInterval(function(){
+    i2 = (i2 + 1) % DANCER.length; beats++;
+    d.innerHTML = '<span class="a">  '+esc(DANCER[i2])+'</span>';
+    if(beats >= 8){ clearInterval(DANCE_T); DANCE_T = 0;
+      d.innerHTML += ' <span class="dim">— it had to stop somewhere</span>'; }
+  }, per);
+}
+function credits(){
+  line();
+  [['every sound','arithmetic'],['every bug','also arithmetic'],
+   ['the grader','ruthless, correct'],['the AI','in the room, knows it'],
+   ['you','the good part']].forEach(function(kv){
+    w('  <span class="dim">'+esc(kv[0])+'</span>  <span class="b">'+esc(kv[1])+'</span>'); });
+  line();
 }
 var _soloRun = run;
 run = function(raw){                             /* the room hears every musical move */
@@ -1272,8 +1334,28 @@ function sugRender(){
   SUG.classList.add('on');
 }
 function sugPick(v){ IN.value = v + ' '; sugClose(); IN.focus(); hint(); }
+var ARGS = {
+  gallery: ['pat','like','top'], viz: [], theme: [], room: ['new','who','leave'],
+  source: ['save','copy'], export: ['midi'], diff: ['take'], jam: ['on','off','style'],
+  mix: ['off'], playlist: ['new','add','public','del'], tilt: ['off'], watch: []
+};
+function argHits(verb, partial){
+  var base = ARGS[verb];
+  if(verb === 'viz' && window.OONTZ_VIZ) base = ['auto','off'].concat(Object.keys(OONTZ_VIZ.MODES));
+  if(verb === 'theme' && window.OONTZ_VIZ) base = Object.keys(OONTZ_VIZ.THEMES).concat(['random','make','del']);
+  if(!base) return [];
+  return base.filter(function(a2){ return a2.indexOf(partial) === 0 && a2 !== partial; }).slice(0, 6);
+}
 function suggest(){
   var v = IN.value, parts = v.trim().split(/\s+/), head = (parts[0]||'').toLowerCase();
+  if(head && (parts.length === 2 || (parts.length === 1 && v.slice(-1) === ' '))){
+    var verb = ALIAS[head] || head;
+    var partial = (parts[1] || '').toLowerCase();
+    var ah = argHits(verb, partial);
+    if(ah.length){ SUGS.hits = ah.map(function(a2){ return head + ' ' + a2; });
+      if(SUGS.i >= SUGS.hits.length) SUGS.i = -1;
+      sugRender(); return; }
+  }
   if(!head || parts.length > 1 || v.slice(-1) === ' ') return sugClose();
   var hits = verbs().filter(function(x){ return x.indexOf(head) === 0 && x !== head; }).slice(0, 6);
   SUGS.hits = hits; if(SUGS.i >= hits.length) SUGS.i = -1;
@@ -1369,11 +1451,43 @@ addEventListener('keyup', function(e){ if(document.activeElement!==IN){ var m=E.
 /* The rack is not a readout, it is the instrument: click a step to toggle it,
    click a track name to focus it. Same edit path as the pads. */
 RACK.addEventListener('click', function(e){
+  if(PAINT.moved) return;                        /* a sweep already did the work */
   var st = e.target.closest('.st');
   if(st){ e.stopPropagation(); snapshot();
     line('▸ ' + E.toggleStep(st.dataset.t, +st.dataset.i), 'dim'); draw(); return; }
   var tk = e.target.closest('.trk');
   if(tk){ e.stopPropagation(); E.focus = tk.dataset.t; draw(); } });
+
+/* Hold and sweep across cells to paint hits like a real step sequencer. The
+   first cell's toggle decides the brush (drawing or erasing); every cell the
+   pointer enters gets that state. Click still toggles a single step. */
+var PAINT = {on: false, brush: false, moved: false, seen: {}};
+RACK.addEventListener('pointerdown', function(e){
+  var st = e.target.closest('.st');
+  if(!st) return;
+  PAINT.on = true; PAINT.moved = false; PAINT.seen = {};
+  var tr = E.tracks[st.dataset.t];
+  var ch = tr && (tr.pat || '')[OZ.patIndex(tr.pat || '', E.songbar, +st.dataset.i)];
+  PAINT.brush = !(ch && ch !== '.' && ch !== '-');     /* toggle of the first cell */
+  try{ RACK.setPointerCapture(e.pointerId); }catch(err){}
+});
+RACK.addEventListener('pointermove', function(e){
+  if(!PAINT.on) return;
+  var el = document.elementFromPoint(e.clientX, e.clientY);
+  var st = el && el.closest && el.closest('.st');
+  if(!st) return;
+  var key = st.dataset.t + ':' + st.dataset.i;
+  if(PAINT.seen[key]) return;
+  PAINT.seen[key] = 1;
+  if(!PAINT.moved){ PAINT.moved = true; snapshot();
+    var first = Object.keys(PAINT.seen)[0];
+    E.setStep(st.dataset.t, +st.dataset.i, PAINT.brush); draw(); return; }
+  E.setStep(st.dataset.t, +st.dataset.i, PAINT.brush); draw();
+});
+function paintEnd(){ if(PAINT.on){ PAINT.on = false;
+  setTimeout(function(){ PAINT.moved = false; }, 50); } }
+addEventListener('pointerup', paintEnd);
+addEventListener('pointercancel', paintEnd);
 
 /* The section map is a transport: click a bar, or drag across it to scrub. */
 function hudSeek(e){

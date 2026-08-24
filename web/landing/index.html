@@ -507,7 +507,16 @@ function run(raw){
     P[v]=pat; line(`▸ ${v} ${pat}`, 'dim'); if(!playing) start(); return; }
   if(v==='oontz') return eggOontz();
   if(v==='sudo') return line(CP.egg_sudo,'w');
+  if(s.toLowerCase().indexOf('boots and cats') === 0)
+    return line('that is, verbatim, how techno is pronounced. the drum machine that says it: `open`.','ok');
+  if(v === 'credits'){ line();
+    [['every sound','arithmetic'],['every track here','its own source code'],
+     ['you','the good part']].forEach(kv =>
+      w('  <span class="dim">'+esc(kv[0])+'</span>  <span class="b">'+esc(kv[1])+'</span>'));
+    line(); return; }
   if(CMDS[v]) return CMDS[v](args);
+  const dym = didYouMean(v, Object.keys(CMDS));
+  if(dym) return w('<span class="w">no `'+esc(v0)+'`. did you mean <span class="k">'+esc(dym)+'</span>?</span>');
   line(`${v0}: no such command. type help`, 'w');
 }
 
@@ -531,8 +540,45 @@ function sugRender(){
   SUG.classList.add('on');
 }
 function sugPick(v){ IN.value = v + ' '; sugClose(); IN.focus(); }
+function lev(a, b){
+  const m = a.length, n = b.length, row = [];
+  for(let j = 0; j <= n; j++) row[j] = j;
+  for(let i = 1; i <= m; i++){
+    let prev = row[0]; row[0] = i;
+    for(let k = 1; k <= n; k++){
+      const cur = row[k];
+      row[k] = Math.min(row[k] + 1, row[k-1] + 1, prev + (a[i-1] === b[k-1] ? 0 : 1));
+      prev = cur;
+    }
+  }
+  return row[n];
+}
+function didYouMean(v, verbs){
+  if(v.length < 3) return null;
+  let best = null, bestD = (v.length > 6 ? 2 : 1) + 1;
+  verbs.forEach(w2 => {
+    if(Math.abs(w2.length - v.length) >= bestD) return;
+    const d = lev(v, w2);
+    if(d < bestD){ bestD = d; best = w2; }
+  });
+  return bestD <= (v.length > 6 ? 2 : 1) ? best : null;
+}
+const LARGS = {gallery: ['pat','like','top'], tree: [], playlist: [], source: [],
+               charts: [], watch: [], tour: []};
+function argHits(verb, partial){
+  const base = LARGS[verb];
+  if(!base || !base.length) return [];
+  return base.filter(a2 => a2.indexOf(partial) === 0 && a2 !== partial).slice(0, 6);
+}
 function suggest(){
   const parts = IN.value.trim().split(/\s+/), head = (parts[0] || '').toLowerCase();
+  if(head && (parts.length === 2 || (parts.length === 1 && IN.value.slice(-1) === ' '))){
+    const verb = ALIAS[head] || head;
+    const ah = argHits(verb, (parts[1] || '').toLowerCase());
+    if(ah.length){ SUGS.hits = ah.map(a2 => head + ' ' + a2);
+      if(SUGS.i >= SUGS.hits.length) SUGS.i = -1;
+      sugRender(); return; }
+  }
   if(!head || parts.length > 1 || IN.value.slice(-1) === ' ') return sugClose();
   const verbs = Object.keys(CMDS).concat(Object.keys(ALIAS))
     .filter((v, i, a) => a.indexOf(v) === i).sort();

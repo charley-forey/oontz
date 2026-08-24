@@ -440,6 +440,16 @@ stale; `qa` runs 192 arrangements through both composers and requires identical 
 
 ## Cycle log
 
+### Cycle 27 — the interaction round (2026-08-24)
+Drag-to-paint the rack (pointer sweep, first cell sets the brush; click still
+toggles), dropdown argument hints (`viz k` → kaleido; theme/gallery/room…),
+screen wake lock while playing or watching, did-you-mean typo forgiveness
+(edit distance 1, 2 for long verbs) on both prompts, `tilt` — lean the phone
+to sweep the filter, shake for a spinback (behind a permission tap; needs a
+real-device pass). Eggs: `boots and cats` (the beat is the pronunciation),
+`dance`, `bpm 420`, `credits`. Verified by synthetic pointer painting +
+prompt drives in Chrome; gates grew paint/tilt asserts.
+
 Append one line per completed cycle: what changed, what it measured, what it learned.
 
 - 2026-08-24 — cycles 9-12: the ear, the track, and the interface. `grade` renders

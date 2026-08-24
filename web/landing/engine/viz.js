@@ -295,6 +295,7 @@ function tick(now){
   if(now - last < 15) return; last = now;    // ~60fps cap on faster displays
   var th = THEMES[S.theme] || THEMES.acid, f = frameFor(eng, now / 1000);
   BREATH.rate = f.playing ? 1 + f.energy * 2.2 : 1;
+  if(f.playing !== wantWake) wake(f.playing);
   var mode = S.mode === "auto" ? autoFor(f.playing ? f.role : "intro") : S.mode;
   var draw = MODES[mode];
   if(!draw) return;
@@ -367,6 +368,24 @@ function apply(v){                               // a stored/song look, validate
   Object.keys(PARAMS).forEach(function(k){ var x = parseParam(k, v[k]); if(x != null) S[k] = x; });
 }
 
+/* The screen stays awake while there is a show or a song. No-op elsewhere. */
+var wakeLock = null, wantWake = false;
+function wake(on){
+  wantWake = !!on;
+  if(typeof navigator === "undefined" || !navigator.wakeLock) return;
+  if(on && !wakeLock){
+    navigator.wakeLock.request("screen").then(function(l){ wakeLock = l;
+      l.addEventListener("release", function(){ wakeLock = null; });
+    }).catch(function(){});
+  } else if(!on && wakeLock){
+    try{ wakeLock.release(); }catch(e){} wakeLock = null;
+  }
+}
+if(typeof document !== "undefined")
+  document.addEventListener("visibilitychange", function(){
+    if(!document.hidden && wantWake) wake(true);
+  });
+
 var wcss = null;
 function watch(on){
   if(typeof document === "undefined") return;
@@ -382,6 +401,7 @@ function watch(on){
     try{ if(document.activeElement && document.activeElement.blur) document.activeElement.blur(); }catch(e){}
     try{ window.scrollTo(0, 0); }catch(e){}
     if(S.mode === "off") VIZ.mode("auto");
+    wake(true);
     try{ document.documentElement.requestFullscreen && document.documentElement.requestFullscreen(); }catch(e){}
     /* Re-size after fullscreen engages and again after the keyboard finishes
        collapsing - the two settle at different times on different phones. */

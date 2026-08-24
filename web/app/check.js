@@ -471,4 +471,20 @@ A.ok(mid.length > 200, "midi has events: " + mid.length + " bytes");
 var mid2 = OZ.songToMidi(msong);
 A.strictEqual(mid.length, mid2.length, "midi export is deterministic");
 
-console.log("web checks pass  ·  write-through · pads · viz · touch · midi · voices+4 · viz-auto · themes · stage · pwa · notes · roll · jumps · decks · diff · pat2 · midi · rooms · theory (" + checked + " plans in window) · legible · ear · " + OZ.KEYS.length + " keys listed");
+/* -- interaction round: setStep + tilt tables ------------------------------- */
+var eP = new OZ.Engine(); eP.loadSong(song());
+eP.setStep("kick", 1, true);
+A.strictEqual(eP.tracks.kick.pat[1], "x", "setStep paints a hit");
+eP.setStep("kick", 1, true);
+eP.setStep("kick", 0, false);
+A.strictEqual(eP.tracks.kick.pat[0], ".", "setStep erases");
+var TT = globalThis.OONTZ_TOUCH;
+TT.tiltState.on = true; TT.tiltState.last = 0; TT.tiltState.shakeAt = 0;
+A.strictEqual(TT.tiltStep(30, 1000), "]", "right tilt opens the filter");
+A.strictEqual(TT.tiltStep(-30, 2000), "[", "left tilt closes it");
+A.strictEqual(TT.tiltStep(0, 3000), null, "level phone does nothing");
+A.strictEqual(TT.shakeStep(40, 5000), "\\", "a hard shake spins back");
+A.strictEqual(TT.shakeStep(40, 6000), null, "spinback has a cooldown");
+TT.tiltState.on = false;
+
+console.log("web checks pass  ·  write-through · pads · viz · touch · midi · voices+4 · viz-auto · themes · stage · pwa · notes · roll · jumps · decks · diff · pat2 · midi · paint · tilt · rooms · theory (" + checked + " plans in window) · legible · ear · " + OZ.KEYS.length + " keys listed");

@@ -1071,6 +1071,19 @@ var KEYS = [
 
 /* One step, cycled . -> x -> X -> . The pads, a click on the rack and a phone tap
    all land here, so the rules about keeping notes aligned live in one place. */
+/* setStep: paint-friendly - force a step to a state instead of cycling it. */
+Engine.prototype.setStep = function(name, i, on){
+  var tr = this.tracks[name];
+  if(!tr) return null;
+  var pat = (tr.pat || "").padEnd(16, ".").split("");
+  i = patIndex(pat.join(""), this.songbar, i);
+  var ch = pat[i], want = on ? (ch === "X" ? "X" : "x") : ".";
+  if(ch === want) return null;
+  pat[i] = want;
+  this.setTrack(name, {pat: pat.join("")});
+  return name + " " + pat.join("");
+};
+
 Engine.prototype.toggleStep = function(name, i){
   var tr = this.tracks[name];
   if(!tr) return "no track to edit";
