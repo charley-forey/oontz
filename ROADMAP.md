@@ -323,6 +323,16 @@ stale; `qa` runs 192 arrangements through both composers and requires identical 
   server-rendered cards survive the custom-domain edge outage. Verified: OG card
   shows warehouse litany's real drums, watch flow enters fullscreen on tap.
 
+- 2026-08-24 -- cycle 18: the database stops evaporating. Root cause of the
+  vanishing gallery: OONTZ_DB=/data/oontz.db but NO volume was mounted there, so
+  every redeploy wiped all songs, accounts and playlists. Created a 5GB volume at
+  /data on the api service; re-seeded the corpus (18 tracks, 3 remixes, 3
+  playlists) and PROVED it survives a redeploy - the gallery read 18 tracks after
+  the very push that used to empty it. Charts skip the all-rest pattern (not a
+  pattern anyone means), duplicate playlists from the double seed were cleaned,
+  and the seed script gained a --token path for when Resend's delivery to the
+  house address is too flaky for self-auth.
+
 ## Cycle log
 
 Append one line per completed cycle: what changed, what it measured, what it learned.

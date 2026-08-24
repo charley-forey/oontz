@@ -615,6 +615,8 @@ def charts(request: Request = None):
             except ValueError:
                 continue
             for _t, p in _struct(data)["pats"]:
+                if not p.replace(".", "").replace("-", ""):
+                    continue                      # all-rest is not a pattern anyone means
                 pat_count[p] += 1
                 pat_ex.setdefault(p, {"id": r["id"], "title": r["title"]})
     most_remixed.sort(key=lambda x: -x["remixes"])
