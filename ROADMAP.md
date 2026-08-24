@@ -73,9 +73,11 @@ reports SUCCESS and the live file contains the change.
       `rec screen` muxes a screen capture with it. Exactly what you heard.
 - [x] **`ask` in the browser** — proposes command lines, empty Enter runs them, `undo`
       takes them back. Needs `ANTHROPIC_API_KEY` on the api service to answer.
-- [ ] **Deck mode in the browser** — `OZ.render(song)` via OfflineAudioContext, two
-      AudioBufferSourceNodes, playbackRate sync, 3-band EQ, crossfader. `export` (WAV)
-      falls out of the same render. The `decks` copy is still a promise until this lands.
+- [x] **Deck mode in the browser** — `M`. `renderSong()` walks `stateAt` through an
+      OfflineAudioContext using the same `_hits` the live clock uses; a deck is that
+      buffer, a read position and a rate. `playbackRate` is the sync, `loopStart/End`
+      is the beat loop, three biquads are the kills, two gains are the crossfader.
+      `export` writes the same render as a WAV.
 - [ ] **DNS** — the three custom domains are attached on Railway; the records are not
       set yet. Until they are, only the `*.up.railway.app` URLs work and `oontz.sh` has
       no reachable URL at all (Railway will not add a service domain beside a custom one).
@@ -102,12 +104,11 @@ reports SUCCESS and the live file contains the change.
 
 ## Next, web-first (the order the loop should take them)
 
-1. Deck mode in the browser (above).
-2. **One theory, three consumers** — `theory.py` exports `web/app/theory.json`;
+1. **One theory, three consumers** — `theory.py` exports `web/app/theory.json`;
    `compose.py` and `compose.js` drop their private tables and read it; the AI prompt
    gets `theory.brief()`; a check that both composers make the same shape for one seed.
-3. Make `copy.js` honest: any claim a cycle did not deliver gets cut, not softened.
-4. **Reference matching from music you own** — analyse a WAV (band energy, onset
+2. Make `copy.js` honest: any claim a cycle did not deliver gets cut, not softened.
+3. **Reference matching from music you own** — analyse a WAV (band energy, onset
    BPM, chroma key) and compare to theory. The Rekordbox library on this machine is
    the legal corpus; not the internet.
 
@@ -122,6 +123,15 @@ back, then add a check that both produce the same shape for the same seed.
 
 Append one line per completed cycle: what changed, what it measured, what it learned.
 
+- 2026-08-24 — cycle 6: DECK mode in the browser. 725 lines of engine now. The port
+  was honest about one thing deck.py never had to think about: an
+  AudioBufferSourceNode has no playhead, so position is anchor arithmetic and every
+  rate change re-anchors first or the maths drifts. Sync evaluates both decks at one
+  shared future instant and starts the new source there, so the two sources begin in
+  lock rather than a scheduling delay apart. 14 more asserts: grid exact, sync holds
+  phase to 1e-6, loop wraps, crossfader equal power. Learned that the offline render
+  is the cheap part - the same 40-line `_hits` serves the live clock, the decks and
+  `export`, which is what keeping the step body pure bought.
 - 2026-08-23 — cycle 5: the browser does what its copy says, minus decks. setTrack
   write-through (stateAt() was wiping every live edit at the next bar - the `kick
   x...` command had this bug from day one), a lookahead clock, a master filter and a

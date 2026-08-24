@@ -405,6 +405,47 @@ Engine.prototype.jump = function(bar){
   if(this.onbar) this.onbar(this.songbar, st);
 };
 
+/* One 16th of one bar: schedule every hit into `dest` on context `c`. Pure in
+   the sense that matters - it reads only its arguments - so the live clock and
+   an OfflineAudioContext render share it. */
+Engine.prototype._hits = function(c, dest, t, i, tracks, order, bpm, swing){
+  var self = this;
+  var kickHit = false;
+  var kt = tracks.kick;
+  if(kt && kt.pat && kt.pat[i % kt.pat.length] && kt.pat[i % kt.pat.length] !== ".") kickHit = true;
+  var e = {ctx: c};
+  order.forEach(function(name){
+    var tr = tracks[name];
+    if(!tr || !tr.pat) return;
+    var L = tr.pat.length || 16;
+    var ch = tr.pat[i % L];
+    if(!ch || ch === "." || ch === "-") return;
+    if(tr.mute) return;
+    var gain = (tr.gain == null ? 1 : tr.gain);
+    if(gain <= 0.001) return;
+    /* sidechain: duck everything but the kick when the kick lands */
+    var duck = (kickHit && tr.sc && name !== "kick") ? (1 - tr.sc * 0.85) : 1;
+    var g = c.createGain(); g.gain.value = Math.min(1.2, gain * duck);
+    var pan = tr.pan || 0, out = g;
+    if(c.createStereoPanner && pan && dest.numberOfInputs){
+      var p = c.createStereoPanner(); p.pan.value = Math.max(-1, Math.min(1, pan));
+      g.connect(p); p.connect(dest);
+    } else g.connect(dest);
+    var opts = {dest: out, accent: ch === "X" || ch === "O", tune: tr.tune,
+                fc: tr.fc, res: tr.res, dur: 60 / bpm / 2};
+    if(tr.notes && tr.notes.length){
+      var tok = tr.notes[i % tr.notes.length];
+      if(!tok || tok === "." || tok === "-") return;
+      opts.hz = noteHz(tok);
+      if(String(tok).indexOf("~") >= 0) opts.slide = opts.hz * 0.75;
+      if(String(tok).indexOf("!") >= 0) opts.accent = true;
+      if(!opts.hz) return;
+    }
+    var sw = (i % 2 && swing) ? (swing / 100) * (60 / bpm / 4) : 0;
+    try { self.voiceFor(tr.voice || name)(e, t + sw, opts); } catch(err){}
+  });
+};
+
 Engine.prototype._tick = function(t){
   var c = this.start(), self = this;
   if(t == null) t = c.currentTime + 0.05;
@@ -418,40 +459,7 @@ Engine.prototype._tick = function(t){
     if(this.onbar) this.onbar(this.songbar, st);
   }
 
-  var kickHit = false;
-  var kt = this.tracks.kick;
-  if(kt && kt.pat && kt.pat[i % kt.pat.length] && kt.pat[i % kt.pat.length] !== ".") kickHit = true;
-
-  this.order.forEach(function(name){
-    var tr = self.tracks[name];
-    if(!tr || !tr.pat) return;
-    var L = tr.pat.length || 16;
-    var ch = tr.pat[i % L];
-    if(!ch || ch === "." || ch === "-") return;
-    if(tr.mute) return;
-    var gain = (tr.gain == null ? 1 : tr.gain);
-    if(gain <= 0.001) return;
-    /* sidechain: duck everything but the kick when the kick lands */
-    var duck = (kickHit && tr.sc && name !== "kick") ? (1 - tr.sc * 0.85) : 1;
-    var g = c.createGain(); g.gain.value = Math.min(1.2, gain * duck);
-    var pan = tr.pan || 0, dest = g;
-    if(c.createStereoPanner && pan){
-      var p = c.createStereoPanner(); p.pan.value = Math.max(-1, Math.min(1, pan));
-      g.connect(p); p.connect(self.master); dest = g;
-    } else g.connect(self.master);
-    var opts = {dest: dest, accent: ch === "X" || ch === "O", tune: tr.tune,
-                fc: tr.fc, res: tr.res, dur: 60 / self.bpm / 2};
-    if(tr.notes && tr.notes.length){
-      var tok = tr.notes[i % tr.notes.length];
-      if(!tok || tok === "." || tok === "-") return;
-      opts.hz = noteHz(tok);
-      if(String(tok).indexOf("~") >= 0) opts.slide = opts.hz * 0.75;
-      if(String(tok).indexOf("!") >= 0) opts.accent = true;
-      if(!opts.hz) return;
-    }
-    var swing = (i % 2 && self.swing) ? (self.swing / 100) * (60 / self.bpm / 4) : 0;
-    try { self.voiceFor(tr.voice || name)(self, t + swing, opts); } catch(err){}
-  });
+  this._hits(c, this.master, t, i, this.tracks, this.order, this.bpm, this.swing);
 
   if(this.onstep){ var wait = Math.max(0, (t - c.currentTime) * 1000);   // the grid moves when the sound does
     setTimeout(function(){ self.stepNow = i; if(self.onstep) self.onstep(i, self.tracks, self.order); }, wait); }
@@ -476,6 +484,170 @@ Engine.prototype.play = function(){
   this._timer = setInterval(function(){ self._sched(); }, 25);
   this._sched();
 };
+
+/* -- decks ----------------------------------------------------------------- */
+
+/* Every beat and every section start, in seconds. We composed it, so this is
+   exact - no beat detection. Same walk as song.py's beat_grid(). */
+function gridFor(song){
+  var grid = [], marks = [], t = 0, total = totalBars(song);
+  for(var bar = 0; bar < total; bar++){
+    var st = stateAt(song, bar), spb = 60 / (st.bpm || song.bpm || 138);
+    if(st.within === 0) marks.push([t, st.section]);
+    for(var b = 0; b < 4; b++) grid.push(t + b * spb);
+    t += 4 * spb;
+  }
+  return {grid: grid, marks: marks, seconds: t, bpm: song.bpm || 138};
+}
+
+/* The whole song, offline, through the same _hits the live clock uses. Mono:
+   ponytail: nothing sets pan yet and two 5-minute stereo decks are 200MB. */
+function renderSong(song, onProgress){
+  var g0 = gridFor(song), total = totalBars(song);
+  var C = global.OfflineAudioContext || global.webkitOfflineAudioContext;
+  var off = new C(1, Math.ceil((g0.seconds + 1.5) * SR), SR);
+  var g = off.createGain(); g.gain.value = 0.85;
+  var comp = off.createDynamicsCompressor();
+  comp.threshold.value = -8; comp.ratio.value = 14; comp.attack.value = 0.002; comp.release.value = 0.10;
+  g.connect(comp); comp.connect(off.destination);
+  var fake = new Engine(); fake.ctx = off;
+  var t = 0;
+  for(var bar = 0; bar < total; bar++){
+    var st = stateAt(song, bar), spb = 60 / (st.bpm || g0.bpm);
+    for(var i = 0; i < 16; i++) fake._hits(off, g, t + i * spb / 4, i, st.tracks, st.order, st.bpm || g0.bpm, st.swing || 0);
+    t += 4 * spb;
+    if(onProgress && bar % 16 === 0) onProgress(bar / total);
+  }
+  return off.startRendering().then(function(buf){
+    return {buf: buf, grid: g0.grid, marks: g0.marks, seconds: g0.seconds, bpm: g0.bpm, name: song.name};
+  });
+}
+
+/* A deck is a rendered song, a read position, and a rate. AudioBufferSourceNodes
+   have no readable playhead, so position is anchor arithmetic and every seek
+   makes a new source. Rate is native and sample-exact: that is the sync. */
+function Deck(engine, name){
+  this.e = engine; this.name = name; this.r = null;
+  this.src = null; this.rate = 1; this.pos0 = 0; this.anchor = null;
+  this.loop = null; this.playing = false; this.nodes = null; this.kill = {low: 0, mid: 0, high: 0};
+}
+Deck.prototype._chain = function(){
+  if(this.nodes) return this.nodes;
+  var c = this.e.start(), lo = c.createBiquadFilter(), mid = c.createBiquadFilter(), hi = c.createBiquadFilter();
+  lo.type = "lowshelf"; lo.frequency.value = 200;
+  mid.type = "peaking"; mid.frequency.value = 1000; mid.Q.value = 0.7;
+  hi.type = "highshelf"; hi.frequency.value = 4000;
+  var gain = c.createGain(); gain.gain.value = 1;
+  lo.connect(mid); mid.connect(hi); hi.connect(gain); gain.connect(this.e.master);
+  return (this.nodes = {lo: lo, mid: mid, hi: hi, gain: gain});
+};
+Deck.prototype.load = function(r){ this.stop(); this.r = r; this.pos0 = 0; this.loop = null; return this; };
+Deck.prototype.posAt = function(t){
+  var p = this.anchor == null ? this.pos0 : this.pos0 + (t - this.anchor) * this.rate;
+  if(this.loop && p >= this.loop[1]){ var L = this.loop[1] - this.loop[0]; p = this.loop[0] + ((p - this.loop[0]) % L); }
+  return p;
+};
+Deck.prototype.pos = function(){ return this.posAt(this.e.ctx ? this.e.ctx.currentTime : 0); };
+Deck.prototype.play = function(at, when){
+  if(!this.r) return; var c = this.e.start(), n = this._chain();
+  if(when == null) when = c.currentTime + 0.02;
+  var from = at == null ? this.posAt(when) : at;
+  this._kill();
+  from = Math.max(0, Math.min(this.r.seconds - 0.01, from));
+  var s = c.createBufferSource(); s.buffer = this.r.buf; s.playbackRate.value = this.rate;
+  if(this.loop){ s.loop = true; s.loopStart = this.loop[0]; s.loopEnd = this.loop[1]; }
+  s.connect(n.lo); s.start(when, from);
+  this.src = s; this.pos0 = from; this.anchor = when; this.playing = true;
+  var self = this;
+  s.onended = function(){ if(self.src === s){ self.pos0 = self.r.seconds; self.anchor = null; self.src = null; self.playing = false; } };
+};
+Deck.prototype._kill = function(){ if(this.src){ var s = this.src; this.src = null; s.onended = null; try{ s.stop(); }catch(e){} } };
+Deck.prototype.stop = function(){ this.pos0 = this.pos(); this.anchor = null; this._kill(); this.playing = false; };
+Deck.prototype.setRate = function(r){
+  var now = this.e.ctx ? this.e.ctx.currentTime : 0;
+  this.pos0 = this.posAt(now); this.anchor = this.playing ? now : null;   // re-anchor, or the arithmetic drifts
+  this.rate = Math.max(0.5, Math.min(2, r));
+  if(this.src) this.src.playbackRate.setValueAtTime(this.rate, now);
+};
+Deck.prototype.bpm = function(){ return this.r ? this.r.bpm * this.rate : 0; };
+Deck.prototype.beatAt = function(p){
+  var g = this.r.grid, lo = 0, hi = g.length - 1;
+  while(lo < hi){ var mid = (lo + hi + 1) >> 1; if(g[mid] <= p) lo = mid; else hi = mid - 1; }
+  return lo;
+};
+Deck.prototype.beat = function(){ return this.beatAt(this.pos()); };
+Deck.prototype.phaseAt = function(t){
+  var p = this.posAt(t), g = this.r.grid, i = this.beatAt(p);
+  var a = g[i], b = i + 1 < g.length ? g[i + 1] : a + 60 / this.r.bpm;
+  return b <= a ? 0 : Math.max(0, Math.min(1, (p - a) / (b - a)));
+};
+Deck.prototype.beatPhase = function(){ return this.phaseAt(this.e.ctx ? this.e.ctx.currentTime : 0); };
+/* Match tempo, then put this deck's read head at the same phase of ITS beat as
+   the other deck is through its own - evaluated at one shared instant `when`,
+   so the two sources start in lock rather than a scheduling delay apart. */
+Deck.prototype.syncTo = function(o){
+  if(!o.r || !this.r) return;
+  var now = this.e.ctx ? this.e.ctx.currentTime : 0, when = now + 0.05;
+  this.setRate(o.bpm() / this.r.bpm);
+  var p = this.posAt(when), g = this.r.grid, i = this.beatAt(p);
+  var a = g[i], b = i + 1 < g.length ? g[i + 1] : a + 60 / this.r.bpm;
+  var target = a + o.phaseAt(when) * (b - a);
+  if(this.playing) this.play(target, when); else this.pos0 = target;
+};
+Deck.prototype.loopBeats = function(n){
+  if(!this.r) return;
+  var now = this.e.ctx ? this.e.ctx.currentTime : 0;
+  this.pos0 = this.posAt(now); if(this.playing) this.anchor = now;
+  if(!n){ this.loop = null; if(this.src) this.src.loop = false; return; }
+  var g = this.r.grid, i = this.beatAt(this.pos0), a = g[i], b = g[Math.min(g.length - 1, i + n)];
+  if(b <= a) return;
+  this.loop = [a, b];
+  if(this.src){ this.src.loopStart = a; this.src.loopEnd = b; this.src.loop = true; }
+};
+Deck.prototype.eq = function(band, v){
+  var n = this._chain(), node = {low: n.lo, mid: n.mid, high: n.hi}[band]; if(!node) return null;
+  v = Math.max(0, Math.min(2, v));
+  node.gain.setTargetAtTime(v <= 0.001 ? -40 : 20 * Math.log10(v), this.e.ctx.currentTime, 0.01);
+  return v;
+};
+Deck.prototype.seekMark = function(dir){
+  if(!this.r) return null; var p = this.pos(), m = this.r.marks, k = 0;
+  for(var i = 0; i < m.length; i++) if(m[i][0] <= p + 0.01) k = i;
+  k = Math.max(0, Math.min(m.length - 1, k + dir));
+  if(this.playing) this.play(m[k][0]); else this.pos0 = m[k][0];
+  return m[k][1];
+};
+
+/* Equal power, same as mixer.py: the long blend keeps the loudness flat. */
+function xfGains(p){ var t = (Math.max(-1, Math.min(1, p)) + 1) / 2;
+  return [Math.cos(t * Math.PI / 2), Math.sin(t * Math.PI / 2)]; }
+
+Engine.prototype.decks = function(){
+  if(!this._decks) this._decks = {a: new Deck(this, "a"), b: new Deck(this, "b"), xf: 0};
+  return this._decks;
+};
+Engine.prototype.crossfade = function(p){
+  var d = this.decks(), g = xfGains(p); d.xf = p;
+  var now = this.ctx ? this.ctx.currentTime : 0;
+  d.a._chain().gain.gain.setTargetAtTime(g[0], now, 0.01);
+  d.b._chain().gain.gain.setTargetAtTime(g[1], now, 0.01);
+  return g;
+};
+
+/* 16-bit PCM WAV from an AudioBuffer: the `export` command. */
+function wavBlob(buf){
+  var ch = buf.numberOfChannels, n = buf.length, out = new DataView(new ArrayBuffer(44 + n * ch * 2));
+  var w = function(o, str){ for(var i = 0; i < str.length; i++) out.setUint8(o + i, str.charCodeAt(i)); };
+  w(0, "RIFF"); out.setUint32(4, 36 + n * ch * 2, true); w(8, "WAVE"); w(12, "fmt ");
+  out.setUint32(16, 16, true); out.setUint16(20, 1, true); out.setUint16(22, ch, true);
+  out.setUint32(24, buf.sampleRate, true); out.setUint32(28, buf.sampleRate * ch * 2, true);
+  out.setUint16(32, ch * 2, true); out.setUint16(34, 16, true); w(36, "data"); out.setUint32(40, n * ch * 2, true);
+  var o = 44;
+  for(var i = 0; i < n; i++) for(var c = 0; c < ch; c++){
+    var v = Math.max(-1, Math.min(1, buf.getChannelData(c)[i]));
+    out.setInt16(o, v < 0 ? v * 32768 : v * 32767, true); o += 2; }
+  return new Blob([out], {type: "audio/wav"});
+}
 
 /* -- the keyboard as a controller ---------------------------------------- */
 /* The same table as thud/keymap.py, minus what a browser cannot do. Returns a
@@ -547,6 +719,7 @@ Engine.prototype.stop = function(){
 
 global.oontz = {
   Engine: Engine, VOICES: VOICES, noteHz: noteHz, KEYS: KEYS, PADS: PADS,
+  Deck: Deck, gridFor: gridFor, renderSong: renderSong, xfGains: xfGains, wavBlob: wavBlob,
   stateAt: stateAt, sectionAt: sectionAt, totalBars: totalBars, SR: SR
 };
 })(typeof window !== "undefined" ? window : globalThis);

@@ -102,8 +102,9 @@ C.theory = [
 C.decks = [
   {t: "Press M. Now you're a DJ. 🎧", cls: "b"},
   {},
-  {s: "Two decks. A crossfader. EQ kills. Loop rolls. A spinback on the"},
-  {s: "backslash key, because of course it is."},
+  {s: "Two decks. A crossfader. EQ kills. Beat loops. A spinback on the"},
+  {s: "backslash key, because of course it is. dload a this, dload b acid,"},
+  {s: "deck b sync, and fade."},
   {},
   {t: "And the sync is EXACT. Not \"pretty good\". Exact.", cls: "a"},
   {},
@@ -111,11 +112,11 @@ C.decks = [
   {s: "It's usually right. Usually. We didn't guess, because we WROTE the song"},
   {s: "— we know the sample index of every single beat."},
   {},
-  {s: "Measured drift between two synced decks over 23 seconds: 0.0000. 🎯"},
+  {s: "The check that runs before every deploy syncs two decks and asserts their"},
+  {s: "beat phase agrees to one millionth. It does. Every time. 🎯"},
   {},
-  {s: "It'll also tell you which of your tracks mix together, in what key, and"},
-  {s: "why. It is a better DJ than me. It is a better DJ than you. Accept this"},
-  {s: "and you'll both have a nice time."}
+  {s: "It is a better DJ than me. It is a better DJ than you. Accept this and"},
+  {s: "you'll both have a nice time."}
 ];
 
 /* -- free ---------------------------------------------------------------- */
@@ -169,11 +170,12 @@ C.keys = [
   {c: "\\", d: "spinback. no notes. perfect key. chef's kiss"},
   {c: "space", d: "you know what space does"},
   {c: "R", d: "record. captures exactly what you heard, effects and all"},
-  {c: "?", d: "draws your entire keyboard on screen, lit up by what each key does"},
+  {c: "M", d: "deck mode. two decks, a crossfader, and your keys change jobs"},
+  {c: "Esc", d: "leave the prompt. now the keys are instruments. : brings it back"},
+  {c: "?", d: "the whole table, whichever mode you're in"},
   {},
-  {s: "You never have to memorise any of it. The legend is always on screen and"},
-  {s: "it changes depending on what you're touching. Press a key, it tells you"},
-  {s: "what it just did. Learn by mashing. It's the correct way. 🐒"}
+  {s: "You never have to memorise any of it. Press a key, it tells you what it"},
+  {s: "just did. Learn by mashing. It's the correct way. 🐒"}
 ];
 
 /* -- ai ------------------------------------------------------------------ */
@@ -189,10 +191,10 @@ C.ai = [
   {s: "file, and can be read back later. No black box. No \"the AI did something"},
   {s: "and now the snare is gone and nobody knows where\". 🫥"},
   {},
-  {s: "It also just sits there telling you useful things for free: what's"},
-  {s: "playing, what's wrong with it, and which key to press next. Most of that"},
-  {s: "costs nothing and can't be wrong, because it's reading your actual song"},
-  {s: "instead of vibing."}
+  {s: "The cheap half of it is `grade`: what's wrong with your arrangement and"},
+  {s: "why, from the theory in this file, no model involved. It can't be wrong"},
+  {s: "in the interesting way, because it's reading your actual song instead"},
+  {s: "of vibing."}
 ];
 
 /* -- help ---------------------------------------------------------------- */
@@ -202,6 +204,10 @@ C.help = [
   ["kick x...x...x...x...", "x is a hit, . is a rest. that's the whole syntax"],
   ["bpm 150",               "faster"],
   ["grade",                 "get roasted by music theory"],
+  ["ask make it darker",    "the AI proposes, you press Enter"],
+  ["rec",                   "record what you hear. rec screen for video"],
+  ["export",                "the whole song as a WAV"],
+  ["M",                     "deck mode: dload a this · deck a sync · xf 0.5"],
   ["decks",                 "the DJ half"],
   ["keys",                  "every key, drawn on a keyboard"],
   ["ai",                    "the thing that isn't a chatbot"],

@@ -91,4 +91,32 @@ var listed = OZ.KEYS.map(function(kv){ return kv[0]; }).join(" ");
   A.ok(listed.indexOf(k) >= 0, "KEYS table is missing " + k);
 });
 
-console.log("web checks pass  ·  write-through · pads · notes · roll · jumps · " + OZ.KEYS.length + " keys listed");
+/* -- decks: the grid is exact, sync holds phase, the crossfader is equal power - */
+var sg2 = song(); sg2.bpm = 128; sg2.sections.drop.bpm = 128; sg2.sections.intro.bpm = 128;
+var gA = OZ.gridFor(sg), gB = OZ.gridFor(sg2);
+A.strictEqual(gA.grid.length, 16 * 4, "4 beats per bar on the grid");
+A.ok(Math.abs(gA.grid[4] - 240 / 220) < 1e-9, "beat 4 is one bar in, at the song's bpm (220 after the clamp test)");
+A.deepStrictEqual(gA.marks.map(function(m){ return m[1]; }), ["intro", "drop"], "a mark at every section start");
+A.ok(Math.abs(gA.seconds - 16 * 240 / 220) < 1e-9, "duration is the walked bar total");
+
+var fakeE = {ctx: {currentTime: 10}, start: function(){ return this.ctx; }, master: {}};
+var dA = new OZ.Deck(fakeE, "a"), dB = new OZ.Deck(fakeE, "b");
+dA.r = Object.assign({buf: null, name: "a"}, gA); dB.r = Object.assign({buf: null, name: "b"}, gB);
+dA.pos0 = 3.31;                                   // somewhere mid-beat, stopped
+dB.pos0 = 7.0;
+dB.syncTo(dA);
+A.ok(Math.abs(dB.bpm() - dA.bpm()) < 1e-9, "sync matches tempo: " + dB.bpm() + " vs " + dA.bpm());
+A.ok(Math.abs(dB.beatPhase() - dA.beatPhase()) < 1e-6, "sync matches beat phase: " + dB.beatPhase() + " vs " + dA.beatPhase());
+dA.anchor = 10; dA.playing = true; dA.rate = 1;   // A is playing at rate 1 from t=10
+A.ok(Math.abs(dA.posAt(12.5) - (3.31 + 2.5)) < 1e-9, "position is anchor arithmetic");
+dA.setRate(1.25);                                 // re-anchors at now (10)
+A.ok(Math.abs(dA.posAt(11) - (3.31 + 1.25)) < 1e-9, "a rate change re-anchors so position stays continuous");
+dA.loop = [gA.grid[8], gA.grid[12]];              // a 4-beat loop
+var L = gA.grid[12] - gA.grid[8];
+A.ok(Math.abs(dA.posAt(10 + (gA.grid[8] - 3.31) / 1.25 + L * 1.7 / 1.25) - (gA.grid[8] + L * 0.7)) < 1e-6, "a loop wraps the read position");
+var g = OZ.xfGains(0);
+A.ok(Math.abs(g[0] * g[0] + g[1] * g[1] - 1) < 1e-9 && Math.abs(g[0] - g[1]) < 1e-9, "centre of the crossfader is equal power");
+A.deepStrictEqual(OZ.xfGains(-1).map(Math.round), [1, 0], "hard left is all A");
+A.deepStrictEqual(OZ.xfGains(1).map(Math.round), [0, 1], "hard right is all B");
+
+console.log("web checks pass  ·  write-through · pads · notes · roll · jumps · decks · " + OZ.KEYS.length + " keys listed");

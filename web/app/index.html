@@ -89,8 +89,26 @@ function mmss(s){ s = Math.max(0, Math.floor(s||0));
 function songSeconds(sg){ if(!sg) return 0;
   return OZ.totalBars(sg) * 240 / (sg.bpm||138); }
 
+function deckLine(d, name){
+  if(!d.r) return '<span class="dim">'+name+'  empty · dload '+name+' this</span>';
+  var ph = d.beatPhase(), beat = d.beat(), bar = Math.floor(beat/4)+1, m = d.r.marks, sec = '';
+  for(var k = 0; k < m.length; k++) if(m[k][0] <= d.pos()+0.01) sec = m[k][1];
+  var meter = ''; for(var q = 0; q < 8; q++) meter += (q < ph*8 ? '█' : '·');
+  return '<span class="'+(DECKFOC===name?'a2':'dim')+'">'+name.toUpperCase()+'</span> '+
+    '<span class="b">'+esc(String(d.r.name).slice(0,16).padEnd(16))+'</span><span class="dim"> '+
+    d.bpm().toFixed(1)+' BPM  bar '+String(bar).padStart(3)+' '+esc(sec.padEnd(8))+' </span>'+
+    '<span class="a">'+meter+'</span><span class="dim"> '+(d.playing?'▸':'■')+(d.loop?' loop':'')+
+    ' kill '+['low','mid','high'].filter(function(b){ return d.kill[b]; }).join(' ')+'</span>';
+}
 function draw(){
   var i = E.stepNow || 0, foc = E.focus || (E.order||[])[0];
+  if(MODE === 'deck'){
+    var D = E.decks(), g = OZ.xfGains(D.xf), xfbar = '';
+    for(var q = 0; q < 21; q++) xfbar += (Math.round((D.xf+1)*10) === q ? '┃' : '─');
+    HUD.innerHTML = deckLine(D.a,'a') + '<br>' + deckLine(D.b,'b') + '<br><span class="dim">A </span><span class="a2">'+
+      xfbar+'</span><span class="dim"> B   ' + Math.round(g[0]*100) + '% / ' + Math.round(g[1]*100) + '%</span>';
+    return;
+  }
   /* HUD: where we are in the whole song */
   if(song){
     var at = OZ.sectionAt(song, E.songbar), total = OZ.totalBars(song);
@@ -339,12 +357,90 @@ var CMDS = {
     }catch(e){ d.remove(); line('the AI is unreachable right now','w'); }
   },
   undo: function(){ if(!UNDO.length) return line('nothing to undo','w');
-    song = UNDO.pop(); E.loadSong(song); draw(); line('▸ undone','dim'); }
+    song = UNDO.pop(); E.loadSong(song); draw(); line('▸ undone','dim'); },
+  /* -- decks -- */
+  mode: function(a){ var m = (a[0]||(MODE==='deck'?'studio':'deck')).toLowerCase();
+    if(m!=='deck' && m!=='studio') return line('mode deck|studio','w');
+    MODE = m; if(m==='deck'){ E.stop(); E.start(); if(!DECKTIMER) DECKTIMER = setInterval(function(){ if(MODE==='deck') draw(); }, 100);
+      line('▸ DECK. dload a this · dload b hardtechno · deck b sync · xf 0.5 · M to go back','dim'); }
+    else { var D = E.decks(); D.a.stop(); D.b.stop(); line('▸ STUDIO','dim'); }
+    draw(); },
+  dload: async function(a){
+    var name = (a[0]||'').toLowerCase(), what = a[1]||'this', D = E.decks(), d = D[name];
+    if(!d) return line('dload a|b this | <gallery number> | <style>','w');
+    var sg = null;
+    if(what==='this'){ if(!song) return line(CP.err_nosong,'w'); sg = JSON.parse(JSON.stringify(song)); }
+    else if(/^\d+$/.test(what)){ var it = GAL[parseInt(what,10)-1]; if(!it) return line('type `gallery` first','w');
+      try{ var r = await fetch(API+'/songs/'+it.id); sg = (await r.json()).data; }catch(e){ return line('could not load that one','w'); } }
+    else if(CO.GENRES[what]) sg = CO.compose(what, 3, 'classic');
+    else return line('dload a|b this | <gallery number> | <style>','w');
+    if(MODE!=='deck') CMDS.mode(['deck']);
+    var pr = w('<span class="dim">  rendering '+esc(sg.name)+' onto '+name+'…</span>');
+    try{ var t0 = performance.now();
+      var rr = await OZ.renderSong(sg, function(f){ pr.innerHTML='<span class="dim">  rendering '+esc(sg.name)+' onto '+name+'… '+Math.round(f*100)+'%</span>'; });
+      d.load(rr); DECKFOC = name;
+      pr.innerHTML = '<span class="ok">  '+name.toUpperCase()+' ← '+esc(sg.name)+'</span> <span class="dim">'+mmss(rr.seconds)+' · '+rr.grid.length+' beats on the grid · rendered in '+((performance.now()-t0)/1000).toFixed(1)+'s</span>';
+    }catch(e){ pr.innerHTML = '<span class="w">  render failed: '+esc(e.message||e)+'</span>'; }
+    draw(); },
+  deck: function(a){
+    var D = E.decks(), d = D[(a[0]||'').toLowerCase()], sub = (a[1]||'play').toLowerCase();
+    if(!d) return line('deck a|b play|pause|sync|loop N|unloop|cue|rate R|next|prev','w');
+    if(!d.r) return line('nothing on that deck. dload '+a[0]+' this','w');
+    var o = d === D.a ? D.b : D.a; DECKFOC = d.name;
+    if(sub==='play') d.play();
+    else if(sub==='pause' || sub==='stop') d.stop();
+    else if(sub==='cue'){ d.stop(); d.pos0 = 0; }
+    else if(sub==='sync'){ if(!o.r) return line('the other deck is empty','w'); d.syncTo(o);
+      line('▸ '+d.name+' → '+d.bpm().toFixed(2)+' BPM (rate '+d.rate.toFixed(4)+') · phase '+d.beatPhase().toFixed(3)+' vs '+o.beatPhase().toFixed(3),'dim'); }
+    else if(sub==='loop'){ d.loopBeats(parseInt(a[2],10)||4); }
+    else if(sub==='unloop'){ d.loopBeats(0); }
+    else if(sub==='rate'){ d.setRate(parseFloat(a[2])||1); }
+    else if(sub==='next' || sub==='prev'){ line('▸ '+d.name+' → '+d.seekMark(sub==='next'?1:-1),'dim'); }
+    else return line('deck a|b play|pause|sync|loop N|unloop|cue|rate R|next|prev','w');
+    draw(); },
+  eq: function(a){
+    var D = E.decks(), d = D[(a[0]||'').toLowerCase()], band = (a[1]||'').toLowerCase(), v = parseFloat(a[2]);
+    if(!d || !isFinite(v)) return line('eq a|b low|mid|high 0..2   (0 is a kill)','w');
+    if(d.eq(band, v) == null) return line('eq a|b low|mid|high 0..2','w');
+    d.kill[band] = v <= 0.001; draw(); line('▸ '+d.name+' '+band+' '+v,'dim'); },
+  xf: function(a){ var v = parseFloat(a[0]); if(!isFinite(v)) return line('xf -1..1   (-1 is all A)','w');
+    if(v > 1 && v <= 100) v = v/50 - 1;                      // xf 0..100 also works
+    E.crossfade(Math.max(-1, Math.min(1, v))); draw(); },
+  export: async function(){
+    if(!song) return line(CP.err_nosong,'w'); E.start();
+    var pr = w('<span class="dim">  rendering '+esc(song.name)+' offline…</span>');
+    try{ var rr = await OZ.renderSong(song); var name = 'oontz-'+song.name.replace(/[^\w-]+/g,'_')+'.wav';
+      var el = document.createElement('a'); el.href = URL.createObjectURL(OZ.wavBlob(rr.buf)); el.download = name;
+      document.body.appendChild(el); el.click(); el.remove();
+      pr.innerHTML = '<span class="ok">  saved '+esc(name)+'</span> <span class="dim">'+mmss(rr.seconds)+' · 16-bit · the same render the decks use</span>';
+    }catch(e){ pr.innerHTML = '<span class="w">  render failed: '+esc(e.message||e)+'</span>'; } }
 };
+var MODE = 'studio', DECKFOC = 'a', DECKTIMER = null;
+var DECK_KEYS = [
+  ["1 / 2", "focus deck A / B"], ["space", "play / pause the focused deck"], ["s", "sync it to the other deck"],
+  ["l / u", "4-beat loop / unloop"], [", .", "crossfader toward A / B"], ["7 8 9", "kill low / mid / high"],
+  ["[ ]", "sweep the master filter"], ["\\", "spinback"], ["< >", "previous / next phrase"], ["M", "back to the studio"]
+];
+function deckKey(k){
+  var D = E.decks(), d = D[DECKFOC], o = d === D.a ? D.b : D.a;
+  if(k==='1' || k==='2'){ DECKFOC = k==='1'?'a':'b'; return 'deck '+DECKFOC; }
+  if(k==='M' || k==='m'){ CMDS.mode(['studio']); return 'studio'; }
+  if(k===',' || k==='.'){ E.crossfade(Math.max(-1, Math.min(1, D.xf + (k===','?-0.1:0.1)))); return 'xf '+D.xf.toFixed(1); }
+  if(k==='[' || k===']' || k==='\\' || k==='`') return E.key(k, true);
+  if(!d.r) return 'deck '+DECKFOC+' is empty';
+  if(k===' '){ if(d.playing) d.stop(); else d.play(); return d.playing?'play '+DECKFOC:'pause '+DECKFOC; }
+  if(k==='s'){ if(!o.r) return 'the other deck is empty'; d.syncTo(o); return 'sync '+DECKFOC+' → '+d.bpm().toFixed(2)+' BPM'; }
+  if(k==='l'){ d.loopBeats(4); return 'loop 4'; }
+  if(k==='u'){ d.loopBeats(0); return 'loop off'; }
+  if(k==='7' || k==='8' || k==='9'){ var band = {7:'low',8:'mid',9:'high'}[k]; var on = !d.kill[band];
+    d.kill[band] = on; d.eq(band, on ? 0 : 1); return DECKFOC+' '+band+(on?' killed':' back'); }
+  if(k==='<' || k==='>') return '→ '+d.seekMark(k==='>'?1:-1);
+  return null;
+}
 var REC = null, PENDING = null, UNDO = [];
 function snapshot(){ if(song){ UNDO.push(JSON.parse(JSON.stringify(song))); if(UNDO.length > 20) UNDO.shift(); } }
 var GAL = [];
-var ALIAS = {'?':'help','ls':'help','start':'go','make':'go','song':'go','q':'stop',
+var ALIAS = {'?':'help','ls':'help','start':'go','make':'go','song':'go','q':'stop','wav':'export','render':'export','crossfade':'xf',
   'exit':'stop','quit':'stop','cls':'clear','about':'what','dj':'decks','keymap':'keys',
   'critique':'grade','score':'grade','signin':'login','account':'login'};
 
@@ -382,9 +478,10 @@ var lastMsg = null;
 addEventListener('keydown', function(e){
   if(document.activeElement===IN || e.ctrlKey || e.metaKey || e.altKey) return;
   if(e.key===':' || e.key==='Enter'){ e.preventDefault(); IN.focus(); return; }
-  if(e.key==='?'){ e.preventDefault(); block(OZ.KEYS.map(function(kv){ return {c:kv[0], d:kv[1]}; })); return; }
+  if(e.key==='?'){ e.preventDefault(); block((MODE==='deck'?DECK_KEYS:OZ.KEYS).map(function(kv){ return {c:kv[0], d:kv[1]}; })); return; }
   if(e.key==='R'){ e.preventDefault(); CMDS.rec && CMDS.rec([]); return; }
-  var m = E.key(e.key, true);
+  if(e.key==='M' && MODE!=='deck'){ e.preventDefault(); CMDS.mode(['deck']); return; }
+  var m = MODE==='deck' ? deckKey(e.key) : E.key(e.key, true);
   if(m===null) return;
   e.preventDefault();
   if(e.repeat && lastMsg && lastMsg.d.parentNode) lastMsg.d.innerHTML='<span class="dim">  '+esc(m)+'</span>';
