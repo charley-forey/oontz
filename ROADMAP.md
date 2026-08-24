@@ -120,24 +120,32 @@ reports SUCCESS and the live file contains the change.
 
 ## Next, web-first (the order the loop should take them)
 
-The ear, the track and the interface all landed on 2026-08-24 (cycles 9-12). What
-is left from that pass, in order:
+Open findings from the 2026-08-24 audits that are written down rather than fixed:
 
-- [ ] **Reference matching** — analyse a WAV you own (band curve, onset BPM, chroma
-      key) and show where yours differs. The Rekordbox library on this machine is the
-      corpus; not the internet. `ear.js` already has the FFT and the band grid.
-- [ ] **`improve` should reach for more than levels** — it moves gain, pan and
-      sidechain. The next levers are per-track filters and swapping a voice, which is
-      what a person would do when two elements simply are the same sound twice.
-- [ ] **Grade the whole track, not the loudest section** — the mix is measured on one
-      bar of one section, which is the right place to look but not the only one. A
-      break with a pad in it can mask differently.
-- [ ] **Micro-timing on the desktop too** — `theory.GROOVES` is read by the browser
-      engine; `core.hits()` still applies a single swing percentage.
-- [ ] **Fills on pitched tracks** — the fill writer skips anything with a notes lane,
-      because the notes would have to move with the pattern.
-- [ ] **Play a gallery track on oontz.music** — the landing toy could load a real
-      `.song` now that the engine is shared.
+- [ ] **Publishing the same title overwrites the earlier song** — `api/main.py`
+      upserts on `(user_id, title)`, and `compose` names songs by style, so two
+      `hardtechno` tracks collide and any share link already pasted starts playing
+      different music. Key on the song id the client holds.
+- [ ] **Magic links die to email link-scanners** — `/auth/verify` is a GET that
+      deletes the row on first hit, so Outlook/Gmail prefetch burns it and the real
+      click says "expired". Let a link work twice inside its 15 minutes.
+- [ ] **An expired session is never cleared** — after 90 days boot still says
+      "signed in" and every account command fails. Drop the token on a 401.
+- [ ] **`playlist` subcommands crash on a missing argument** — `playlist public`
+      with no id reads `.songs` off a listing response.
+- [ ] **The landing page sends `limit` where the API takes `limit_n`** — silently
+      ignored, so the public playlist list is always 40.
+- [ ] **`renderSong` blocks the main thread** — ~22k voice calls and 10^5 nodes are
+      built synchronously before rendering starts, so the tab freezes for seconds on
+      `dload`/`export` and the progress percentage can never paint.
+- [ ] **Reference matching** — analyse a WAV you own and show where yours differs.
+      `ear.js` already has the FFT and the band grid.
+- [ ] **`improve` should reach past levels** — it moves gain, pan and sidechain.
+      Per-track filters and swapping a voice are what a person reaches for when two
+      elements are simply the same sound twice.
+- [ ] **Grade more than the loudest section** — a break with a pad masks differently.
+- [ ] **Micro-timing on the desktop** — `theory.GROOVES` drives the browser engine;
+      `core.hits()` still applies a single swing percentage.
 
 ## One theory (was: the two composers can drift)
 

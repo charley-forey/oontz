@@ -29,6 +29,8 @@ DB = os.environ.get("OONTZ_DB", "/data/oontz.db")
 SECRET = os.environ.get("OONTZ_SECRET", "dev-only-not-a-secret")
 if SECRET == "dev-only-not-a-secret" and os.environ.get("RAILWAY_ENVIRONMENT"):
     raise SystemExit("OONTZ_SECRET is unset: every session would be forgeable. Refusing to start.")
+if os.environ.get("RAILWAY_ENVIRONMENT") and not os.environ.get("OONTZ_API_URL"):
+    raise SystemExit("OONTZ_API_URL is unset: every magic link would be a relative URL.")
 APP_URL = os.environ.get("OONTZ_APP_URL", "https://oontz.sh")
 SITE_URL = os.environ.get("OONTZ_SITE_URL", "https://oontz.music")
 RESEND_KEY = os.environ.get("RESEND_API_KEY", "")
@@ -56,6 +58,7 @@ app = FastAPI(title="oontz", docs_url=None, redoc_url=None)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[APP_URL, SITE_URL, "http://localhost:3000", "http://localhost:5173"],
+    allow_origin_regex=r"https://[a-z0-9-]+\.up\.railway\.app",   # the hostnames that work when a custom domain does not
     allow_credentials=False,
     allow_methods=["GET", "POST", "PATCH", "PUT", "DELETE", "OPTIONS"],
     allow_headers=["*"],
@@ -648,6 +651,32 @@ class AskIn(BaseModel):
     state: dict = Field(default_factory=dict)
 
 
+def _state_text(state, cap=4000):
+    """The verb list and the arrangement first, the patterns last and trimmed.
+
+    Truncating the raw dump put `tracks` first - and one track's pattern is 128
+    characters now - so the verb list at the end was always the part that got cut,
+    which is precisely the part the system prompt tells the model to obey.
+    """
+    state = dict(state or {})
+    tracks = state.pop("tracks", None)
+    head = json.dumps(state)
+    if isinstance(tracks, dict):
+        thin = {}
+        for name, tr in list(tracks.items())[:16]:
+            if not isinstance(tr, dict):
+                continue
+            keep = {k: tr[k] for k in ("pat", "gain", "sc", "fc", "pan") if k in tr}
+            pat = keep.get("pat")
+            if isinstance(pat, str) and len(pat) > 32:      # one bar is enough to reason about
+                keep["pat"] = pat[:16] + "…"
+            if isinstance(tr.get("notes"), list):
+                keep["notes"] = " ".join(str(x) for x in tr["notes"][:16])
+            thin[str(name)[:24]] = keep
+        head = head[:-1] + ', "tracks": ' + json.dumps(thin) + "}" if head.endswith("}") else head
+    return head[:cap]
+
+
 @app.post("/ai/ask")
 def ai_ask(body: AskIn, request: Request, x_anthropic_key: str = Header(default="")):
     """Proxy so the shared API key never reaches the browser. Returns command lines only.
@@ -679,7 +708,7 @@ def ai_ask(body: AskIn, request: Request, x_anthropic_key: str = Header(default=
         "never tokens of their own.\n"
         + ("What makes a track work - decide with it, and it is what `grade` checks:\n"
            + THEORY["prompt"] + "\n" if THEORY.get("prompt") else "")
-        + "Current state:\n" + json.dumps(body.state)[:4000])
+        + "Current state:\n" + _state_text(body.state))
     payload = json.dumps({
         "model": "claude-sonnet-5",
         "max_tokens": 700,

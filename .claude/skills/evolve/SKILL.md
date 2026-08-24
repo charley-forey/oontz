@@ -29,11 +29,20 @@ then stop. Do not start a second cycle in the same run.
    Add at least one assert that would FAIL if your change regressed. A change with
    no check is not finished.
 
-   **Web items** (`web/app`, `web/landing`, `api/`) have their own gate, run in
-   addition: `node web/app/check.js` for the instrument, `python -c "import ast;
-   ast.parse(open('api/main.py').read())"` plus a local `uvicorn` smoke for the API.
+   **Web items** (`web/app`, `web/landing`, `api/`) have their own gates, run in
+   addition:
+   - `node web/app/check.js` - the pure half: song model, keys, FFT, theory, and
+     the guards that keep published JSON out of innerHTML.
+   - `python scripts/browsergate.py` - the real half. Drives the actual index.html
+     in headless Edge and asserts on the cold start, the composer, the ear,
+     improve, export's WAV header, both decks, the keyboard, the palette and the
+     scrollback. Takes about four minutes. Anything touching the browser runtime
+     is NOT proven until this passes; it is what caught measure() exhausting the
+     browser's OfflineAudioContexts and spinback throwing on key repeat.
+   - `python api/check.py` when `api/` changed.
+
    After the push, poll `mcp__railway__get-status` until the service reports
-   SUCCESS, then curl the live URL and confirm the change is in the served file.
+   SUCCESS, then fetch the live URL and confirm the change is in the served file.
    A web cycle is not done until the deploy is green.
 
 5. **THE GATE.** If either suite fails, fix it or revert your change. Never commit
