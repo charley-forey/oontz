@@ -320,8 +320,15 @@ def compose_cmd(state, args):
     status line. Reported to the orchestrator rather than worked around.
     """
     from . import core
+    import math
     style = args[0] if args else "hardtechno"
-    minutes = float(args[1]) if len(args) > 1 else 5.0
+    try:                                     # 'compose x inf' / 'compose x nan' are keyboards, not requests
+        minutes = float(args[1]) if len(args) > 1 else 5.0
+    except ValueError:
+        minutes = 5.0
+    if not math.isfinite(minutes):
+        minutes = 5.0
+    minutes = min(20.0, max(0.5, minutes))
     cname = args[2] if len(args) > 2 else "classic"
     core.set_song(compose_song(style, minutes, curve_name=cname))
     sg = core.ST.song

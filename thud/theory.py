@@ -81,6 +81,30 @@ GENRES = {
         "drop_at": (0.45, 0.65),
         "swing": (0, 4),
         "note": "The breakdown is the song. Everything before it is setup."},
+    "breakbeat": {
+        "bpm": (130, 145), "sweet": 136,
+        "key": "minor", "phrase": 16,
+        "intro_bars": (8, 16), "outro_bars": (16, 32),
+        "drop_at": (0.15, 0.35),
+        "swing": (20, 40),
+        "note": "The break IS the hook. Keep the kick off the grid and let the "
+                "snare drag - straight sixteenths would kill it."},
+    "electro": {
+        "bpm": (125, 138), "sweet": 130,
+        "key": "minor", "phrase": 16,
+        "intro_bars": (16, 32), "outro_bars": (16, 32),
+        "drop_at": (0.20, 0.40),
+        "swing": (0, 6),
+        "note": "Machine funk: syncopated kick under a straight hat. The bassline "
+                "talks; everything else answers it."},
+    "ambient": {
+        "bpm": (100, 120), "sweet": 110,
+        "key": "minor", "phrase": 32,
+        "intro_bars": (32, 64), "outro_bars": (32, 64),
+        "drop_at": (0.40, 0.65),
+        "swing": (0, 10),
+        "note": "A drop here is a tide, not a cliff. Chords carry the track and "
+                "the drums are weather."},
 }
 
 # Real dance tracks have known shapes. Walking a grammar produced technically

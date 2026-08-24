@@ -236,6 +236,58 @@
     10
    ]
   },
+  "ambient": {
+   "bpm": [
+    100,
+    120
+   ],
+   "drop_at": [
+    0.4,
+    0.65
+   ],
+   "intro_bars": [
+    32,
+    64
+   ],
+   "key": "minor",
+   "note": "A drop here is a tide, not a cliff. Chords carry the track and the drums are weather.",
+   "outro_bars": [
+    32,
+    64
+   ],
+   "phrase": 32,
+   "sweet": 110,
+   "swing": [
+    0,
+    10
+   ]
+  },
+  "breakbeat": {
+   "bpm": [
+    130,
+    145
+   ],
+   "drop_at": [
+    0.15,
+    0.35
+   ],
+   "intro_bars": [
+    8,
+    16
+   ],
+   "key": "minor",
+   "note": "The break IS the hook. Keep the kick off the grid and let the snare drag - straight sixteenths would kill it.",
+   "outro_bars": [
+    16,
+    32
+   ],
+   "phrase": 16,
+   "sweet": 136,
+   "swing": [
+    20,
+    40
+   ]
+  },
   "dubtechno": {
    "bpm": [
     118,
@@ -260,6 +312,32 @@
    "swing": [
     0,
     12
+   ]
+  },
+  "electro": {
+   "bpm": [
+    125,
+    138
+   ],
+   "drop_at": [
+    0.2,
+    0.4
+   ],
+   "intro_bars": [
+    16,
+    32
+   ],
+   "key": "minor",
+   "note": "Machine funk: syncopated kick under a straight hat. The bassline talks; everything else answers it.",
+   "outro_bars": [
+    16,
+    32
+   ],
+   "phrase": 16,
+   "sweet": 130,
+   "swing": [
+    0,
+    6
    ]
   },
   "hardtechno": {

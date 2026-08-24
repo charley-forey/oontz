@@ -235,6 +235,58 @@
     10
    ]
   },
+  "ambient": {
+   "bpm": [
+    100,
+    120
+   ],
+   "drop_at": [
+    0.4,
+    0.65
+   ],
+   "intro_bars": [
+    32,
+    64
+   ],
+   "key": "minor",
+   "note": "A drop here is a tide, not a cliff. Chords carry the track and the drums are weather.",
+   "outro_bars": [
+    32,
+    64
+   ],
+   "phrase": 32,
+   "sweet": 110,
+   "swing": [
+    0,
+    10
+   ]
+  },
+  "breakbeat": {
+   "bpm": [
+    130,
+    145
+   ],
+   "drop_at": [
+    0.15,
+    0.35
+   ],
+   "intro_bars": [
+    8,
+    16
+   ],
+   "key": "minor",
+   "note": "The break IS the hook. Keep the kick off the grid and let the snare drag - straight sixteenths would kill it.",
+   "outro_bars": [
+    16,
+    32
+   ],
+   "phrase": 16,
+   "sweet": 136,
+   "swing": [
+    20,
+    40
+   ]
+  },
   "dubtechno": {
    "bpm": [
     118,
@@ -259,6 +311,32 @@
    "swing": [
     0,
     12
+   ]
+  },
+  "electro": {
+   "bpm": [
+    125,
+    138
+   ],
+   "drop_at": [
+    0.2,
+    0.4
+   ],
+   "intro_bars": [
+    16,
+    32
+   ],
+   "key": "minor",
+   "note": "Machine funk: syncopated kick under a straight hat. The bassline talks; everything else answers it.",
+   "outro_bars": [
+    16,
+    32
+   ],
+   "phrase": 16,
+   "sweet": 130,
+   "swing": [
+    0,
+    6
    ]
   },
   "hardtechno": {
@@ -603,7 +681,7 @@
    "why": "Wide bass cancels on a mono club system - the one place it must not."
   }
  ],
- "prompt": "GENRES:\n  techno: 125-145 BPM (sweet spot 132), minor key, 16-bar phrases, first drop 20-40% in. Hypnotic and mechanical. Repetition is the point; change one element at a time and let it ride.\n  hardtechno: 145-165 BPM (sweet spot 150), minor key, 16-bar phrases, first drop 12-30% in. Distorted kick carries the track. Rumble tails fill the gaps between kicks - that smear IS the genre.\n  acid: 130-145 BPM (sweet spot 138), minor key, 16-bar phrases, first drop 15-35% in. The 303 is the lead, the hook and the arrangement. Move the filter, not the notes.\n  minimal: 120-130 BPM (sweet spot 126), minor key, 32-bar phrases, first drop 30-55% in. Space is an instrument. What you leave out is the composition.\n  dubtechno: 118-128 BPM (sweet spot 122), minor key, 32-bar phrases, first drop 35-60% in. Chords through long delays. Nothing arrives suddenly.\n  industrial: 140-160 BPM (sweet spot 150), phrygian key, 16-bar phrases, first drop 10-28% in. Metallic percussion and noise. Ugly on purpose, tight anyway.\n  house: 118-128 BPM (sweet spot 124), minor key, 16-bar phrases, first drop 20-40% in. Swing is the whole feel. Straight house is broken house.\n  trance: 132-142 BPM (sweet spot 138), minor key, 32-bar phrases, first drop 45-65% in. The breakdown is the song. Everything before it is setup.\nARRANGEMENT:\n  Start with 16-32 bars of beat before anything melodic. (A DJ needs a plain section to mix into. A track that starts on the drop is unmixable and gets skipped.)\n  Every section is a multiple of 8 bars, usually 16 or 32. (Dancers and DJs both count in 8s. A 12-bar section lands wrong and no one can tell you why.)\n  The first drop belongs 20-40% into the track. (Earlier and there is no tension to release. Later and the floor drifts.)\n  A drop needs a quieter section before it. (Loudness is relative. Without contrast the ear stops registering loud.)\n  Change one element per 8 or 16 bars, not three. (Techno is about noticing a single change. Three at once reads as chaos.)\n  Peak energy minus minimum energy should exceed 0.4. (A flat track is a long loop. The shape is the composition.)\n  End with 16-32 bars of thinning beat. (Same reason as the intro, in reverse: the next DJ needs somewhere to go.)\n  The main motif should appear in at least three sections. (Repetition is what makes a track memorable. A new idea every section is eight loops, not a song.)\nMIXING:\n  Duck the bass 6dB or more against the kick. (They occupy the same band. Ducking is what lets both be loud.)\n  Highpass anything that is not the kick above ~60Hz. (Sub energy from three sources sums to mud and eats all the headroom.)\n  One element owns each band at any moment. (Masking is inaudible as a problem and obvious as a result.)\n  Master peak at or below -0.5dBFS. (Clipping on a limiter is distortion you cannot undo later.)\n  Keep everything below ~120Hz centred. (Wide bass cancels on a mono club system - the one place it must not.)\nDJ:\n  Start a blend on a phrase boundary, not a bar boundary. (Phrases are 16 or 32 bars. Landing mid-phrase makes both tracks feel wrong.)\n  Never run two basslines at once. Swap the lows at the midpoint. (Two sub sources double the energy in the one band with no headroom.)\n  Mix within one step on the Camelot wheel. (Two keys a tritone apart beat against each other audibly.)\n  Mix into equal or higher energy across a set. (A set is one arrangement at a larger scale. The same rules apply.)\n  Keep tempo changes under about 6%. (Past that, drums start to sound obviously time-stretched.)\nBANDS:\n  kick 40-90Hz: Owns 40-90Hz. Nothing else lives there.\n  rumble 30-120Hz: Sits under the kick and fills the gap between hits. Sidechain it or it eats the kick.\n  sub 30-80Hz: Conflicts with the kick by definition. Sidechain hard or write it to play in the kick's gaps.\n  bass 60-400Hz: Sits above the kick. Highpass at ~60Hz to stay out of it.\n  stab 300-3000Hz: Mid-range hook.\n  clap 1000-3000Hz: 1-2kHz is where a clap reads as a clap.\n  snare 180-4000Hz: Body at 180, snap at 2k.\n  hat 8000-16000Hz: Above 8k. Below that it fights the mids.\n  oh 6000-14000Hz: Longer than a closed hat, so it masks more. Use sparingly.\n  perc 300-6000Hz: The band with the most room in most techno tracks.\n  pad 200-4000Hz: Wide and long, so it masks everything. Duck it or filter it.\n  atmos 2000-16000Hz: Texture, not content.",
+ "prompt": "GENRES:\n  techno: 125-145 BPM (sweet spot 132), minor key, 16-bar phrases, first drop 20-40% in. Hypnotic and mechanical. Repetition is the point; change one element at a time and let it ride.\n  hardtechno: 145-165 BPM (sweet spot 150), minor key, 16-bar phrases, first drop 12-30% in. Distorted kick carries the track. Rumble tails fill the gaps between kicks - that smear IS the genre.\n  acid: 130-145 BPM (sweet spot 138), minor key, 16-bar phrases, first drop 15-35% in. The 303 is the lead, the hook and the arrangement. Move the filter, not the notes.\n  minimal: 120-130 BPM (sweet spot 126), minor key, 32-bar phrases, first drop 30-55% in. Space is an instrument. What you leave out is the composition.\n  dubtechno: 118-128 BPM (sweet spot 122), minor key, 32-bar phrases, first drop 35-60% in. Chords through long delays. Nothing arrives suddenly.\n  industrial: 140-160 BPM (sweet spot 150), phrygian key, 16-bar phrases, first drop 10-28% in. Metallic percussion and noise. Ugly on purpose, tight anyway.\n  house: 118-128 BPM (sweet spot 124), minor key, 16-bar phrases, first drop 20-40% in. Swing is the whole feel. Straight house is broken house.\n  trance: 132-142 BPM (sweet spot 138), minor key, 32-bar phrases, first drop 45-65% in. The breakdown is the song. Everything before it is setup.\n  breakbeat: 130-145 BPM (sweet spot 136), minor key, 16-bar phrases, first drop 15-35% in. The break IS the hook. Keep the kick off the grid and let the snare drag - straight sixteenths would kill it.\n  electro: 125-138 BPM (sweet spot 130), minor key, 16-bar phrases, first drop 20-40% in. Machine funk: syncopated kick under a straight hat. The bassline talks; everything else answers it.\n  ambient: 100-120 BPM (sweet spot 110), minor key, 32-bar phrases, first drop 40-65% in. A drop here is a tide, not a cliff. Chords carry the track and the drums are weather.\nARRANGEMENT:\n  Start with 16-32 bars of beat before anything melodic. (A DJ needs a plain section to mix into. A track that starts on the drop is unmixable and gets skipped.)\n  Every section is a multiple of 8 bars, usually 16 or 32. (Dancers and DJs both count in 8s. A 12-bar section lands wrong and no one can tell you why.)\n  The first drop belongs 20-40% into the track. (Earlier and there is no tension to release. Later and the floor drifts.)\n  A drop needs a quieter section before it. (Loudness is relative. Without contrast the ear stops registering loud.)\n  Change one element per 8 or 16 bars, not three. (Techno is about noticing a single change. Three at once reads as chaos.)\n  Peak energy minus minimum energy should exceed 0.4. (A flat track is a long loop. The shape is the composition.)\n  End with 16-32 bars of thinning beat. (Same reason as the intro, in reverse: the next DJ needs somewhere to go.)\n  The main motif should appear in at least three sections. (Repetition is what makes a track memorable. A new idea every section is eight loops, not a song.)\nMIXING:\n  Duck the bass 6dB or more against the kick. (They occupy the same band. Ducking is what lets both be loud.)\n  Highpass anything that is not the kick above ~60Hz. (Sub energy from three sources sums to mud and eats all the headroom.)\n  One element owns each band at any moment. (Masking is inaudible as a problem and obvious as a result.)\n  Master peak at or below -0.5dBFS. (Clipping on a limiter is distortion you cannot undo later.)\n  Keep everything below ~120Hz centred. (Wide bass cancels on a mono club system - the one place it must not.)\nDJ:\n  Start a blend on a phrase boundary, not a bar boundary. (Phrases are 16 or 32 bars. Landing mid-phrase makes both tracks feel wrong.)\n  Never run two basslines at once. Swap the lows at the midpoint. (Two sub sources double the energy in the one band with no headroom.)\n  Mix within one step on the Camelot wheel. (Two keys a tritone apart beat against each other audibly.)\n  Mix into equal or higher energy across a set. (A set is one arrangement at a larger scale. The same rules apply.)\n  Keep tempo changes under about 6%. (Past that, drums start to sound obviously time-stretched.)\nBANDS:\n  kick 40-90Hz: Owns 40-90Hz. Nothing else lives there.\n  rumble 30-120Hz: Sits under the kick and fills the gap between hits. Sidechain it or it eats the kick.\n  sub 30-80Hz: Conflicts with the kick by definition. Sidechain hard or write it to play in the kick's gaps.\n  bass 60-400Hz: Sits above the kick. Highpass at ~60Hz to stay out of it.\n  stab 300-3000Hz: Mid-range hook.\n  clap 1000-3000Hz: 1-2kHz is where a clap reads as a clap.\n  snare 180-4000Hz: Body at 180, snap at 2k.\n  hat 8000-16000Hz: Above 8k. Below that it fights the mids.\n  oh 6000-14000Hz: Longer than a closed hat, so it masks more. Use sparingly.\n  perc 300-6000Hz: The band with the most room in most techno tracks.\n  pad 200-4000Hz: Wide and long, so it masks everything. Duck it or filter it.\n  atmos 2000-16000Hz: Texture, not content.",
  "rhythm": {
   "clap_on_3": {
    "pattern": "....x.......x...",

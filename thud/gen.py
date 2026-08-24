@@ -352,6 +352,29 @@ STYLES = {
                      "filt": ("lp", 3000, 0.2), "sc": 0.3},
         },
     },
+    "electro": {
+        "bpm": 130, "groove": "straight",
+        "tracks": {
+            "kick":  {"pat": "x..x..x...x..x.."},
+            "snare": {"pat": "....x.......x..."},
+            "hat":   {"euclid": (8, 16), "filt": ("hp", 9000), "gain": 0.7},
+            "perc":  {"euclid": (3, 16, 2), "tune": 900, "gain": 0.6},
+            "bass":  {"melody": ("a", "minor", 16), "density": 0.7,
+                      "filt": ("lp", 500, 0.85), "sc": 0.6},
+        },
+    },
+    "ambient": {
+        "bpm": 110, "groove": "rolling",
+        "tracks": {
+            "kick": {"euclid": (4, 16), "gain": 0.8},
+            "hat":  {"euclid": (2, 16, 4), "filt": ("hp", 6000), "gain": 0.4},
+            "perc": {"euclid": (3, 16, 5), "tune": 620, "gain": 0.4},
+            "stab": {"melody": ("a", "dorian", 32), "density": 0.25,
+                     "filt": ("lp", 1100, 0.3), "sc": 0.35},
+            "bass": {"melody": ("a", "minor", 16), "density": 0.3,
+                     "filt": ("lp", 300, 0.5), "sc": 0.4},
+        },
+    },
     "hypnotic": {
         "bpm": 128, "groove": "hypnotic",
         "tracks": {
