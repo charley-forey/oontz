@@ -646,13 +646,16 @@ def ai_ask(body: AskIn, request: Request, x_anthropic_key: str = Header(default=
         "Patterns: x=hit X=accent .=rest, any length (5 steps against 16 is "
         "polymeter). Notes: a1 f#2, ~ slides, ! accents.\n"
         "Commands: kick|hat|oh|clap|snare|perc <pattern>; bass|stab <notes>; "
-        "bpm N; swing N; gain <track> N; pan <track> -1..1; filter <track> "
+        "bpm 60-220; swing 0-60; gain <track> 0-1.2 (a LINEAR multiplier, never dB - "
+        "-6 would silence the track); pan <track> -1..1; filter <track> "
         "lp|hp|bp <hz> [res R]; sidechain <track> 0..1; voice <track> <voice>; "
         "track add <name> [voice]; fx <track|master> <effect> [k v]; "
         "style <name>; melody <track> <root> <scale> <len>; euc <track> k n; "
         "compose <style> <minutes> <curve>; ramp <track>.<param> <lo> <hi> over <bars>.\n"
         "If the state lists `commands`, use only verbs from that list - the client "
-        "rejects anything else. Prefer few, decisive lines.\n"
+        "rejects anything else. Prefer few, decisive lines. Every note token is a "
+        "real note (a1, f#2) or a rest (.); ~ and ! are suffixes ON a note, "
+        "never tokens of their own.\n"
         + ("What makes a track work - decide with it, and it is what `grade` checks:\n"
            + THEORY["prompt"] + "\n" if THEORY.get("prompt") else "")
         + "Current state:\n" + json.dumps(body.state)[:4000])
