@@ -120,13 +120,57 @@ reports SUCCESS and the live file contains the change.
 
 ## Next, web-first (the order the loop should take them)
 
-1. **Port `critique()` fully to JS** — theory.py grades 19 claims, compose.js 6. Now
-   that the corpus is in `theory.js`, the grader can read its rules from there too.
-2. **Play a gallery track on oontz.music** (above) — the landing toy could load a
-   real `.song` now that the engine is shared.
-3. **Reference matching from music you own** — analyse a WAV (band energy, onset
-   BPM, chroma key) and compare to theory. The Rekordbox library on this machine is
-   the legal corpus; not the internet.
+### 1. The ear: grade what it sounds like, not just how it is arranged
+
+`renderSong()` renders a whole track offline in the browser. Nothing consumes that
+except `export` and the decks - which means the grader still only reads the
+*arrangement*. Every mixing rule in `theory.py` is currently an unenforced claim in
+the browser: kick owns 40-90Hz, hat above 8k, one element per band, master at or
+below -0.5dBFS, everything under 120Hz centred.
+
+- [ ] **`grade` renders and measures** - offline render, FFT per band per track (the
+      Python `core.band_energy` already does exactly this), then run `MIXING` and
+      `FREQ_ROLES` against the measurement. "your sub and your kick are both at 55Hz"
+      is a thing the tool can now say and prove.
+- [ ] **`improve`** - render, grade, fix the single worst violation, render again,
+      stop when the score stops rising. Print what it changed and why at each step.
+      No model call: it is theory plus measurement, running on the listener's machine.
+      This is the loop the desktop QA gate does for code, pointed at music.
+- [ ] **Reference matching** - drop a WAV in, take its band curve, show where yours
+      differs. The Rekordbox library on this machine is the corpus; not the internet.
+
+### 2. Turn a loop into a track
+
+The generator writes one 16-step pattern per track per section. That is why it
+sounds like a good loop rather than a record.
+
+- [ ] **Phrase-length patterns and fills** - patterns already accept any length. Let a
+      section carry a 32 or 64-step pattern and write a fill into the last bar of every
+      8. This is the single biggest difference between a loop and a track.
+- [ ] **Groove templates** - per-16th timing offsets and a velocity curve per genre,
+      instead of one swing percentage. `x`/`X` is two velocities; real groove is a
+      curve. Take the curves from records, per `theory.RHYTHM`.
+- [ ] **Automation the composer actually writes** - `stateAt` interpolates ramps
+      already and the composer only ever writes gain. Filter opening across a build,
+      a delay throw on the last bar of a break, reverb size in the breakdown.
+- [ ] **A master chain that obeys the theory** - highpass everything but the kick at
+      60Hz, mono below 120Hz, a real limiter, and report the measured headroom. The
+      rules are already written down; make them DSP.
+- [ ] **More voices, and per-section variation** - 909 variants, dub chords, granular
+      pads. Same voice, different fc/res/drive per section, so a track develops.
+
+### 3. The interface, past "a text box that accepts commands"
+
+- [ ] **Command palette** - Ctrl+K, fuzzy over every command, song, and gallery track.
+- [ ] **The HUD section map is clickable** - click a section to jump there, drag to
+      scrub. It already draws the whole song; it should be a control, not a picture.
+- [ ] **`why`** - after a change, one dim line on what it did musically.
+      `thud/teach.py` has this on the desktop and the browser has nothing.
+- [ ] **A 60-second first run** - a guided lesson that teaches by making a track with
+      you, not a wall of help text. `teach.py` again.
+- [ ] **Panes** - `split freq` for a spectrum next to the rack. `layout.py` solves
+      exactly this problem on the desktop: panels declare size and priority.
+- [ ] **Global undo on `u`** - undo exists for `ask` only.
 
 ## One theory (was: the two composers can drift)
 
