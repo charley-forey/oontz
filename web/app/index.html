@@ -561,6 +561,7 @@ var CMDS = {
     line('▸ '+CP.jam_on(JAM.bars),'ok');
     if(!E.playing) line('  '+CP.jam_needs_play,'dim');
   },
+  real: function(){ line('▸ '+CP.real_go,'ok'); location.href='/py/'; },
   sounds: function(){ line();
     w('  <span class="dim">'+Object.keys(OZ.VOICES).sort().join(' · ')+'</span>');
     w('  <span class="dim">'+CP.sounds_hint+'</span>'); line(); },

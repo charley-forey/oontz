@@ -29,7 +29,8 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(b'{"ok":true}')
             return
-        if self.path == "/" or ("." not in os.path.basename(self.path) and not self.path.endswith("/")):
+        path = self.path.split("?", 1)[0]       # the SPA rule must not read the query string
+        if path == "/" or ("." not in os.path.basename(path) and not path.endswith("/")):
             self.path = "/index.html"          # single page, any route
         return super().do_GET()
 

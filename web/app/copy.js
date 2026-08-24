@@ -212,6 +212,7 @@ C.help = [
   ["ask make it darker",    "the AI proposes, you press Enter"],
   ["jam on 8",               "the AI plays WITH you: one small move every 8 bars, undo vetoes"],
   ["sounds",                 "the whole voice bank on one line"],
+  ["real",                   "the actual Python instrument, running in this browser. beta"],
   ["key sk-ant-…",          "your own AI key. this browser only, never our server"],
   ["handle acid_mother",    "your name on the gallery"],
   ["take midnight v2",      "keep the current song server-side. it's text, it re-renders"],
@@ -268,6 +269,8 @@ C.jam_usage = "jam on [bars] / jam off. the AI takes a turn every N bars while t
 C.jam_on = function (bars) { return "jam on. the AI makes one small move every " + bars + " bars, out loud, and `undo` vetoes it. a bandmate, not an oracle."; };
 C.jam_needs_play = "(a jam needs a running song - press space)";
 C.sounds_hint = "voice <track> <sound> swaps a circuit. track add <name> [sound] makes room for one.";
+
+C.real_go = "loading the real one - the desktop Python instrument, whole, in this tab. ~10MB once, then it's yours.";
 
 g.OONTZ_COPY = C;
 })(window);

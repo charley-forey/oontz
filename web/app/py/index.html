@@ -116,7 +116,7 @@ async function toggle(){
 worker.onmessage = function(e){
   var m = e.data;
   if(m.t === 'boot'){ ready = true;
-    STATUS.textContent = m.info.hello + ' · pyodide ' + (m.info.pyodide/1000).toFixed(1) + 's';
+    STATUS.textContent = m.info.hello + ' · ' + (m.info.pyodide/1000).toFixed(1) + 's · space plays · : types · ? keys';
     askPage(); }
   else if(m.t === 'page') SCREEN.innerHTML = ansiToHtml(m.text);
   else if(m.t === 'bar'){

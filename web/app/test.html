@@ -1,0 +1,341 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>oontz — browser gate</title>
+<style>
+  body{background:#07090b;color:#dbe6f0;font:13px/1.5 ui-monospace,Consolas,monospace;margin:0;padding:16px}
+  #frame{position:fixed;right:8px;bottom:8px;width:420px;height:280px;border:1px solid #24313d;opacity:.5}
+  .ok{color:#6ee79a} .fail{color:#ff6b6b} .note{color:#93a4b3} h1{font-size:15px;color:#3ff0e0}
+</style>
+</head>
+<body>
+<h1>oontz browser gate</h1>
+<div id="out">running…</div>
+<iframe id="frame" src="index.html"></iframe>
+<script>
+/* The gate that needs a real browser.
+ *
+ * check.js covers the pure half - the song model, the key table, the FFT, the fix
+ * ladder. Everything that needs a DOM or an AudioContext was verified by looking
+ * at screenshots, which is how `kick x...x...x...x...` shipped broken on a cold
+ * page and how every offbeat track measured as silence.
+ *
+ * This drives the REAL index.html in an iframe and asserts on what happens.
+ * Run it headless:  python scripts/browsergate.py
+ */
+"use strict";
+var OUT = document.getElementById("out"), PASS = 0, FAIL = 0, LINES = [];
+var ERRORS = [];
+
+function log(cls, s){ LINES.push('<div class="' + cls + '">' + s.replace(/</g, "&lt;") + "</div>"); }
+function render(){ OUT.innerHTML = LINES.join(""); }
+
+/* Every test races a timeout: one hang used to take the whole run down with it,
+   and a gate that reports nothing is worse than a gate that reports a failure. */
+async function t(name, fn){
+  try {
+    var detail = await Promise.race([
+      Promise.resolve().then(fn),
+      new Promise(function(_r, rej){ setTimeout(function(){ rej(new Error("timed out")); }, 45000); })
+    ]);
+    PASS++; log("ok", "ok    " + name + (detail ? "   " + detail : ""));
+  } catch (e) {
+    FAIL++; log("fail", "FAIL  " + name + "   " + (e && e.message || e));
+  }
+  render();
+}
+function ok(cond, msg){ if(!cond) throw new Error(msg); }
+function eq(a, b, msg){ if(a !== b) throw new Error(msg + " (got " + a + ", want " + b + ")"); }
+function near(a, b, tol, msg){ if(Math.abs(a - b) > tol) throw new Error(msg + " (got " + a + ", want ~" + b + ")"); }
+var sleep = function(ms){ return new Promise(function(r){ setTimeout(r, ms); }); };
+
+async function until(fn, ms, what){
+  var t0 = Date.now();
+  while(Date.now() - t0 < (ms || 8000)){ if(fn()) return true; await sleep(40); }
+  throw new Error("timed out waiting for " + (what || "condition"));
+}
+
+(async function main(){
+  var F = document.getElementById("frame"), W = null;
+
+  await t("the page boots", async function(){
+    await until(function(){ return F.contentWindow && F.contentWindow.CMDS && F.contentWindow.E; }, 12000, "the app");
+    W = F.contentWindow;
+    W.onerror = function(m, s, l){ ERRORS.push(m + " @" + l); };
+    W.addEventListener("unhandledrejection", function(e){ ERRORS.push("unhandled rejection: " + (e.reason && e.reason.message || e.reason)); });
+    return Object.keys(W.CMDS).length + " commands";
+  });
+
+  await t("an AudioContext opens", function(){
+    var c = W.E.start();
+    ok(c, "no context");
+    ok(W.E.master && W.E.filter && W.E.fx && W.E.analyser, "the master chain is incomplete");
+    return c.sampleRate + " Hz";
+  });
+
+  /* ---- the cold start: this is what shipped broken --------------------- */
+  await t("a voice name makes a track on a cold page", function(){
+    W.run("kick x...x...x...x...");
+    ok(W.E.tracks.kick, "no kick track");
+    eq(W.E.tracks.kick.pat, "x...x...x...x...", "pattern not set");
+    ok(W.E.order.indexOf("kick") >= 0, "kick not in order");
+  });
+
+  await t("play and stop with no song", function(){
+    W.run("play"); ok(W.E.playing, "did not start");
+    W.run("stop"); ok(!W.E.playing, "did not stop");
+  });
+
+  await t("the mixer verbs exist and apply", function(){
+    W.run("hat ..x...x...x...x.");
+    W.run("sidechain hat 0.7");
+    near(W.E.tracks.hat.sc, 0.7, 1e-9, "sidechain");
+    W.run("gain hat 0.5"); near(W.E.tracks.hat.gain, 0.5, 1e-9, "gain");
+    W.run("pan hat -0.4"); near(W.E.tracks.hat.pan, -0.4, 1e-9, "pan");
+  });
+
+  await t("an unknown verb does not throw", function(){
+    W.run("definitelynotacommand 1 2 3");
+    W.run("kick zzzz");                       // an illegal pattern
+  });
+
+  /* ---- composing -------------------------------------------------------- */
+  await t("compose builds a whole song", async function(){
+    await W.CMDS.compose(["hardtechno", "2"]);
+    W.E.stop();
+    var sg = W.song;
+    ok(sg && sg.order.length >= 5, "too few sections");
+    ok(W.OONTZ_COMPOSE.score(W.OONTZ_COMPOSE.critique(sg)) >= 60, "arrangement graded badly");
+    return sg.order.length + " sections, " + W.oontz.totalBars(sg) + " bars";
+  });
+
+  await t("phrase-length patterns really span bars", function(){
+    var sg = W.song, long = null;
+    sg.order.forEach(function(n){
+      var sec = sg.sections[n];
+      Object.keys(sec.tracks).forEach(function(k){
+        var p = sec.tracks[k].pat;
+        if(p && p.length > 16 && p.length % 16 === 0) long = long || {sec: n, k: k, p: p};
+      });
+    });
+    ok(long, "the composer wrote no multi-bar pattern");
+    var bars = long.p.length / 16;
+    var a = W.oontz.patIndex(long.p, 0, 3), b = W.oontz.patIndex(long.p, bars - 1, 3);
+    ok(a !== b, "patIndex gives the same step in different bars");
+    return long.k + " spans " + bars + " bars";
+  });
+
+  /* ---- the ear: this needs a real render -------------------------------- */
+  await t("the ear renders and measures every track", async function(){
+    var m = await W.OONTZ_EAR.measure(W.song);
+    ok(m.order.length >= 3, "measured too few tracks");
+    var silent = m.order.filter(function(n){
+      return m.tracks[n].reduce(function(a, b){ return a + b; }, 0) < 0.5; });
+    ok(!silent.length, "these measured as silence: " + silent.join(", "));
+    ok(m.master.peakDb < 0, "master peaked at " + m.master.peakDb.toFixed(2) + " dBFS");
+    W.EARLAST = m;
+    return m.order.length + " tracks, peak " + m.master.peakDb.toFixed(2) + " dBFS";
+  });
+
+  await t("the master chain enforces its own rules", async function(){
+    var m = W.EARLAST;
+    ok(m.master.peakDb <= -0.5, "no headroom: " + m.master.peakDb.toFixed(2) + " dBFS");
+    ok(m.master.low.ratio < 0.08, "low end is not mono: " + m.master.low.ratio.toFixed(3));
+    /* nothing but the low-end owners should have real sub energy */
+    m.order.forEach(function(n){
+      if(W.oontz.keepsLows(n)) return;
+      ok(m.tracks[n][0] < 0.30, n + " has " + Math.round(m.tracks[n][0] * 100) + "% under 60Hz despite the highpass");
+    });
+    return "headroom, mono lows and the 60Hz highpass all hold";
+  });
+
+  await t("grade prints both halves", async function(){
+    var before = W.document.getElementById("out").textContent.length;
+    await W.CMDS.grade([]);
+    var txt = W.document.getElementById("out").textContent.slice(before);
+    ok(/arrangement \d+\/100/.test(txt), "no arrangement score");
+    ok(/the mix — \d+\/100/.test(txt), "no mix score");
+    ok(/dBFS/.test(txt), "no measured headroom");
+  });
+
+  await t("improve raises the mix and stops", async function(){
+    var m0 = await W.OONTZ_EAR.measure(W.song);
+    var s0 = W.OONTZ_COMPOSE.score(W.OONTZ_EAR.critiqueMix(m0));
+    await W.CMDS.improve(["3"]);
+    var m1 = await W.OONTZ_EAR.measure(W.song);
+    var s1 = W.OONTZ_COMPOSE.score(W.OONTZ_EAR.critiqueMix(m1));
+    ok(s1 >= s0, "improve made it worse: " + s0 + " -> " + s1);
+    return s0 + " -> " + s1 + "/100";
+  });
+
+  /* ---- export ----------------------------------------------------------- */
+  await t("export renders a playable WAV", async function(){
+    var r = await W.oontz.renderSong(W.song);
+    var blob = W.oontz.wavBlob(r.buf);
+    ok(blob.size > 44, "empty wav");
+    var head = new Uint8Array(await blob.slice(0, 44).arrayBuffer());
+    var tag = String.fromCharCode(head[0], head[1], head[2], head[3]);
+    eq(tag, "RIFF", "not a RIFF file");
+    eq(String.fromCharCode(head[8], head[9], head[10], head[11]), "WAVE", "not WAVE");
+    var ch = head[22] | (head[23] << 8), bits = head[34] | (head[35] << 8);
+    eq(ch, r.buf.numberOfChannels, "channel count in the header is wrong");
+    eq(bits, 16, "not 16-bit");
+    var dataLen = head[40] | (head[41] << 8) | (head[42] << 16) | (head[43] << 24);
+    eq(dataLen, r.buf.length * ch * 2, "data chunk length is wrong");
+    eq(blob.size, 44 + dataLen, "file size does not match its header");
+    return (blob.size / 1048576).toFixed(1) + " MB, " + r.seconds.toFixed(1) + "s";
+  });
+
+  /* ---- decks: never executed before ------------------------------------- */
+  await t("a deck loads and reports a grid", async function(){
+    await W.CMDS.dload(["a", "this"]);
+    var D = W.E.decks();
+    ok(D.a.r && D.a.r.buf, "deck A has no buffer");
+    ok(D.a.r.grid.length >= 8, "no beat grid");
+    near(D.a.r.grid[4] - D.a.r.grid[0], 4 * 60 / D.a.r.bpm, 1e-6, "the grid is not four beats to the bar");
+    return D.a.r.grid.length + " beats, " + D.a.r.seconds.toFixed(1) + "s";
+  });
+
+  await t("two decks sync to the same phase", async function(){
+    await W.CMDS.compose(["acid", "2"]); W.E.stop();
+    await W.CMDS.dload(["b", "this"]);
+    var D = W.E.decks();
+    ok(D.b.r, "deck B has no buffer");
+    D.a.play(); D.b.play();
+    W.CMDS.deck(["b", "sync"]);
+    var now = W.E.ctx.currentTime + 0.05;
+    near(D.b.phaseAt(now), D.a.phaseAt(now), 0.002, "phase does not match after sync");
+    near(D.b.bpm(), D.a.bpm(), 0.01, "tempo does not match after sync");
+    D.a.stop(); D.b.stop();
+    return "rate " + D.b.rate.toFixed(4);
+  });
+
+  await t("eq kills and the crossfader moves", function(){
+    W.CMDS.eq(["a", "low", "0"]);
+    ok(W.E.decks().a.kill.low, "kill flag not set");
+    W.CMDS.xf(["0"]);
+    var g = W.oontz.xfGains(W.E.decks().xf);
+    near(g[0], g[1], 1e-9, "centre is not equal");
+    W.CMDS.xf(["-1"]);
+    near(W.oontz.xfGains(W.E.decks().xf)[0], 1, 1e-9, "hard left is not all A");
+  });
+
+  await t("a deck loop wraps and unloops", function(){
+    var d = W.E.decks().a;
+    d.loopBeats(4); ok(d.loop, "no loop set");
+    var len = d.loop[1] - d.loop[0];
+    near(len, 4 * 60 / d.r.bpm, 1e-6, "loop is not four beats");
+    d.loopBeats(0); ok(!d.loop, "loop did not clear");
+  });
+
+  await t("deck mode switches and comes back", function(){
+    W.CMDS.mode(["deck"]); eq(W.MODE, "deck", "did not enter deck mode");
+    ok(W.document.getElementById("hud").textContent.indexOf("A") >= 0, "deck HUD did not draw");
+    W.CMDS.mode(["studio"]); eq(W.MODE, "studio", "did not return to studio");
+  });
+
+  /* ---- the keyboard ----------------------------------------------------- */
+  await t("keys perform when the prompt is blurred", function(){
+    W.IN.blur();
+    W.E.focus = "kick";
+    var before = W.E.tracks.kick.pat;
+    W.dispatchEvent(new W.KeyboardEvent("keydown", {key: "w", bubbles: true}));
+    ok(W.E.tracks.kick.pat !== before, "the pad key did nothing");
+    W.dispatchEvent(new W.KeyboardEvent("keydown", {key: "/", bubbles: true}));
+    ok(W.E.roll, "the roll did not engage");
+    W.dispatchEvent(new W.KeyboardEvent("keyup", {key: "/", bubbles: true}));
+    ok(!W.E.roll, "the roll did not release");
+  });
+
+  await t("a rate effect schedules without throwing", function(){
+    W.E.rateFx(function(t){ return -1.5 * Math.exp(-t / 0.35); }, 1.2);
+    ok(W.E.fx.delayTime.value >= 0, "delay time went negative");
+  });
+
+  /* ---- the interface ---------------------------------------------------- */
+  await t("the palette opens and matches fuzzily", function(){
+    W.openPal();
+    ok(W.document.getElementById("pal").classList.contains("on"), "palette did not open");
+    W.PALIN.value = "compac"; W.palRender();
+    ok(W.PALROWS.length, "no matches");
+    ok(/compose acid/.test(W.PALROWS[0][0]), "fuzzy match put " + W.PALROWS[0][0] + " first");
+    W.closePal();
+    ok(!W.document.getElementById("pal").classList.contains("on"), "palette did not close");
+  });
+
+  await t("the section map scrubs", function(){
+    W.E.jump(0);
+    var sq = W.document.querySelectorAll("#hud .sq");
+    ok(sq.length > 4, "the map drew no cells");
+    var last = sq[sq.length - 1];
+    last.dispatchEvent(new W.PointerEvent("pointerdown", {bubbles: true}));
+    ok(W.E.songbar > 0, "clicking the map did not move the playhead");
+  });
+
+  await t("the rack is clickable and writes through", function(){
+    var st = W.document.querySelector("#rack .st");
+    ok(st, "the rack drew no steps");
+    var name = st.dataset.t, i = +st.dataset.i;
+    var before = W.E.tracks[name].pat;
+    st.dispatchEvent(new W.MouseEvent("click", {bubbles: true}));
+    ok(W.E.tracks[name].pat !== before, "clicking a step changed nothing");
+  });
+
+  await t("why answers from the theory", function(){
+    var before = W.document.getElementById("out").textContent.length;
+    W.run("why sidechain");
+    var txt = W.document.getElementById("out").textContent.slice(before);
+    ok(/ducks/.test(txt), "no explanation printed");
+  });
+
+  await t("learn starts and tracks progress", function(){
+    W.CMDS.learn();
+    eq(W.LESSON_AT, 0, "lesson did not start");
+    var txt = W.document.getElementById("out").textContent;
+    ok(/1\/\d/.test(txt), "no step counter");
+  });
+
+  await t("the log sticks to the bottom only when you are there", function(){
+    var out = W.document.getElementById("out");
+    out.scrollTop = 0;
+    W.line("a new line while scrolled up");
+    ok(out.scrollTop === 0, "the log yanked itself to the bottom");
+    ok(W.document.getElementById("tail").classList.contains("on"), "no jump-to-live offered");
+    W.tail();
+    ok(!W.document.getElementById("tail").classList.contains("on"), "the tail button stayed up");
+  });
+
+  await t("calm and text size persist", function(){
+    W.run("calm"); ok(W.document.body.classList.contains("calm"), "calm did not apply");
+    W.run("calm off"); ok(!W.document.body.classList.contains("calm"), "calm did not clear");
+    W.run("text 18");
+    eq(W.document.documentElement.style.getPropertyValue("--size"), "18px", "text size did not apply");
+    W.run("text 15");
+  });
+
+  await t("recording starts and produces data", async function(){
+    if(!W.MediaRecorder) return "MediaRecorder not available in this browser";
+    W.E.play();
+    await W.CMDS.rec([]);
+    ok(W.REC, "recorder did not start");
+    await sleep(1200);
+    W.REC.stop();
+    await sleep(400);
+    W.E.stop();
+    ok(!W.REC, "recorder did not clear on stop");
+    return "started and stopped cleanly";
+  });
+
+  await t("nothing threw along the way", function(){
+    ok(!ERRORS.length, ERRORS.join(" | "));
+  });
+
+  log("note", "");
+  log(FAIL ? "fail" : "ok", "OONTZ-GATE " + (FAIL ? "FAIL" : "PASS") + " pass=" + PASS + " fail=" + FAIL);
+  render();
+  document.title = "OONTZ-GATE " + (FAIL ? "FAIL" : "PASS");
+})();
+</script>
+</body>
+</html>
