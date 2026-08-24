@@ -305,5 +305,8 @@ C.room_usage = "room new · room <code> · room who · room leave. everyone edit
 C.room_new = function (code) { return "room " + code + " is open. tell someone: `room " + code + "` at oontz.sh — every musical move you or the AI makes lands in their session too."; };
 C.room_in = function (code) { return "in room " + code + ". your moves broadcast; theirs arrive as ◂ lines. `room leave` exits."; };
 
+C.egg_sudo = "this incident will be reported to the groove authorities.";
+C.egg_konami = "you found the rave. blacklight, kaleido, ten seconds of hot pink. Esc turns the lights on.";
+
 g.OONTZ_COPY = C;
 })(window);

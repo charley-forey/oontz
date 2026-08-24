@@ -40,7 +40,18 @@
   #hud{padding:5px 9px;margin-bottom:8px;font-size:.92em;min-height:1.5em;
     background:var(--plate);border:1px solid var(--line);border-radius:5px;
     backdrop-filter:blur(7px);-webkit-backdrop-filter:blur(7px);
-    white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    white-space:nowrap;overflow-x:auto;overflow-y:hidden;
+    -webkit-overflow-scrolling:touch;scrollbar-width:none;
+    -webkit-mask-image:linear-gradient(90deg,#000 92%,transparent);
+    mask-image:linear-gradient(90deg,#000 92%,transparent);
+    transition:opacity .3s}
+  #hud::-webkit-scrollbar{display:none}
+  #hud.loading{opacity:.55}
+  .k:focus-visible,[data-cmd]:focus-visible{outline:1px solid var(--accent);
+    outline-offset:2px;border-radius:3px}
+  @media (max-width:560px){ #hud .opt{display:none} #hud{font-size:.85em} }
+  .spin{display:inline-block;transition:transform .9s cubic-bezier(.2,.8,.2,1)}
+  .spin.go{transform:rotate(360deg)}
   #hud [data-cmd]{cursor:pointer;border-bottom:1px solid rgba(34,224,208,.25)}
   #hud [data-cmd]:hover .a, #hud [data-cmd]:hover .dim{color:var(--bright)}
   #bar{display:flex;align-items:center;gap:8px;margin-top:8px;padding:8px 9px;
@@ -395,7 +406,7 @@ const CMDS = {
    playTrack stops the toy, and `stop` stops both. A playlist is a queue: the next
    track starts when this one has run its stated length. */
 let E = null, EQ = [], EQi = 0, EQt = 0;
-function stopTrack(){ if(E) E.stop(); EQ = []; if(EQt){ clearTimeout(EQt); EQt = 0; } }
+function stopTrack(){ if(E) E.stop(); EQ = []; if(EQt){ clearTimeout(EQt); EQt = 0; } if(NOWPLAYING){ NOWPLAYING = null; strip(); } }
 async function playTrack(id, fromQueue){
   stop(); if(!fromQueue) EQ = [];
   if(EQt){ clearTimeout(EQt); EQt = 0; }
@@ -408,6 +419,7 @@ async function playTrack(id, fromQueue){
       if(window.OONTZ_VIZ){ OONTZ_VIZ.start(E); OONTZ_VIZ.mode('auto'); }   /* the canvas reads the score */
     }
     E.loadSong(j.data); E.play();
+    NOWPLAYING = {id: id, title: j.title || id}; STRIP_TRIED = true; strip();
     w(`<span class="ok">▸ ${esc(j.title)}</span> <span class="dim">· ${Math.round(j.bpm||0)} BPM · ${esc(j.key||'?')}`+
       ` · by ${esc(j.by||'?')} · \`stop\` ends it</span>`);
     if(j.remix_of) w(`  <span class="dim">↻ a remix of <span class="b">${esc(j.remix_of.title)}</span> by ${esc(j.remix_of.handle||'?')} · play ${esc(j.remix_of.id)}</span>`);
@@ -440,6 +452,34 @@ addEventListener('click', function(e){
 const ALIAS={'?':'help','ls':'help','start':'demo','about':'what',
   'sh':'open','app':'open','quit':'stop','exit':'stop','cls':'clear','music':'theory'};
 
+/* -- the eggs -------------------------------------------------------------- */
+async function eggOontz(){
+  stop(); stopTrack(); start();                  /* kick only: the name IS the genre */
+  P.hat=''; P.clap=''; P.bass=''; P.kick='x...x...x...x...';
+  for(let i=0;i<8;i++){ w('<span class="a">oontz.</span>'); await sleep(60000/bpm); }
+  stop(); block(CP.egg_oontz_done);
+}
+let KONAMI=[];
+addEventListener('keydown', function(e){
+  KONAMI.push(e.key); if(KONAMI.length>10) KONAMI.shift();
+  if(KONAMI.join(',').toLowerCase().endsWith('arrowup,arrowup,arrowdown,arrowdown,arrowleft,arrowright,arrowleft,arrowright,b,a')){
+    KONAMI=[]; if(window.OONTZ_VIZ) OONTZ_VIZ.flare(10000);
+    line(CP.egg_konami,'a2');
+  }
+});
+let LOGOCLICKS=[];
+addEventListener('click', function(e){
+  const big = e.target.closest && e.target.closest('.big');
+  if(!big) return;
+  const now=Date.now(); LOGOCLICKS=LOGOCLICKS.filter(t=>now-t<3000); LOGOCLICKS.push(now);
+  if(LOGOCLICKS.length>=5){ LOGOCLICKS=[];
+    document.querySelectorAll('.big').forEach(function(el){ el.classList.add('spin');
+      requestAnimationFrame(function(){ el.classList.add('go');
+        setTimeout(function(){ el.classList.remove('go'); }, 1000); }); });
+    line(CP.egg_spin,'dim');
+  }
+});
+
 function run(raw){
   const s=raw.trim(); if(!s) return;
   w(`<span class="a">oontz &gt;</span> ${esc(s)}`);
@@ -447,6 +487,8 @@ function run(raw){
   if(v in P){ const pat=args[0]||'';
     if(!/^[xXoO.\-]+$/.test(pat)) return line("a pattern is made of x . and - — try  kick x...x...x...x...", 'w');
     P[v]=pat; line(`▸ ${v} ${pat}`, 'dim'); if(!playing) start(); return; }
+  if(v==='oontz') return eggOontz();
+  if(v==='sudo') return line(CP.egg_sudo,'w');
   if(CMDS[v]) return CMDS[v](args);
   line(`${v0}: no such command. type help`, 'w');
 }
@@ -472,9 +514,12 @@ const HUD = document.getElementById('hud');
 let STRIP_TRIED = false;
 function tfetch(url){ const c = new AbortController(); setTimeout(function(){ c.abort(); }, 4000);
   return fetch(url, {signal: c.signal}); }
+let NOWPLAYING = null;                        /* {id,title} while a track plays here */
 async function strip(){
   await API_READY;                              /* never race the fallback probe */
-  let bits = ['<span class="b">oontz</span> <span class="dim">· source code for music</span>'];
+  HUD.classList.add('loading');
+  let bits = ['<span class="b">oontz</span> <span class="dim opt">· source code for music</span>'];
+  if(NOWPLAYING) bits.unshift('<span data-cmd="stop"><span class="a">♪ '+esc(NOWPLAYING.title)+'</span> <span class="dim">stop</span></span>');
   try{
     const n = (await (await tfetch(API+'/gallery?limit_n=100')).json()).songs.length;
     bits.push('<span data-cmd="gallery"><span class="a">'+n+' tracks</span></span>');
@@ -484,11 +529,12 @@ async function strip(){
     if(c.top_patterns && c.top_patterns.length)
       bits.push('<span data-cmd="gallery pat '+esc(c.top_patterns[0].pat)+'"><span class="dim">most shared</span> <span class="a">'+esc(c.top_patterns[0].pat)+'</span></span>');
     if(c.most_remixed && c.most_remixed.length)
-      bits.push('<span data-cmd="tree '+esc(c.most_remixed[0].id)+'"><span class="dim">most forked</span> <span class="a">'+esc(String(c.most_remixed[0].title).slice(0,18))+'</span></span>');
+      bits.push('<span class="opt" data-cmd="tree '+esc(c.most_remixed[0].id)+'"><span class="dim">most forked</span> <span class="a">'+esc(String(c.most_remixed[0].title).slice(0,18))+'</span></span>');
   }catch(e){}
   bits.push('<span data-cmd="charts"><span class="a">charts</span></span>');
   bits.push('<a href="https://oontz.sh" target="_blank" rel="noopener">open the real one →</a>');
   HUD.innerHTML = bits.join(' <span class="dim">·</span> ');
+  HUD.classList.remove('loading');
   if(bits.length < 4 && !STRIP_TRIED){ STRIP_TRIED = true; setTimeout(strip, 6000); }  /* the API fallback may still be settling */
 }
 const COARSE = matchMedia('(pointer: coarse)').matches;

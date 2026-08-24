@@ -222,6 +222,29 @@ var AUTO = {intro: "scope", build: "feedback", drop: "tunnel", "break": "particl
             verse: "terrain", outro: "spectrum"};
 function autoFor(role){ return AUTO[role] || "tunnel"; }
 
+/* -- the accent breathes ---------------------------------------------------
+   Teal drifts ±24° on a slow sine - a full breath every ~45s - and the music
+   quickens it: while a song plays, tick() feeds the section energy into the
+   rate. Both sites load this file, so both sites breathe. Reduced-motion gets
+   a still accent; hidden tabs pause on their own. */
+var BREATH = {ph: 0, last: 0, rate: 1, flare: 0};
+function hueBreath(){
+  if(typeof document === "undefined" || typeof matchMedia === "undefined") return;
+  if(matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+  BREATH.last = Date.now();
+  setInterval(function(){
+    var now = Date.now();
+    if(!document.hidden){
+      BREATH.ph += (now - BREATH.last) / 45000 * Math.PI * 2 * BREATH.rate;
+      var h = now < BREATH.flare ? 322 + Math.sin(BREATH.ph * 6) * 10
+                                 : 174 + Math.sin(BREATH.ph) * 24;
+      document.documentElement.style.setProperty("--accent", "hsl(" + h.toFixed(1) + ",72%,58%)");
+    }
+    BREATH.last = now;
+  }, 120);
+}
+hueBreath();
+
 /* -- runtime --------------------------------------------------------------- */
 
 var S = {mode: "tunnel", theme: "acid", intensity: 1, decay: 0.15, symmetry: 4};
@@ -271,6 +294,7 @@ function tick(now){
   raf = requestAnimationFrame(tick);
   if(now - last < 15) return; last = now;    // ~60fps cap on faster displays
   var th = THEMES[S.theme] || THEMES.acid, f = frameFor(eng, now / 1000);
+  BREATH.rate = f.playing ? 1 + f.energy * 2.2 : 1;
   var mode = S.mode === "auto" ? autoFor(f.playing ? f.role : "intro") : S.mode;
   var draw = MODES[mode];
   if(!draw) return;
@@ -374,7 +398,7 @@ var VIZ = {
   THEMES: THEMES, MODES: MODES, autoFor: autoFor, parseParam: parseParam,
   make: makeTheme, random: randomTheme, unmake: function(n){ if(BUILTIN[n] || !THEMES[n]) return false;
     delete THEMES[n]; saveCustom(n, null); if(S.theme === n) S.theme = "acid"; persist(); return true; },
-  watch: watch, hslHex: hslHex, mix: mix, clockPhase: clockPhase, bands: bands, upcoming: upcoming,
+  watch: watch, hslHex: hslHex, flare: function(ms){ BREATH.flare = Date.now() + (ms || 10000); }, mix: mix, clockPhase: clockPhase, bands: bands, upcoming: upcoming,
   status: function(){ return {mode: S.mode, theme: S.theme, intensity: S.intensity, decay: S.decay, symmetry: S.symmetry, reduced: reduce}; },
   start: function(E){
     eng = E; cv = document.getElementById("viz"); if(!cv) return; cx = cv.getContext("2d");

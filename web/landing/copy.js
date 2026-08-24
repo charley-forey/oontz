@@ -254,5 +254,12 @@ C.err_pattern = "a pattern is x for a hit and . for a rest. try: kick x...x...x.
 C.err_cmd = function (v) { return v + ": not a command. type help — it is short."; };
 C.err_bpm = "bpm takes 60 to 220. techno mostly lives at 130-150.";
 
+C.egg_oontz_done = [
+  {s: "that is the whole genre, yes. `demo` has hats in it, if you're fancy."}
+];
+C.egg_sudo = "this incident will be reported to the groove authorities.";
+C.egg_konami = "you found the rave. it wears off in ten seconds, like most raves.";
+C.egg_spin = "spinback. obviously.";
+
 g.OONTZ_COPY = C;
 })(window);

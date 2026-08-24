@@ -371,6 +371,19 @@ stale; `qa` runs 192 arrangements through both composers and requires identical 
   fixes their edge. Tokens finished matching the app exactly; returning visitors
   (and reduced-motion) skip the typewriter and boot instantly.
 
+- 2026-08-24 -- cycle 22: the strip fits, the accent breathes, the eggs hatch.
+  #hud stops amputating on phones: horizontally swipeable (hidden scrollbar, a
+  fade-right mask that hints at more), low-priority segments hide under 560px,
+  and it fades in as it populates. The accent becomes a living thing - viz.js
+  drifts --accent ±24° around teal on a 45s sine, BOTH sites breathe because
+  both load the file, playback energy quickens the breath, reduced-motion stills
+  it. While a track plays, the strip grows a ♪ now-playing chip that is also the
+  stop button. And the terminal grew eggs in the house voice: `oontz` chants
+  itself over a kick-only loop, `sudo` meets the groove authorities, the Konami
+  code finds the rave (blacklight + kaleido + a ten-second hot-pink flare), and
+  five clicks on the logo spinback, obviously. Everything verified in-browser;
+  focus-visible outlines joined for keyboard users.
+
 ## Cycle log
 
 Append one line per completed cycle: what changed, what it measured, what it learned.

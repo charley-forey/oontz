@@ -1175,6 +1175,7 @@ function run(raw){
     if(!E.playing) E.play(); draw();
     line('▸ '+v+' '+args.join(' '),'dim'); teach(v); setTimeout(lessonCheck, 60); return; }
   if(CMDS[v]){ var r = CMDS[v](args); teach(v); setTimeout(lessonCheck, 60); return r; }
+  if(v === 'sudo') return line(CP.egg_sudo || 'this incident will be reported to the groove authorities.','w');
   line(CP.err_cmd?CP.err_cmd(v0):v0+': no', 'w');
 }
 var _soloRun = run;
@@ -1305,6 +1306,15 @@ IN.addEventListener('keydown', function(e){
 IN.addEventListener('blur', function(){ sugClose(); PS1.innerHTML='<span class="w">perform</span> <span class="dim">: to type</span>'; });
 IN.addEventListener('focus', function(){ PS1.innerHTML='oontz.sh&nbsp;&gt;'; });
 var PS1 = document.getElementById('ps1');
+var KONAMI = [];
+addEventListener('keydown', function(e){
+  KONAMI.push(e.key); if(KONAMI.length > 10) KONAMI.shift();
+  if(KONAMI.join(',').toLowerCase().endsWith('arrowup,arrowup,arrowdown,arrowdown,arrowleft,arrowright,arrowleft,arrowright,b,a')){
+    KONAMI = [];
+    if(window.OONTZ_VIZ){ OONTZ_VIZ.theme('blacklight'); OONTZ_VIZ.mode('kaleido'); OONTZ_VIZ.flare(10000); }
+    line(CP.egg_konami || 'you found the rave.','a2');
+  }
+});
 var lastMsg = null;
 addEventListener('keydown', function(e){
   if((e.ctrlKey || e.metaKey) && (e.key === 'k' || e.key === 'K')){ e.preventDefault(); openPal(); return; }
