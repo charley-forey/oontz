@@ -249,6 +249,20 @@ stale; `qa` runs 192 arrangements through both composers and requires identical 
   Namecheap updates when convenient: ALIAS @ oontz.music -> 5j4213fn, ALIAS @
   oontz.sh -> l08sxgk0 (both TXT records stay as they are).
 
+- 2026-08-24 -- cycle 14: the cinema and the theme workshop. `watch` fades every
+  scrap of chrome away - full screen, cursor hidden, nothing but the canvas; the
+  keys still play the instrument and Esc or a tap brings the terminal back (on
+  the landing page too). Themes stop being a fixed menu: `theme make <name>
+  <#hex...>` builds one (2-6 colors, junk hex refused, built-ins protected),
+  `theme random` rolls hue-spaced palettes until one sticks, `theme del` cleans
+  up, and a custom look is EMBEDDED in song.viz so a published track carries its
+  own palette to viewers who never made it. Nine new built-ins (ultraviolet,
+  lava, oilslick, vapor, matrix, blacklight, neonnoir, aurora...) and two new
+  modes: `stars` (rushing exactly as fast as the music says) and `kaleido` (a
+  breathing mandala the symmetry folds). Verified visually - and learned that
+  getComputedStyle lies under the dark-mode extension: when CSS seems impossible,
+  screenshot the truth.
+
 ## Cycle log
 
 Append one line per completed cycle: what changed, what it measured, what it learned.

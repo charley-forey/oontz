@@ -427,4 +427,14 @@ A.ok(page.indexOf('id="rack"') < page.indexOf('id="out"'), "the rack belongs to 
 var touchSrc = fs2.readFileSync(path2.join(__dirname, "touch.js"), "utf8");
 A.ok(touchSrc.indexOf("oontz_deck") >= 0 && touchSrc.indexOf(".shut") >= 0, "the deck must fold and remember");
 
-console.log("web checks pass  ·  write-through · pads · viz · touch · midi · voices+4 · viz-auto · stage · pwa · notes · roll · jumps · decks · theory (" + checked + " plans in window) · legible · ear · " + OZ.KEYS.length + " keys listed");
+/* -- the theme workshop and the cinema -------------------------------------- */
+A.ok(V.MODES.stars && V.MODES.kaleido, "stars and kaleido exist");
+A.ok(Object.keys(V.THEMES).length >= 12, "a dozen palettes minimum, got " + Object.keys(V.THEMES).length);
+A.strictEqual(V.make("ACID!!", ["#ff0000", "#00ff00"]), null, "built-ins cannot be overwritten");
+A.strictEqual(V.make("x", ["#nope", "#alsono"]), null, "junk hex is refused");
+var made = V.make("teste2e", ["#ff0044", "#00ffcc", "#4400ff"]);
+A.ok(made && V.THEMES.teste2e && made.colors.length === 3, "a custom theme registers");
+A.ok(V.unmake("teste2e") && !V.THEMES.teste2e, "and can be deleted");
+A.ok(/^#[0-9a-f]{6}$/.test(V.hslHex(200, 0.9, 0.55)), "hslHex emits hex");
+
+console.log("web checks pass  ·  write-through · pads · viz · touch · midi · voices+4 · viz-auto · themes · stage · pwa · notes · roll · jumps · decks · theory (" + checked + " plans in window) · legible · ear · " + OZ.KEYS.length + " keys listed");

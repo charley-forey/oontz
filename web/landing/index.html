@@ -277,6 +277,8 @@ const CMDS = {
   clear(){ OUT.innerHTML=''; gridEl=null; },
   /* -- the real engine: gallery tracks and playlists play in this page ----- */
   play(a){ return a[0] ? playTrack(a[0]) : CMDS.demo(); },
+  watch(){ if(window.OONTZ_VIZ){ line('▸ just the visuals. Esc or a tap comes back.','dim'); OONTZ_VIZ.watch(true); }
+           else line('play something first — the visuals follow the music','w'); },
   async playlists(){
     const d = w('<span class="dim">  loading…</span>');
     try{ const r = await fetch(API + '/playlists/public?limit=20'); const j = await r.json(); d.remove();

@@ -235,7 +235,9 @@ C.help = [
   ["theory",                "what the machine knows"],
   ["rules",                 "every rule it grades you by, with the reason"],
   ["bands",                 "who owns which frequencies, and why"],
+  ["watch",                 "nothing but the visuals, full screen. Esc comes back"],
   ["viz auto",              "the section picks the visual: builds run, drops blow out"],
+  ["theme random",          "roll a palette. theme make <name> <#hex…> keeps one forever"],
   ["viz tunnel",            "the canvas. it knows where the drop is"],
   ["theme acid",            "colours. a song remembers its own"],
   ["calm",                  "dim the visuals when you want to read"],
@@ -288,6 +290,9 @@ C.remix_on = function (t, by) { return "remixing " + t + " by " + (by || "?") + 
 C.produce_on = function (sc, target, rounds) { return "producing: " + sc + "/100 now, aiming for " + target + ", up to " + rounds + " rounds. every move is graded; a round that makes it worse gets reverted. one `undo` takes back the whole pass."; };
 C.produce_done = function (sc, target) { return sc >= target ? "produced. " + sc + "/100 - it holds up. `publish` when you mean it." : "stopped at " + sc + "/100. the last mile is taste, and taste is yours."; };
 C.dream_usage = "dream <what you want> - driving acid at 3am, warehouse dub with air in it, 150bpm anger. a sentence in, a track out.";
+
+C.watch_on = "just the visuals now. the keys still play - Esc or a tap brings the terminal back.";
+C.theme_make_usage = "theme make <name> <#hex> <#hex> [more...] - 2-6 colors, yours forever, travels with published songs.";
 
 g.OONTZ_COPY = C;
 })(window);

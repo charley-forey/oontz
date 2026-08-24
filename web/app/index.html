@@ -670,6 +670,8 @@ var CMDS = {
   sounds: function(){ line();
     w('  <span class="dim">'+Object.keys(OZ.VOICES).sort().join(' · ')+'</span>');
     w('  <span class="dim">'+CP.sounds_hint+'</span>'); line(); },
+  watch: function(){ var V = window.OONTZ_VIZ; if(!V) return;
+    line('▸ '+CP.watch_on,'dim'); V.watch(true); },
   viz: function(a){ var V = window.OONTZ_VIZ; if(!V) return;
     var v = (a[0]||'').toLowerCase();
     if(!v) return line('▸ '+CP.viz_status(V.status())+' · '+CP.viz_usage,'dim');
@@ -682,6 +684,12 @@ var CMDS = {
     line('▸ viz '+v,'dim'); },
   theme: function(a){ var V = window.OONTZ_VIZ; if(!V) return;
     var t = (a[0]||'').toLowerCase();
+    if(t === 'make'){ var th = V.make(a[1], a.slice(2, 8), a[7]);
+      return th ? line('▸ theme '+esc(th.name)+' is yours — it travels with the song when you publish','ok')
+                : line(CP.theme_make_usage,'w'); }
+    if(t === 'random'){ var r = V.random();
+      return line('▸ '+r.colors.map(function(c){ return '<span style="color:'+c+'">█</span>'; }).join('')+' — rolled. `theme random` again to reroll, `theme make <name> '+r.colors.join(' ')+'` to keep it','ok'); }
+    if(t === 'del'){ return V.unmake(a[1]) ? line('▸ gone','dim') : line('only your own themes can go','w'); }
     if(!t){ line(); Object.keys(V.THEMES).forEach(function(k){
         var th=V.THEMES[k]; w('  <span class="k">'+esc(k)+'</span><span class="dim">'+
           th.colors.map(function(c){return '<span style="color:'+c+'">█</span>';}).join('')+'</span>'); });

@@ -16,8 +16,18 @@ var THEMES = {
   acid:      {name: "acid",      colors: ["#1aff5c", "#a8ff00", "#00ff9c", "#0b3d1a"], bg: "#020604", glow: 0.7, intensity: 1,   decay: 0.15, symmetry: 4},
   warehouse: {name: "warehouse", colors: ["#e6e6e6", "#8a8a8a", "#ff3b3b", "#3a3a3a"], bg: "#050505", glow: 0.4, intensity: 0.9, decay: 0.25, symmetry: 1},
   sunset:    {name: "sunset",    colors: ["#ff4fa3", "#ff8a2a", "#ffd166", "#5b2a86"], bg: "#0b0611", glow: 0.8, intensity: 1,   decay: 0.12, symmetry: 2},
-  mono:      {name: "mono",      colors: ["#c6d2dc", "#22e0d0", "#46545f", "#f4f9fc"], bg: "#07090b", glow: 0.3, intensity: 0.7, decay: 0.2,  symmetry: 1}
+  mono:      {name: "mono",      colors: ["#c6d2dc", "#22e0d0", "#46545f", "#f4f9fc"], bg: "#07090b", glow: 0.3, intensity: 0.7, decay: 0.2,  symmetry: 1},
+  ultraviolet:{name:"ultraviolet",colors: ["#7b2fff", "#c400ff", "#3d00b3", "#ff5af1"], bg: "#08030f", glow: 0.9, intensity: 1.1, decay: 0.1,  symmetry: 6},
+  lava:      {name: "lava",      colors: ["#ff3b00", "#ffb300", "#7a0b00", "#fff5d6"], bg: "#0c0402", glow: 0.8, intensity: 1.1, decay: 0.12, symmetry: 2},
+  oilslick:  {name: "oilslick",  colors: ["#00e5a0", "#7b2fff", "#ffb300", "#0090ff"], bg: "#04070a", glow: 0.7, intensity: 1,   decay: 0.08, symmetry: 4},
+  vapor:     {name: "vapor",     colors: ["#ff71ce", "#01cdfe", "#05ffa1", "#b967ff"], bg: "#0a0714", glow: 0.8, intensity: 0.9, decay: 0.14, symmetry: 2},
+  matrix:    {name: "matrix",    colors: ["#00ff41", "#0aff8c", "#003b00", "#c8ffc8"], bg: "#010401", glow: 0.6, intensity: 1,   decay: 0.2,  symmetry: 1},
+  blacklight:{name: "blacklight",colors: ["#c400ff", "#00f0ff", "#ff008c", "#3d00b3"], bg: "#050208", glow: 1,   intensity: 1.2, decay: 0.06, symmetry: 8},
+  neonnoir:  {name: "neonnoir",  colors: ["#ff2a6d", "#05d9e8", "#d1f7ff", "#005678"], bg: "#01012b", glow: 0.8, intensity: 1,   decay: 0.16, symmetry: 1},
+  aurora:    {name: "aurora",    colors: ["#00ff9c", "#00d0ff", "#7b2fff", "#b5ffe1"], bg: "#020609", glow: 0.7, intensity: 0.9, decay: 0.1,  symmetry: 3}
 };
+var BUILTIN = {};                                  /* customs never overwrite these */
+Object.keys(THEMES).forEach(function(k){ BUILTIN[k] = 1; });
 var PARAMS = {intensity: [0, 2], decay: [0, 1], symmetry: [1, 8]};
 var ENERGY = {drop: 1, build: 0.6, break: 0.15, intro: 0.2, outro: 0.2};
 
@@ -150,6 +160,43 @@ MODES.feedback = function(c, f, th){
   c.strokeStyle = rgba(mix(th.colors, f.beat * 0.1), 0.7); c.lineWidth = 3 * f.intensity; c.stroke();
 };
 
+var STARS = [];
+MODES.stars = function(c, f, th){                  /* rushing at you as fast as the music says */
+  if(f.pass !== 0) return;
+  while(STARS.length < 160) STARS.push({x: Math.random()*2-1, y: Math.random()*2-1, z: Math.random()});
+  var sp = (0.003 + f.energy*0.012 + f.pulse*0.03 + (f.rush||0)*0.02) * f.intensity;
+  for(var i = 0; i < STARS.length; i++){
+    var s = STARS[i]; s.z -= sp;
+    var px = f.W/2 + s.x/Math.max(s.z,0.02) * f.W*0.5, py = f.H/2 + s.y/Math.max(s.z,0.02) * f.H*0.5;
+    if(s.z <= 0.02 || px < 0 || px > f.W || py < 0 || py > f.H){
+      s.x = Math.random()*2-1; s.y = Math.random()*2-1; s.z = 1; continue; }
+    var r = (1 - s.z) * (2 + f.bands.high*4) * f.intensity;
+    c.fillStyle = rgba(mix(th.colors, s.z + f.t*0.05), (1 - s.z) * 0.9);
+    c.fillRect(px - r/2, py - r/2, r, r);
+  }
+  if(f.flash > 0.01){ c.fillStyle = rgba(mix(th.colors, 0), f.flash * 0.5); c.fillRect(0, 0, f.W, f.H); }
+};
+
+MODES.kaleido = function(c, f, th){                /* a breathing mandala; symmetry does the folding */
+  var R = Math.min(f.W, f.H) * (0.14 + f.bands.bass*0.3 + f.pulse*0.08) * f.intensity;
+  var petals = 5 + (f.beatIndex % 4);
+  c.beginPath();
+  for(var i = 0; i <= 72; i++){
+    var a = i/72 * Math.PI*2;
+    var rr = R * (1 + 0.4*Math.sin(a*petals + f.t*2) + 0.15*Math.sin(a*3 - f.t));
+    var x = f.W/2 + Math.cos(a + f.t*0.25)*rr, y = f.H/2 + Math.sin(a + f.t*0.25)*rr;
+    i ? c.lineTo(x, y) : c.moveTo(x, y);
+  }
+  c.closePath();
+  c.strokeStyle = rgba(mix(th.colors, f.beat*0.05 + f.t*0.08), 0.55 * f.intensity);
+  c.lineWidth = 2 + f.bands.mid*6; c.stroke();
+  for(var k = 0; k < 8; k++){
+    var a2 = f.t*(0.4 + k*0.11) + k, d = R*0.55*(1 + f.bands.high*0.8);
+    c.fillStyle = rgba(mix(th.colors, k/8 + f.t*0.03), 0.8);
+    c.beginPath(); c.arc(f.W/2 + Math.cos(a2)*d, f.H/2 + Math.sin(a2)*d, 2.5 + f.pulse*6, 0, 7); c.fill();
+  }
+};
+
 MODES.terrain = function(c, f, th){          /* a wireframe landscape the bass builds */
   var rows = 12, cols = 28, horizon = f.H * 0.42;
   if(f.pass !== 0) return;                    /* symmetry would just blur it */
@@ -241,24 +288,98 @@ function tick(now){
 function run(){ if(cv && !raf && S.mode !== "off" && !document.hidden) raf = requestAnimationFrame(tick); }
 function halt(){ if(raf) cancelAnimationFrame(raf); raf = 0; }
 
+function hslHex(h, s2, l){
+  var a = s2 * Math.min(l, 1 - l);
+  var f2 = function(n){ var k = (n + h/30) % 12;
+    var v = l - a * Math.max(-1, Math.min(k - 3, 9 - k, 1));
+    return Math.round(v * 255).toString(16).padStart(2, "0"); };
+  return "#" + f2(0) + f2(8) + f2(4);
+}
+function loadCustom(){
+  try{ var t = JSON.parse(localStorage.getItem("oontz_themes")) || {};
+    Object.keys(t).forEach(function(k){ if(!BUILTIN[k]) THEMES[k] = t[k]; }); }catch(e){}
+}
+function saveCustom(name, th){
+  try{ var t = JSON.parse(localStorage.getItem("oontz_themes")) || {};
+    if(th === null) delete t[name]; else t[name] = th;
+    localStorage.setItem("oontz_themes", JSON.stringify(t)); }catch(e){}
+}
+function makeTheme(name, colors, bg){
+  name = String(name || "").toLowerCase().replace(/[^a-z0-9_]/g, "").slice(0, 16);
+  if(!name || BUILTIN[name]) return null;
+  colors = (colors || []).filter(function(cc){ return /^#[0-9a-fA-F]{6}$/.test(cc); }).slice(0, 6);
+  if(colors.length < 2) return null;
+  if(bg && !/^#[0-9a-fA-F]{6}$/.test(bg)) bg = null;
+  var th = {name: name, colors: colors, bg: bg || "#050508", glow: 0.7,
+            intensity: S.intensity, decay: S.decay, symmetry: S.symmetry};
+  THEMES[name] = th; saveCustom(name, th); S.theme = name; persist();
+  return th;
+}
+function randomTheme(){
+  var h = Math.floor(Math.random() * 360), scheme = Math.random() < 0.5 ? 150 : 90;
+  var cols = [0, 1, 2, 3].map(function(i){
+    return hslHex((h + i * scheme * (Math.random() < 0.5 ? 1 : -1) + i * 17) % 360,
+                  0.85 + Math.random() * 0.15, 0.5 + (i % 2) * 0.18); });
+  var th = {name: "random", colors: cols, bg: hslHex(h, 0.5, 0.03), glow: 0.8,
+            intensity: S.intensity, decay: S.decay, symmetry: S.symmetry};
+  THEMES.random = th; S.theme = "random"; persist();
+  return th;
+}
+
 function persist(){
   var v = {mode: S.mode, theme: S.theme, intensity: S.intensity, decay: S.decay, symmetry: S.symmetry};
   try{ localStorage.setItem("oontz_viz", JSON.stringify(v)); }catch(e){}
-  if(eng && eng.song) eng.song.viz = v;
+  if(eng && eng.song){ eng.song.viz = v;
+    if(!BUILTIN[S.theme] && THEMES[S.theme]) eng.song.viz.palette = THEMES[S.theme]; }
 }
 function apply(v){                               // a stored/song look, validated field by field
   if(!v) return;
+  if(v.palette && v.palette.colors){               /* a shared song brings its own look along */
+    var pn = String(v.theme || "shared").toLowerCase().replace(/[^a-z0-9_]/g, "").slice(0, 16) || "shared";
+    if(!BUILTIN[pn]) THEMES[pn] = v.palette;
+  }
   if(v.mode === "off" || v.mode === "auto" || MODES[v.mode]) S.mode = v.mode;
   if(THEMES[v.theme]) S.theme = v.theme;
   Object.keys(PARAMS).forEach(function(k){ var x = parseParam(k, v[k]); if(x != null) S[k] = x; });
 }
 
+var wcss = null;
+function watch(on){
+  if(typeof document === "undefined") return;
+  if(!wcss){ wcss = document.createElement("style");
+    wcss.textContent = ".watching #wrap,.watching #touch{opacity:0;pointer-events:none;transition:opacity .8s}" +
+                       ".watching{cursor:none}";
+    document.head.appendChild(wcss); }
+  document.body.classList.toggle("watching", !!on);
+  if(on){
+    if(S.mode === "off") VIZ.mode("auto");
+    try{ document.documentElement.requestFullscreen && document.documentElement.requestFullscreen(); }catch(e){}
+    var exit = function(e){
+      if(e.type === "keydown" && e.key !== "Escape" && e.key !== "Enter" && e.key !== ":") return;
+      document.removeEventListener("keydown", exit, true);
+      document.removeEventListener("pointerdown", exit, true);
+      if(e.type === "keydown"){ e.stopPropagation(); e.preventDefault(); }
+      watch(false);
+    };
+    setTimeout(function(){
+      document.addEventListener("keydown", exit, true);
+      document.addEventListener("pointerdown", exit, true);
+    }, 250);
+  } else {
+    try{ if(document.fullscreenElement) document.exitFullscreen(); }catch(e){}
+  }
+}
+
 var VIZ = {
-  THEMES: THEMES, MODES: MODES, autoFor: autoFor, parseParam: parseParam, mix: mix, clockPhase: clockPhase, bands: bands, upcoming: upcoming,
+  THEMES: THEMES, MODES: MODES, autoFor: autoFor, parseParam: parseParam,
+  make: makeTheme, random: randomTheme, unmake: function(n){ if(BUILTIN[n] || !THEMES[n]) return false;
+    delete THEMES[n]; saveCustom(n, null); if(S.theme === n) S.theme = "acid"; persist(); return true; },
+  watch: watch, hslHex: hslHex, mix: mix, clockPhase: clockPhase, bands: bands, upcoming: upcoming,
   status: function(){ return {mode: S.mode, theme: S.theme, intensity: S.intensity, decay: S.decay, symmetry: S.symmetry, reduced: reduce}; },
   start: function(E){
     eng = E; cv = document.getElementById("viz"); if(!cv) return; cx = cv.getContext("2d");
     reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
+    loadCustom();
     if(reduce) S.mode = "off";
     try{ apply(JSON.parse(localStorage.getItem("oontz_viz"))); }catch(e){}
     size(); addEventListener("resize", size);
