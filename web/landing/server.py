@@ -78,8 +78,11 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         super().end_headers()
 
     def translate_path(self, path):
+        # The committed engine/ copy first. Only a repo checkout (where the copy
+        # might be mid-edit) falls through to ../app -- on Railway the deploy
+        # root is literally /app, so ROOT/../app is ROOT itself and lies.
         p = super().translate_path(path)
-        if path.startswith("/engine/") and os.path.isdir(APP):
+        if path.startswith("/engine/") and not os.path.isfile(p) and os.path.isdir(APP):
             return os.path.join(APP, os.path.basename(p))
         return p
 
