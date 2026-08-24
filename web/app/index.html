@@ -109,7 +109,10 @@
   body.calm #vig{background:radial-gradient(ellipse at 50% 45%,transparent 60%,rgba(0,0,0,.5) 100%)}
   body.calm{--plate:rgba(6,9,12,.86)}
   @media (max-width:640px){#wrap{padding:10px}.k{min-width:12ch}#rack{max-height:30vh}}
-  @media (pointer: coarse){ #in,#bar{font-size:16px} #out .k{padding:5px 0} }
+  #gobtn{display:none;font:inherit;color:var(--accent);background:none;
+    border:1px solid var(--accent);border-radius:8px;padding:4px 12px;min-height:36px;
+    touch-action:manipulation}
+  @media (pointer: coarse){ #in,#bar{font-size:16px} #out .k{padding:5px 0} #gobtn{display:inline-block} }
   @media (prefers-reduced-motion:reduce){#bg{display:none}#viz{opacity:.35}}
 </style>
 </head>
@@ -123,8 +126,8 @@
   <div id="out"><div id="slack"></div></div>
   <div id="tail">↓ live</div>
   <div id="hint"></div>
-  <div id="bar"><span id="ps1">oontz.sh&nbsp;&gt;</span><input id="in" autocomplete="off"
-    autocapitalize="off" spellcheck="false" aria-label="terminal input"></div>
+  <div id="bar"><span id="ps1">oontz.sh&nbsp;&gt;</span><input id="in" autocomplete="off" enterkeyhint="go"
+    autocapitalize="off" spellcheck="false" aria-label="terminal input"><button id="gobtn" aria-label="run">▶</button></div>
 </div>
 <script src="copy.js"></script>
 <script src="oontz.js"></script>
@@ -1322,6 +1325,20 @@ IN.addEventListener('keydown', function(e){
 IN.addEventListener('blur', function(){ sugClose(); PS1.innerHTML='<span class="w">perform</span> <span class="dim">: to type</span>'; });
 IN.addEventListener('focus', function(){ PS1.innerHTML='oontz.sh&nbsp;&gt;'; });
 var PS1 = document.getElementById('ps1');
+document.getElementById('gobtn').addEventListener('click', function(){
+  var v = IN.value; IN.value = ''; if(v.trim()) run(v); hint();
+});
+/* smart paste: a .oontz source dropped into the prompt just works */
+IN.addEventListener('paste', function(e){
+  try{
+    var txt = (e.clipboardData || window.clipboardData).getData('text') || '';
+    if(!IN.value && txt.trim()[0] === '{' && txt.indexOf('"sections"') >= 0){
+      e.preventDefault();
+      IN.value = 'load ' + txt.trim();
+      HINT.innerHTML = 'that looks like a song — <b>Enter</b> loads it';
+    }
+  }catch(err){}
+});
 var KONAMI = [];
 addEventListener('keydown', function(e){
   KONAMI.push(e.key); if(KONAMI.length > 10) KONAMI.shift();
@@ -1431,6 +1448,7 @@ addEventListener('beforeunload', function(){ try{ if(song) localStorage.setItem(
       w('<span class="dim">  restored <span class="b">'+esc(song.name)+'</span> from last time. <span class="a">play</span> to hear it.</span>'); }
   }catch(e){}
   IN.focus();
+  OUT.scrollTop = 0;                             /* arrival = the title, not the tail */
 })();
 </script>
 <script src="account.js"></script>

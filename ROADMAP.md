@@ -425,6 +425,19 @@ stale; `qa` runs 192 arrangements through both composers and requires identical 
   the canvas forced to 300x200, watch blurred the input and restored the canvas
   to the exact full viewport.
 
+- 2026-08-24 -- cycle 26: arrival shows the title, and the prompt earns its keys
+  on both sites. Boot auto-scroll was tucking the banner under the stationary
+  plates whenever the log was shorter than the boot text (always, on phones) -
+  both pages now scroll home when boot finishes, and normal bottom-following
+  resumes on the first command. The landing prompt reaches parity with the
+  instrument's: the autosuggest dropdown (same combobox rules), up-arrow history
+  (50 entries, draft preserved), and smart paste - a /t/ share link pasted into
+  the prompt becomes `play <id>`; on the instrument, pasted .oontz JSON becomes
+  `load <source>` with the hint saying why. Coarse pointers get a ▶ run chip in
+  the bar on both pages (enterkeyhint=go for mobile keyboards too). Verified:
+  scrollTop 0 with the banner fully below the strip, `ga` -> gallery dropdown
+  fill, history recall, both paste rewrites.
+
 ## Cycle log
 
 Append one line per completed cycle: what changed, what it measured, what it learned.

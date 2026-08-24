@@ -52,6 +52,19 @@
   @media (max-width:560px){ #hud .opt{display:none} #hud{font-size:.85em} }
   .spin{display:inline-block;transition:transform .9s cubic-bezier(.2,.8,.2,1)}
   .spin.go{transform:rotate(360deg)}
+  #sug{position:absolute;left:0;right:0;bottom:100%;margin-bottom:4px;display:none;
+    background:var(--bg,#07090b);border:1px solid var(--line);border-radius:8px;
+    box-shadow:0 -8px 30px rgba(0,0,0,.55);overflow:hidden;z-index:5}
+  #sug.on{display:block}
+  #sug div{padding:7px 12px;cursor:pointer;display:flex;gap:12px;align-items:baseline}
+  #sug div b{color:var(--accent);font-weight:normal;min-width:10ch}
+  #sug div span{color:var(--dim);font-size:.85em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  #sug div.sel,#sug div:hover{background:rgba(34,224,208,.12)}
+  #gobtn{display:none;font:inherit;color:var(--accent);background:none;
+    border:1px solid var(--accent);border-radius:8px;padding:4px 12px;min-height:36px;
+    touch-action:manipulation}
+  @media (pointer: coarse){ #gobtn{display:inline-block} }
+  #bar{position:relative}
   #hud [data-cmd]{cursor:pointer;border-bottom:1px solid rgba(34,224,208,.25)}
   #hud [data-cmd]:hover .a, #hud [data-cmd]:hover .dim{color:var(--bright)}
   #bar{display:flex;align-items:center;gap:8px;margin-top:8px;padding:8px 9px;
@@ -83,8 +96,8 @@
 <div id="wrap">
   <div id="hud"><span class="b">oontz</span> <span class="dim">· source code for music · … · </span><a href="https://oontz.sh" target="_blank" rel="noopener">open the real one →</a></div>
   <div id="out"></div>
-  <div id="bar"><span id="ps1">oontz&nbsp;&gt;</span><input id="in" autocomplete="off"
-    autocapitalize="off" spellcheck="false" aria-label="terminal input"></div>
+  <div id="bar"><span id="ps1">oontz&nbsp;&gt;</span><input id="in" autocomplete="off" enterkeyhint="go"
+    autocapitalize="off" spellcheck="false" aria-label="terminal input"><button id="gobtn" aria-label="run">▶</button></div>
 </div>
 <script src="copy.js"></script>
 <script src="/engine/oontz.js"></script>
@@ -498,6 +511,53 @@ function run(raw){
   line(`${v0}: no such command. type help`, 'w');
 }
 
+/* -- history + the dropdown: the prompt earns its keys --------------------- */
+let HIST = [], HI = 0, DRAFT = '';
+try{ HIST = JSON.parse(localStorage.getItem('oontz_music_hist') || '[]'); }catch(e){}
+HI = HIST.length;
+const SUG = document.createElement('div'); SUG.id = 'sug';
+document.getElementById('bar').appendChild(SUG);
+const SUGS = {hits: [], i: -1};
+function usageFor(v){
+  const row = (CP.help || []).filter(kv => kv[0].split(' ')[0] === v)[0];
+  return row ? row[1] : '';
+}
+function sugClose(){ SUGS.hits = []; SUGS.i = -1; SUG.classList.remove('on'); }
+function sugRender(){
+  if(!SUGS.hits.length) return sugClose();
+  SUG.innerHTML = SUGS.hits.map((v, i) =>
+    '<div data-v="'+esc(v)+'"'+(i === SUGS.i ? ' class="sel"' : '')+'><b>'+esc(v)+'</b><span>'+
+    esc(usageFor(v))+'</span></div>').join('');
+  SUG.classList.add('on');
+}
+function sugPick(v){ IN.value = v + ' '; sugClose(); IN.focus(); }
+function suggest(){
+  const parts = IN.value.trim().split(/\s+/), head = (parts[0] || '').toLowerCase();
+  if(!head || parts.length > 1 || IN.value.slice(-1) === ' ') return sugClose();
+  const verbs = Object.keys(CMDS).concat(Object.keys(ALIAS))
+    .filter((v, i, a) => a.indexOf(v) === i).sort();
+  SUGS.hits = verbs.filter(v => v.indexOf(head) === 0 && v !== head).slice(0, 6);
+  if(SUGS.i >= SUGS.hits.length) SUGS.i = -1;
+  sugRender();
+}
+SUG.addEventListener('pointerdown', e => {
+  e.preventDefault();
+  const d = e.target.closest('[data-v]'); if(d) sugPick(d.dataset.v);
+});
+IN.addEventListener('input', suggest);
+IN.addEventListener('blur', sugClose);
+document.getElementById('gobtn').addEventListener('click', function(){
+  const v = IN.value; IN.value = ''; if(v.trim()) run(v);
+});
+/* paste a share link, get the command */
+IN.addEventListener('paste', function(e){
+  try{
+    const txt = (e.clipboardData || window.clipboardData).getData('text') || '';
+    const m = txt.match(/\/t\/([A-Za-z0-9_-]{6,40})/);
+    if(!IN.value && m){ e.preventDefault(); IN.value = 'play ' + m[1]; }
+  }catch(err){}
+});
+
 /* -- the tour: Enter walks, anything else wanders off ---------------------- */
 let TOURQ = [];
 function tourNext(){
@@ -508,10 +568,25 @@ function tourNext(){
   else block(CP.tour_done);
 }
 IN.addEventListener('keydown', e=>{
-  if(e.key==='Enter'){ const v=IN.value; IN.value='';
+  if(SUGS.hits.length){
+    if(e.key === 'ArrowDown'){ e.preventDefault(); SUGS.i = (SUGS.i + 1) % SUGS.hits.length; sugRender(); return; }
+    if(e.key === 'ArrowUp' && SUGS.i >= 0){ e.preventDefault(); SUGS.i--; sugRender(); return; }
+    if((e.key === 'Enter' || e.key === 'Tab') && SUGS.i >= 0){ e.preventDefault(); sugPick(SUGS.hits[SUGS.i]); return; }
+    if(e.key === 'Escape'){ e.preventDefault(); sugClose(); return; }
+  }
+  if(e.key==='Enter'){ const v=IN.value; IN.value=''; sugClose();
+    if(v.trim()){ if(HIST[HIST.length-1] !== v.trim()) HIST.push(v.trim());
+      if(HIST.length > 50) HIST.shift();
+      try{ localStorage.setItem('oontz_music_hist', JSON.stringify(HIST)); }catch(err){} }
+    HI = HIST.length; DRAFT = '';
     if(!v.trim() && TOURQ.length) return tourNext();
     if(v.trim() && TOURQ.length){ TOURQ = []; line(CP.tour_off,'dim'); }
     run(v); }
+  else if(e.key==='ArrowUp'){ e.preventDefault();
+    if(HI === HIST.length) DRAFT = IN.value;
+    if(HI > 0){ HI--; IN.value = HIST[HI]; } }
+  else if(e.key==='ArrowDown'){ e.preventDefault();
+    if(HI < HIST.length){ HI++; IN.value = HI === HIST.length ? DRAFT : HIST[HI]; } }
 });
 
 /* -- the strip: the site says it is alive, with numbers -------------------- */
@@ -571,6 +646,7 @@ addEventListener('click', e=>{
  strip();
  try{ if(!localStorage.getItem('oontz_seen')){ localStorage.setItem('oontz_seen','1');
    w(`  <span class="a">first time?</span> <span class="dim">${esc(CP.first_visit)}</span>`); line(); } }catch(e){}
+ if(!window.OONTZ_BOOT) OUT.scrollTop = 0;       /* arrival = the title, not the tail */
  if(window.OONTZ_BOOT){
    if(window.OONTZ_WATCH){
      line('▸ tap anywhere for the light show','a');
