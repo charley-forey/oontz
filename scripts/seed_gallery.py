@@ -56,10 +56,20 @@ PLAYLISTS = {
 }
 
 
+def compose_doc(style, minutes, curve, seed):
+    sg = compose.compose_song(style, minutes, seed=seed, curve_name=curve)
+    d = sg.to_dict()
+    d["format"] = "thud-song-1"
+    crit = theory.critique(sg, style=style)
+    score = theory.score(crit) if crit else None
+    return d, score
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--api", default="https://api-production-bd3d8.up.railway.app")
     ap.add_argument("--dry", action="store_true", help="compose and grade, publish nothing")
+    ap.add_argument("--token", help="use this session token instead of self-auth")
     args = ap.parse_args()
     base = args.api.rstrip("/")
 
@@ -78,14 +88,6 @@ def main():
             except Exception:
                 return e.code, {"error": e.reason}
 
-    def compose_doc(style, minutes, curve, seed):
-        sg = compose.compose_song(style, minutes, seed=seed, curve_name=curve)
-        d = sg.to_dict()
-        d["format"] = "thud-song-1"
-        crit = theory.critique(sg, style=style)
-        score = theory.score(crit) if crit else None
-        return d, score
-
     # --- compose + grade the whole corpus first (dry-safe) --------------------
     docs = {}
     for style, (title, minutes, curve) in TRACKS.items():
@@ -100,7 +102,13 @@ def main():
         print("dry run: %d tracks composed, nothing published." % len(docs))
         return
 
-    # --- house session, self-contained ---------------------------------------
+    # --- house session --------------------------------------------------------
+    if args.token:
+        token = args.token
+        req("PATCH", "/me", {"handle": HOUSE_HANDLE}, token)
+        print("using the provided session token")
+        _publish(req, docs, token); return
+
     req("POST", "/auth/request", {"email": HOUSE_EMAIL})
     st, j = req("POST", "/auth/request", {"email": HOUSE_EMAIL})
     link = j.get("link")
@@ -128,7 +136,10 @@ def main():
         token = loc.split("#token=")[1]
     req("PATCH", "/me", {"handle": HOUSE_HANDLE}, token)
     print("signed in as the house account (%s)" % HOUSE_HANDLE)
+    _publish(req, docs, token)
 
+
+def _publish(req, docs, token):
     # --- publish the corpus ---------------------------------------------------
     ids = {}
     for style, (title, d, score) in docs.items():
