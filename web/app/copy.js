@@ -211,6 +211,7 @@ C.help = [
   ["Ctrl+K",                "the palette. everything, one search away"],
   ["ask make it darker",    "the AI proposes, you press Enter"],
   ["jam on 8",               "the AI plays WITH you: one small move every 8 bars, undo vetoes"],
+  ["jam style darker",       "lean the jam somewhere. it hears the grade and fixes faults first"],
   ["sounds",                 "the whole voice bank on one line"],
   ["real",                   "the actual Python instrument, running in this browser. beta"],
   ["key sk-ant-…",          "your own AI key. this browser only, never our server"],

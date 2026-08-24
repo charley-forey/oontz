@@ -215,11 +215,11 @@ function draw(){
       var ch = tr.pat[OZ.patIndex(tr.pat, E.songbar, q)] || '.';
       var on = ch !== '.' && ch !== '-';
       var cur = q === i && E.playing;
-      cells += '<span class="st" data-t="'+n+'" data-i="'+q+'" style="color:var('+(on?col:'--dim')+')'+
+      cells += '<span class="st" data-t="'+esc(n)+'" data-i="'+q+'" style="color:var('+(on?col:'--dim')+')'+
         (cur?';background:var('+(on?col:'--line')+');color:#000':'')+'">'+
         (on?'█':'·')+'</span>' + (q%4===3?' ':'');
     }
-    h += '<div><span class="trk '+(n===foc?'a2':'dim')+'" data-t="'+n+'">'+(n===foc?'▸ ':'  ')+n.padEnd(7)+'</span>'+cells+'</div>';
+    h += '<div><span class="trk '+(n===foc?'a2':'dim')+'" data-t="'+esc(n)+'">'+(n===foc?'▸ ':'  ')+esc(n.padEnd(7))+'</span>'+cells+'</div>';
   });
   RACK.innerHTML = h;
   RACK.classList.toggle('on', !!h);        // no rack until there is something in it
@@ -542,7 +542,11 @@ var CMDS = {
       var j = await r.json(); d.remove();
       if(!j.commands || !j.commands.length) return line('▸ '+(j.error||'no suggestion'),'w');
       PENDING = j.commands; line();
-      j.commands.forEach(function(c){ w('  <span class="dim">▸</span> <span class="a">'+esc(c)+'</span>'); });
+      j.commands.forEach(function(c){
+        var okc = musical(c);
+        w('  <span class="dim">▸</span> <span class="'+(okc?'a':'dim')+'"'+
+          (okc?'':' style="text-decoration:line-through"')+'>'+esc(c)+'</span>'+
+          (okc?'':' <span class="dim">not a musical command — skipped</span>')); });
       w('<span class="dim">  Enter runs these '+j.commands.length+' · type anything else to discard · `undo` takes them back</span>'); line();
     }catch(e){ d.remove(); line('the AI is unreachable right now','w'); }
   },
@@ -554,6 +558,8 @@ var CMDS = {
     var v = (a[0]||'').toLowerCase();
     if(v === 'off'){ JAM.on = false; return line('▸ jam off','dim'); }
     if(!v && JAM.on) return line('▸ jamming every '+JAM.bars+' bars · jam off ends it','dim');
+    if(v === 'style'){ JAM.style = a.slice(1).join(' ');
+      return line(JAM.style ? '▸ jam leans '+esc(JAM.style) : '▸ jam style <mood> — darker, funkier, sparser, unhinged…', JAM.style?'ok':'w'); }
     var bars = parseInt(v === 'on' ? a[1] : v, 10);
     if(v && v !== 'on' && !isFinite(bars)) return line(CP.jam_usage,'w');
     JAM.on = true; JAM.bars = Math.max(2, Math.min(64, isFinite(bars) ? bars : 8));
@@ -663,6 +669,17 @@ function deckKey(k){
   return null;
 }
 var REC = null, PENDING = null, UNDO = [], EARLAST = null;
+
+/* The model proposes music, never account actions. It has no business reaching
+   `publish`, `login`, `key`, `playlist del` or `rec`, and the server prompt already
+   claims the client refuses - this is what makes that true. Anything not on the
+   list is shown struck through and skipped. */
+var MUSICAL = ("bpm swing gain pan filter tune sidechain mute solo focus compose go " +
+  "play stop grade improve freq why styles curves theory rules bands sec song").split(" ");
+function musical(cmd){
+  var v = String(cmd).trim().split(/\s+/)[0].toLowerCase();
+  return MUSICAL.indexOf(v) >= 0 || !!(E.tracks && E.tracks[v]) || !!OZ.VOICES[v];
+}
 var TEACH = false, TOLD = {}, LESSON_AT = -1;
 
 /* ---------------------------------------------------------- teaching by doing */
@@ -766,7 +783,7 @@ PAL.addEventListener('click', function(e){ if(e.target === PAL) closePal(); });
 var EAR = window.OONTZ_EAR;
 function sev(k){ return {good:'<span class="ok">  ✓ ', warn:'<span class="w">  ! ',
                          bad:'<span class="hot">  ✗ '}[k] || '<span class="dim">  '; }
-var JAM = {on:false, bars:8, mark:0, turns:0, busy:false};
+var JAM = {on:false, bars:8, mark:0, turns:0, busy:false, style:''};
 setInterval(async function(){
   if(!JAM.on || JAM.busy || !E.playing || MODE === 'deck' || !song) return;
   var total = OZ.totalBars(song), gone = (E.songbar - JAM.mark + total) % total;
@@ -774,20 +791,25 @@ setInterval(async function(){
   JAM.mark = E.songbar; JAM.busy = true;
   try{
     var at = OZ.sectionAt(song, E.songbar);
+    var crit = CO.critique(song), sc = CO.score(crit);   /* jam has ears: it hears what the grader hears */
+    var faults = crit.filter(function(c){ return c[0] !== 'good'; }).slice(0, 4).map(function(c){ return c[1]; });
     var state = {bpm: E.bpm, swing: E.swing, key: song.key, scale: song.scale,
       section: at && at.name, role: at && at.sec.role, bar: E.songbar, tracks: E.tracks, order: E.order,
-      commands: Object.keys(CMDS).concat(E.order), jam_turn: ++JAM.turns};
+      commands: Object.keys(CMDS).concat(E.order), jam_turn: ++JAM.turns,
+      grade: {score: sc, faults: faults}};
     var hdr = {'content-type':'application/json'};
     var myKey = localStorage.getItem('oontz_key'); if(myKey) hdr['x-anthropic-key'] = myKey;
     var r = await fetch(API+'/ai/ask', {method:'POST', headers:hdr,
       body: JSON.stringify({prompt: 'JAM TURN '+JAM.turns+': you are playing live alongside a human, currently in the '
         +(at ? at.name : 'song')+'. Make exactly ONE small, tasteful, reversible move that fits this moment - vary a pattern, '
         +'nudge a filter or gain, thin or thicken one element. Two lines only if inseparable. Subtle beats clever; '
-        +'never touch more than one track.', state: state})});
+        +'never touch more than one track. If state.grade lists faults, prefer the move that fixes one. '
+        +(JAM.style ? 'Mood bias, from the human: '+JAM.style+'. ' : '')
+        +'End with one line: "# <six words or fewer on why>".', state: state})});
     var j = await r.json();
     if(j.commands && j.commands.length){
       snapshot();
-      w('<span class="dim">  ♪ jam:</span>');
+      w('<span class="dim">  ♪ jam'+(j.why ? ': <span class="b">'+esc(j.why)+'</span>' : ':')+'</span>');
       j.commands.slice(0, 2).forEach(run);
       w('<span class="dim">  ♪ <span class="a">undo</span> vetoes it · jam off ends it</span>');
     }
@@ -884,7 +906,7 @@ IN.addEventListener('keydown', function(e){
       try{ localStorage.setItem('oontz_hist', JSON.stringify(HIST)); }catch(err){} }
     HI = HIST.length; DRAFT = '';
     if(PENDING){ var ps=PENDING; PENDING=null;
-      if(!v.trim()){ snapshot(); ps.forEach(run); hint(); return; }
+      if(!v.trim()){ snapshot(); ps.filter(musical).forEach(run); hint(); return; }
       line('  discarded','dim'); }
     run(v); hint(); }
   else if(e.key==='Tab'){                       // complete, then cycle

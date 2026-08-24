@@ -235,7 +235,9 @@ _HITS = {}
 
 
 def limit(request: Request, bucket, per_min=30):
-    ip = request.headers.get("x-forwarded-for", "").split(",")[0].strip() or \
+    # the LAST hop, not the first: the proxy appends, and everything before it
+    # is whatever the caller decided to send
+    ip = request.headers.get("x-forwarded-for", "").split(",")[-1].strip() or \
         (request.client.host if request.client else "?")
     now = time.time()
     key = (ip, bucket)
@@ -394,7 +396,7 @@ def get_song(sid: str, request: Request, user=Depends(optional_user)):
         c.commit()
         author = c.execute("SELECT handle,email FROM users WHERE id=?",
                            (row["user_id"],)).fetchone()
-    who = (author["handle"] or (author["email"].split("@")[0] + "@…")) if author else "?"
+    who = (author["handle"] if author and author["handle"] else "anon")
     return {"id": row["id"], "title": row["title"], "bpm": row["bpm"],
             "key": row["kkey"], "seconds": row["seconds"], "sections": row["sections"],
             "public": bool(row["public"]), "plays": row["plays"] + 1, "by": who,
@@ -440,7 +442,8 @@ def gallery(sort: str = "new", limit_n: int = 40, request: Request = None):
     out = []
     for r in rows:
         d = dict(r)
-        d["by"] = d["handle"] or (d.pop("email").split("@")[0] + "@…")
+        d.pop("email", None)
+        d["by"] = d["handle"] or "anon"        # never publish an address nobody offered
         d.pop("email", None)
         out.append(d)
     return {"songs": out, "sort": sort}
@@ -652,6 +655,7 @@ def ai_ask(body: AskIn, request: Request, x_anthropic_key: str = Header(default=
         "track add <name> [voice]; fx <track|master> <effect> [k v]; "
         "style <name>; melody <track> <root> <scale> <len>; euc <track> k n; "
         "compose <style> <minutes> <curve>; ramp <track>.<param> <lo> <hi> over <bars>.\n"
+        "You may end with ONE line starting with '# ': six words or fewer on why. "
         "If the state lists `commands`, use only verbs from that list - the client "
         "rejects anything else. Prefer few, decisive lines. Every note token is a "
         "real note (a1, f#2) or a rest (.); ~ and ! are suffixes ON a note, "
@@ -677,7 +681,9 @@ def ai_ask(body: AskIn, request: Request, x_anthropic_key: str = Header(default=
     text = "".join(b.get("text", "") for b in data.get("content", []))
     lines = [l.strip() for l in text.splitlines() if l.strip()
              and not l.strip().startswith(("#", "`"))]
-    return {"commands": lines[:24], "raw": text}
+    why = next((l.strip().lstrip("#").strip() for l in text.splitlines()
+                if l.strip().startswith("#")), "")
+    return {"commands": lines[:24], "why": why[:120], "raw": text}
 
 
 @app.exception_handler(HTTPException)
