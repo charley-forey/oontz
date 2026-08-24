@@ -574,6 +574,16 @@ var CMDS = {
     if(!E.playing) line('  '+CP.jam_needs_play,'dim');
   },
   real: function(){ line('▸ '+CP.real_go,'ok'); location.href='/py/'; },
+  midi: function(a){
+    var M = window.OONTZ_MIDI; if(!M) return;
+    if((a[0]||'') === 'off'){ M.off(); return line('▸ midi off','dim'); }
+    line('▸ asking the browser for MIDI access…','dim');
+    M.connect(function(names, err){
+      if(err) return line('▸ '+esc(err),'w');
+      if(!names.length) return line('▸ no MIDI inputs found. plug one in — hot-plug works.','w');
+      line('▸ listening to '+esc(names.join(', ')),'ok');
+      w('<span class="dim">  pads 36-51 are the 16 steps · 52/53 sections · sustain pedal is play/stop · CC74 or the modwheel sweeps the filter</span>');
+    }); },
   sounds: function(){ line();
     w('  <span class="dim">'+Object.keys(OZ.VOICES).sort().join(' · ')+'</span>');
     w('  <span class="dim">'+CP.sounds_hint+'</span>'); line(); },
@@ -1095,5 +1105,6 @@ addEventListener('beforeunload', function(){ try{ if(song) localStorage.setItem(
 </script>
 <script src="account.js"></script>
 <script src="touch.js"></script>
+<script src="midi.js"></script>
 </body>
 </html>

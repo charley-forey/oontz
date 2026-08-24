@@ -213,6 +213,7 @@ C.help = [
   ["jam on 8",               "the AI plays WITH you: one small move every 8 bars, undo vetoes"],
   ["jam style darker",       "lean the jam somewhere. it hears the grade and fixes faults first"],
   ["mix <playlist id>",      "a playlist becomes a set: beat-synced 16-bar blends, decks stay yours"],
+  ["midi",                   "plug a controller in. pads are steps, the sustain pedal is play"],
   ["sounds",                 "the whole voice bank on one line"],
   ["real",                   "the actual Python instrument, running in this browser. beta"],
   ["key sk-ant-…",          "your own AI key. this browser only, never our server"],

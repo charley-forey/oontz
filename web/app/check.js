@@ -393,4 +393,13 @@ A.ok(crit.some(function(c){ return c[0] === "bad" && /kick and bass/.test(c[1]);
 A.ok(crit.every(function(c){ return ["good", "warn", "bad"].indexOf(c[0]) >= 0; }), "levels are good/warn/bad");
 A.ok(EAR.critiqueMix(meas()).some(function(c){ return /-6.00 dBFS/.test(c[1]); }), "headroom is quoted");
 
-console.log("web checks pass  ·  write-through · pads · viz · touch · voices · notes · roll · jumps · decks · theory (" + checked + " plans in window) · legible · ear · " + OZ.KEYS.length + " keys listed");
+/* -- midi: the note map a controller plays from ----------------------------- */
+require("./midi.js");
+var MD = globalThis.OONTZ_MIDI;
+A.strictEqual(MD.keyForNote(36), "q", "note 36 is step 1");
+A.strictEqual(MD.keyForNote(51), "k", "note 51 is step 16");
+A.strictEqual(MD.keyForNote(52), "<", "note 52 walks a section back");
+A.strictEqual(MD.keyForNote(35), null, "below the pads is nobody's key");
+A.ok(MD.FILTER_CCS[74] && MD.FILTER_CCS[1], "cutoff and modwheel both sweep the filter");
+
+console.log("web checks pass  ·  write-through · pads · viz · touch · midi · voices · notes · roll · jumps · decks · theory (" + checked + " plans in window) · legible · ear · " + OZ.KEYS.length + " keys listed");
