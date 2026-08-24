@@ -36,6 +36,8 @@ def available():
     then every call would fail. Callers get a truthy/falsy value either way;
     _run_raw uses the cached value itself as argv[0].
     """
+    if os.environ.get("THUD_OFFLINE"):          # the test gates set this: a fuzzed `ask` must not call a model
+        return None
     global _claude_bin
     if _claude_bin is None:
         _claude_bin = shutil.which("claude") or False

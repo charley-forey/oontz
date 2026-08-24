@@ -5,13 +5,16 @@ description: Run one thud evolution cycle - pick the top open roadmap item, impl
 
 # One evolution cycle
 
-You are improving `thud` at C:\Users\charl\desktop\beats. Do ONE cycle, completely,
+You are improving `thud` at C:\Users\charl\desktop\oontz. Do ONE cycle, completely,
 then stop. Do not start a second cycle in the same run.
 
 ## The cycle
 
 1. **Read `ROADMAP.md`.** Take the topmost unchecked item under "Now". If "Now" is
    empty, promote the best two items from "Next" into "Now" and take the first.
+   **Idea intake:** whenever you promote, also re-read `IDEAS.md` and the cycle log
+   and append ONE new item to "Next" with a one-line reason - a gap between what
+   IDEAS.md asks for and what the code does. That is how the roadmap grows on its own.
 
 2. **Read the code it touches** before writing anything. `thud/contracts.py` is the
    frozen seam; modules register into shared dicts and nothing edits `core.py`
@@ -25,6 +28,13 @@ then stop. Do not start a second cycle in the same run.
    - `python -m thud.qa --quick`
    Add at least one assert that would FAIL if your change regressed. A change with
    no check is not finished.
+
+   **Web items** (`web/app`, `web/landing`, `api/`) have their own gate, run in
+   addition: `node web/app/check.js` for the instrument, `python -c "import ast;
+   ast.parse(open('api/main.py').read())"` plus a local `uvicorn` smoke for the API.
+   After the push, poll `mcp__railway__get-status` until the service reports
+   SUCCESS, then curl the live URL and confirm the change is in the served file.
+   A web cycle is not done until the deploy is green.
 
 5. **THE GATE.** If either suite fails, fix it or revert your change. Never commit
    red. A loop that pushes broken audio to main is worse than no loop.

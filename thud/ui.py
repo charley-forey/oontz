@@ -273,18 +273,21 @@ def sweep(t, mult):
     tr = ST.tracks[t.name]
     if core.is_pitched(tr):
         tr["fc"] = max(40.0, min(18000.0, (tr["fc"] or 350.0) * mult))
+        core.autorec_touch("%s.fc" % t.name, tr["fc"])
         core.refresh()
         return echo("%s cutoff %d Hz" % (t.name, tr["fc"]))
     if not tr["filt"]:
         tr["filt"] = "lp"
         tr["fc"] = tr["fc"] or 8000.0
     tr["fc"] = max(40.0, min(18000.0, tr["fc"] * mult))
+    core.autorec_touch("%s.fc" % t.name, tr["fc"])
     core.refresh()
     echo("%s %s %d Hz" % (t.name, tr["filt"], tr["fc"]))
 
 
 def bump(attr, d, lo, hi, fmt):
     setattr(ST, attr, max(lo, min(hi, getattr(ST, attr) + d)))
+    core.autorec_touch(attr, getattr(ST, attr))
     core.refresh()
     echo(fmt % getattr(ST, attr))
 
@@ -386,9 +389,11 @@ def on_key(k, s):
     elif k == "]":
         sweep(t, 1.06)
     elif k == "{":
-        tr["res"] = max(0.0, tr["res"] - 0.05); core.refresh(); echo("%s res %.2f" % (t.name, tr["res"]))
+        tr["res"] = max(0.0, tr["res"] - 0.05)
+        core.autorec_touch("%s.res" % t.name, tr["res"]); core.refresh(); echo("%s res %.2f" % (t.name, tr["res"]))
     elif k == "}":
-        tr["res"] = min(0.98, tr["res"] + 0.05); core.refresh(); echo("%s res %.2f" % (t.name, tr["res"]))
+        tr["res"] = min(0.98, tr["res"] + 0.05)
+        core.autorec_touch("%s.res" % t.name, tr["res"]); core.refresh(); echo("%s res %.2f" % (t.name, tr["res"]))
     elif k == "-":
         bump("bpm", -1, 60, 220, "%g BPM")
     elif k == "=":

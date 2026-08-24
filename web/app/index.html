@@ -83,8 +83,6 @@ function block(rows){ line();
 var E = new OZ.Engine();
 var song = null, gridEl = null, token = localStorage.getItem('oontz_token') || '';
 
-E.onbar = function(){ draw(); };
-E.onstep = function(){ draw(); };
 
 function mmss(s){ s = Math.max(0, Math.floor(s||0));
   return Math.floor(s/60)+':'+String(s%60).padStart(2,'0'); }
@@ -92,7 +90,7 @@ function songSeconds(sg){ if(!sg) return 0;
   return OZ.totalBars(sg) * 240 / (sg.bpm||138); }
 
 function draw(){
-  var i = E.step % 16;
+  var i = E.stepNow || 0, foc = E.focus || (E.order||[])[0];
   /* HUD: where we are in the whole song */
   if(song){
     var at = OZ.sectionAt(song, E.songbar), total = OZ.totalBars(song);
@@ -129,7 +127,7 @@ function draw(){
         (cur?';background:var('+(on?col:'--line')+');color:#000':'')+'">'+
         (on?'█':'·')+'</span>' + (q%4===3?' ':'');
     }
-    h += '<div><span class="dim">  '+n.padEnd(7)+'</span>'+cells+'</div>';
+    h += '<div><span class="'+(n===foc?'a2':'dim')+'">'+(n===foc?'▸ ':'  ')+n.padEnd(7)+'</span>'+cells+'</div>';
   });
   gridEl.innerHTML = h;
   OUT.scrollTop = OUT.scrollHeight;
@@ -141,30 +139,42 @@ function size(){ W=cv.width=innerWidth*devicePixelRatio; H=cv.height=innerHeight
   cv.style.width=innerWidth+'px'; cv.style.height=innerHeight+'px'; }
 size(); addEventListener('resize', function(){ size(); draw(); });
 var reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+var flash = 0, pulse = 0;                       // a drop lights the room; a kick pushes it
+var ROLE_HUE = {drop: 330, break: 175, build: 40, intro: 210, outro: 210, verse: 130};
 function frame(){ requestAnimationFrame(frame); if(reduce) return;
   var spec = E.spectrum();
-  tt += E.playing ? .022 : .006;
+  var at = song && E.playing ? OZ.sectionAt(song, E.songbar) : null;
+  var en = at ? (at.sec.energy || 0.5) : 0.3, role = at ? at.sec.role : '';
+  var build = role === 'build' ? at.within / Math.max(1, at.sec.bars) : 0;
+  tt += E.playing ? .01 + en * .03 * (1 + build) : .006;
+  flash *= .9; pulse *= .85;
   cx.fillStyle='rgba(7,9,11,.17)'; cx.fillRect(0,0,W,H);
+  if(flash > .01){ cx.fillStyle='rgba(255,79,163,'+(flash*.45)+')'; cx.fillRect(0,0,W,H); }
   var cxx=W/2, cyy=H/2, R=Math.min(W,H)*.44;
   var bass=0, air=0;
   if(spec){ for(var b=1;b<12;b++) bass+=spec[b]; bass/=11*255;
             for(var a2=300;a2<520;a2++) air+=spec[a2]; air/=220*255; }
+  var hue0 = role in ROLE_HUE ? ROLE_HUE[role] : tt*45;
   for(var r=0;r<6;r++){
-    var p=(tt*.45+r/6)%1, rad=R*p*(1+bass*.35);
+    var p=(tt*.45+r/6)%1, rad=R*p*(1+bass*.35+pulse*.15);
     cx.beginPath();
     for(var a=0;a<=72;a++){
       var th=a/72*Math.PI*2;
-      var wob=1+Math.sin(th*(3+r)+tt*2.2)*(.10+air*.5);
+      var wob=1+Math.sin(th*(3+r)+tt*2.2)*(.10+air*.5+en*.08);
       var x=cxx+Math.cos(th)*rad*wob, y=cyy+Math.sin(th)*rad*wob*.44;
       a?cx.lineTo(x,y):cx.moveTo(x,y);
     }
     cx.closePath();
-    cx.strokeStyle='hsla('+((tt*45+r*38)%360)+',85%,'+(55+bass*20)+'%,'+
-      ((1-p)*(.16+bass*.35))+')';
-    cx.lineWidth=(1.2+bass*4)*devicePixelRatio; cx.stroke();
+    cx.strokeStyle='hsla('+((hue0+tt*20+r*38)%360)+',85%,'+(55+bass*20)+'%,'+
+      ((1-p)*(.12+en*.1+bass*.35))+')';
+    cx.lineWidth=(1+en*1.5+bass*4)*devicePixelRatio; cx.stroke();
   }
 }
 frame();
+E.onbar = function(bar, st){ if(st && st.role === 'drop' && st.within === 0) flash = 1; draw(); };
+E.onstep = function(i, tracks){ var k = tracks && tracks.kick;
+  if(k && k.pat && !k.mute){ var ch = k.pat[i % k.pat.length]; if(ch && ch !== '.' && ch !== '-') pulse = 1; }
+  draw(); };
 
 /* ------------------------------------------------------------- commands */
 var LOGO = ["  ▄▄▄   ▄▄▄  ▄▄▄▄▄ ▄▄▄▄▄ ▄▄▄▄▄▄     ▄▄▄ ▄▄▄▄▄▄▄",
@@ -273,8 +283,66 @@ var CMDS = {
       if(j.id) w('<span class="ok">▸ published.</span> <span class="dim">'+esc(j.url||'')+'</span>');
       else line('▸ '+(j.error||'could not publish'),'w');
     }catch(e){ line('could not reach the server','w'); } },
-  clear: function(){ OUT.innerHTML=''; gridEl=null; }
+  clear: function(){ OUT.innerHTML=''; gridEl=null; },
+  mute: function(a){ var t=a[0]; if(!E.tracks[t]) return line('mute <track>','w');
+    E.setTrack(t,{mute:!E.tracks[t].mute}); draw(); line('▸ '+t+(E.tracks[t].mute?' muted':' on'),'dim'); },
+  solo: function(a){ E.focus=a[0]||E.focus; line('▸ '+E.key('x',true),'dim'); draw(); },
+  gain: function(a){ var t=a[0], v=parseFloat(a[1]); if(!E.tracks[t]||!isFinite(v)) return line('gain <track> 0..1.2','w');
+    E.setTrack(t,{gain:Math.max(0,Math.min(1.2,v))}); line('▸ '+t+' gain '+v,'dim'); },
+  swing: function(a){ var v=parseFloat(a[0]); if(!isFinite(v)) return line('swing 0..60','w');
+    E.swing=Math.max(0,Math.min(60,v)); if(song) song.swing=E.swing; line('▸ swing '+E.swing,'dim'); },
+  focus: function(a){ if(!E.tracks[a[0]]) return line('focus <track>','w'); E.focus=a[0]; draw(); line('▸ pads edit '+a[0],'dim'); },
+  perform: function(){ IN.blur(); },
+  /* R / `rec`: what you hear, effects and all, tapped after the compressor. `rec screen`
+     adds a screen capture and lets the browser mux the two. */
+  rec: async function(a){
+    if(REC){ REC.stop(); return; }
+    var c = E.start(), video = a[0]==='screen' || a[0]==='video';
+    var dst = c.createMediaStreamDestination(); E.analyser.connect(dst);
+    var stream = dst.stream;
+    if(video){ try{ var disp = await navigator.mediaDevices.getDisplayMedia({video:true, audio:false, preferCurrentTab:true});
+        stream = new MediaStream(disp.getVideoTracks().concat(dst.stream.getAudioTracks()));
+        disp.getVideoTracks()[0].onended = function(){ if(REC) REC.stop(); };
+      }catch(e){ E.analyser.disconnect(dst); return line('screen capture was refused','w'); } }
+    var want = video ? ['video/webm;codecs=vp9,opus','video/webm','video/mp4'] : ['audio/webm;codecs=opus','audio/webm','audio/mp4'];
+    var mime = want.filter(function(m){ return window.MediaRecorder && MediaRecorder.isTypeSupported(m); })[0];
+    if(!window.MediaRecorder) return line('this browser cannot record','w');
+    var chunks = [], r = new MediaRecorder(stream, mime ? {mimeType: mime} : {});
+    r.ondataavailable = function(ev){ if(ev.data && ev.data.size) chunks.push(ev.data); };
+    r.onstop = function(){ REC = null; PS1.style.color = '';
+      try{ E.analyser.disconnect(dst); }catch(e){} stream.getTracks().forEach(function(t){ t.stop(); });
+      var ext = (r.mimeType||'').indexOf('mp4') >= 0 ? 'mp4' : 'webm';
+      var name = 'oontz-' + (song ? song.name : 'session').replace(/[^\w-]+/g,'_') + '.' + ext;
+      var el = document.createElement('a'); el.href = URL.createObjectURL(new Blob(chunks, {type: r.mimeType}));
+      el.download = name; document.body.appendChild(el); el.click(); el.remove();
+      w('<span class="ok">■ saved '+esc(name)+'</span> <span class="dim">exactly what you heard</span>'); };
+    r.start(1000); REC = r; PS1.style.color = 'var(--hot)';
+    if(!E.playing) line('  (nothing is playing yet - space or `play`)','dim');
+    w('<span class="hot">● recording'+(video?' screen + audio':'')+'</span> <span class="dim">R or `rec` again to stop</span>');
+  },
+  /* ask: the AI proposes command lines; an empty Enter runs them, anything else discards. */
+  ask: async function(a){
+    var q = a.join(' '); if(!q) return line('ask make it darker and half time','w');
+    var at = song ? OZ.sectionAt(song, E.songbar) : null;
+    var state = {bpm: E.bpm, swing: E.swing, key: song && song.key, scale: song && song.scale,
+      section: at && at.name, role: at && at.sec.role, bar: E.songbar, tracks: E.tracks, order: E.order,
+      commands: Object.keys(CMDS).concat(E.order)};
+    var d = w('<span class="dim">  thinking…</span>');
+    try{
+      var r = await fetch(API+'/ai/ask', {method:'POST', headers:{'content-type':'application/json'},
+        body: JSON.stringify({prompt: q, state: state})});
+      var j = await r.json(); d.remove();
+      if(!j.commands || !j.commands.length) return line('▸ '+(j.error||'no suggestion'),'w');
+      PENDING = j.commands; line();
+      j.commands.forEach(function(c){ w('  <span class="dim">▸</span> <span class="a">'+esc(c)+'</span>'); });
+      w('<span class="dim">  Enter runs these '+j.commands.length+' · type anything else to discard · `undo` takes them back</span>'); line();
+    }catch(e){ d.remove(); line('the AI is unreachable right now','w'); }
+  },
+  undo: function(){ if(!UNDO.length) return line('nothing to undo','w');
+    song = UNDO.pop(); E.loadSong(song); draw(); line('▸ undone','dim'); }
 };
+var REC = null, PENDING = null, UNDO = [];
+function snapshot(){ if(song){ UNDO.push(JSON.parse(JSON.stringify(song))); if(UNDO.length > 20) UNDO.shift(); } }
 var GAL = [];
 var ALIAS = {'?':'help','ls':'help','start':'go','make':'go','song':'go','q':'stop',
   'exit':'stop','quit':'stop','cls':'clear','about':'what','dj':'decks','keymap':'keys',
@@ -287,16 +355,47 @@ function run(raw){
   var v=ALIAS[v0.toLowerCase()]||v0.toLowerCase();
   if(E.tracks && E.tracks[v]){
     var pat=args[0]||'';
-    if(!/^[xXoO.\-]+$/.test(pat)) return line(CP.err_pattern,'w');
-    E.setPattern(v,pat); if(!E.playing) E.play(); draw();
-    return line('▸ '+v+' '+pat,'dim'); }
+    if(args.length>1 || /^[a-g]/i.test(pat)){        // notes: bass a1 . a1~ c2!
+      var notes=args.map(function(t){ return t.toLowerCase(); });
+      if(!notes.every(function(t){ return t==='.'||t==='-'||OZ.noteHz(t)>0; })) return line(CP.err_pattern,'w');
+      E.setTrack(v,{notes:notes, pat:notes.map(function(t){ return t==='.'||t==='-'?'.':(t.indexOf('!')>=0?'X':'x'); }).join('')});
+    } else {
+      if(!/^[xXoO.\-]+$/.test(pat)) return line(CP.err_pattern,'w');
+      E.setTrack(v,{pat:pat}); }
+    if(!E.playing) E.play(); draw();
+    return line('▸ '+v+' '+args.join(' '),'dim'); }
   if(CMDS[v]) return CMDS[v](args);
   line(CP.err_cmd?CP.err_cmd(v0):v0+': no', 'w');
 }
 
 IN.addEventListener('keydown', function(e){
-  if(e.key==='Enter'){ var v=IN.value; IN.value=''; run(v); } });
-addEventListener('click', function(){ IN.focus(); });
+  if(e.key==='Enter'){ var v=IN.value; IN.value='';
+    if(PENDING){ var ps=PENDING; PENDING=null;
+      if(!v.trim()){ snapshot(); ps.forEach(run); return; }
+      line('  discarded','dim'); }
+    run(v); }
+  else if(e.key==='Escape'){ e.preventDefault(); IN.blur(); } });
+IN.addEventListener('blur', function(){ PS1.innerHTML='<span class="w">perform</span> <span class="dim">: to type</span>'; });
+IN.addEventListener('focus', function(){ PS1.innerHTML='oontz.sh&nbsp;&gt;'; });
+var PS1 = document.getElementById('ps1');
+var lastMsg = null;
+addEventListener('keydown', function(e){
+  if(document.activeElement===IN || e.ctrlKey || e.metaKey || e.altKey) return;
+  if(e.key===':' || e.key==='Enter'){ e.preventDefault(); IN.focus(); return; }
+  if(e.key==='?'){ e.preventDefault(); block(OZ.KEYS.map(function(kv){ return {c:kv[0], d:kv[1]}; })); return; }
+  if(e.key==='R'){ e.preventDefault(); CMDS.rec && CMDS.rec([]); return; }
+  var m = E.key(e.key, true);
+  if(m===null) return;
+  e.preventDefault();
+  if(e.repeat && lastMsg && lastMsg.d.parentNode) lastMsg.d.innerHTML='<span class="dim">  '+esc(m)+'</span>';
+  else lastMsg = {d: w('<span class="dim">  '+esc(m)+'</span>')};   // a held key updates one line, not a wall
+  draw();
+});
+addEventListener('keyup', function(e){ if(document.activeElement!==IN){ var m=E.key(e.key,false); if(m) w('<span class="dim">  '+esc(m)+'</span>'); } });
+addEventListener('click', function(e){ if(e.target.tagName!=='A') IN.focus(); });
+
+/* the working song survives a refresh */
+addEventListener('beforeunload', function(){ try{ if(song) localStorage.setItem('oontz_song', JSON.stringify(song)); }catch(e){} });
 
 /* magic-link return: #token=... */
 (function(){ var m=(location.hash||'').match(/token=([^&]+)/);
@@ -314,6 +413,10 @@ addEventListener('click', function(){ IN.focus(); });
     w('  <span class="k">'+esc(kv[0])+'</span><span class="dim">'+esc(kv[1])+'</span>'); });
   line();
   if(token) w('<span class="dim">  signed in. <span class="a">publish</span> puts a track in the gallery.</span>');
+  try{ var saved = localStorage.getItem('oontz_song');
+    if(saved){ song = JSON.parse(saved); E.loadSong(song); draw();
+      w('<span class="dim">  restored <span class="b">'+esc(song.name)+'</span> from last time. <span class="a">play</span> to hear it.</span>'); }
+  }catch(e){}
   IN.focus();
 })();
 </script>

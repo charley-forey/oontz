@@ -41,6 +41,10 @@ function Engine(){
   this.order = [];
   this.song = null;            // {bpm, key, scale, order, sections}
   this.songbar = 0;
+  this.focus = null;           // the track the pads edit
+  this.roll = null;            // {i, step, len} while a loop roll is held
+  this.fc = 20000;             // the master filter, swept by [ and ]
+  this.stepNow = 0;            // the step that is sounding right now (for the grid)
   this._timer = null; this._next = 0;
 }
 
@@ -54,9 +58,31 @@ Engine.prototype.start = function(){
   comp.attack.value = 0.002; comp.release.value = 0.10;
   this.analyser = c.createAnalyser();
   this.analyser.fftSize = 2048; this.analyser.smoothingTimeConstant = 0.75;
-  this.master.connect(comp); comp.connect(this.analyser);
+  /* master -> filter -> delay line -> out -> comp -> analyser. The filter is the
+     [ ] sweep. The delay line sits at 0 and is only ever moved by rateFx: a
+     DelayNode is a ring buffer with a read head, which is what a spinback needs. */
+  this.filter = c.createBiquadFilter(); this.filter.type = "lowpass";
+  this.filter.frequency.value = this.fc; this.filter.Q.value = 0.7;
+  this.fx = c.createDelay(4); this.fx.delayTime.value = 0;
+  this.out = c.createGain();
+  this.master.connect(this.filter); this.filter.connect(this.fx); this.fx.connect(this.out);
+  this.out.connect(comp); comp.connect(this.analyser);
   this.analyser.connect(c.destination);
   return c;
+};
+
+/* Read the delay line at speed r(t): a rate is a delay d(t) = t - integral(r), so a
+   negative rate reads backwards. Same idea as dj.py moving a pointer, on a node
+   the browser already has. After `dur` the head snaps back to live. */
+Engine.prototype.rateFx = function(rate, dur){
+  var c = this.ctx; if(!c || !this.fx) return;
+  var n = Math.ceil(dur * 1000), d = new Float32Array(n + 1), acc = 0, dt = dur / n;
+  for(var k = 0; k <= n; k++){ d[k] = Math.max(0, Math.min(3.9, k * dt - acc)); acc += rate(k * dt) * dt; }
+  var t0 = c.currentTime + 0.01, p = this.fx.delayTime, g = this.out.gain;
+  p.cancelScheduledValues(t0); p.setValueCurveAtTime(d, t0, dur);
+  p.setValueAtTime(0, t0 + dur + 0.002);
+  g.setValueAtTime(1, t0 + dur - 0.006); g.linearRampToValueAtTime(0.0001, t0 + dur);
+  g.setValueAtTime(1, t0 + dur + 0.012);   // a 6ms dip hides the click when the head snaps back
 };
 
 Engine.prototype.spectrum = function(){
@@ -347,17 +373,44 @@ Engine.prototype.loadSong = function(song){
   return this;
 };
 
-Engine.prototype.setPattern = function(name, pat){
-  if(!this.tracks[name]) this.tracks[name] = {voice: name, pat: pat, gain: 1};
-  else this.tracks[name].pat = pat;
+/* Every live edit goes through here. It writes to the playing tracks AND to the
+   section under the playhead, because stateAt() rebuilds the tracks every bar and
+   would otherwise wipe the edit before you heard it twice. Scoped to the section
+   on purpose: a hat you add in the drop should not leak into the break. */
+Engine.prototype.setTrack = function(name, patch){
+  var tr = this.tracks[name] || (this.tracks[name] = {voice: name, pat: "", gain: 1});
+  Object.assign(tr, patch);
   if(this.order.indexOf(name) < 0) this.order.push(name);
+  var at = this.song && sectionAt(this.song, this.songbar);
+  if(at){ var sec = at.sec; sec.tracks = sec.tracks || {};
+    sec.tracks[name] = Object.assign(sec.tracks[name] || {voice: name, pat: "", gain: 1}, patch);
+    if(sec.order && sec.order.indexOf(name) < 0) sec.order.push(name); }
+  return tr;
+};
+Engine.prototype.setPattern = function(name, pat){ return this.setTrack(name, {pat: pat}); };
+
+/* Which 16th sounds at a given step. A held roll freezes the index while the step
+   count keeps running, so releasing lands where the track would have been. */
+Engine.prototype._index = function(step){
+  var r = this.roll;
+  return r ? (r.i + ((step - r.step) % r.len + r.len) % r.len) % 16 : ((step % 16) + 16) % 16;
 };
 
-Engine.prototype._tick = function(){
-  var c = this.start(), t = c.currentTime + 0.05;
-  var i = this.step % 16, self = this;
+Engine.prototype.jump = function(bar){
+  var total = totalBars(this.song); if(!total) return;
+  this.songbar = ((bar % total) + total) % total;
+  var st = stateAt(this.song, this.songbar);
+  if(st){ this.tracks = st.tracks; this.order = st.order; this.setBpm(st.bpm); this.swing = st.swing; }
+  this.step = 0;               // the bar restarts on its first step and does not advance
+  if(this.onbar) this.onbar(this.songbar, st);
+};
 
-  if(this.song && i === 0 && this.step > 0){
+Engine.prototype._tick = function(t){
+  var c = this.start(), self = this;
+  if(t == null) t = c.currentTime + 0.05;
+  var raw = this.step % 16, i = this._index(this.step);
+
+  if(this.song && raw === 0 && this.step > 0){
     this.songbar++;
     var st = stateAt(this.song, this.songbar);
     if(st){ this.tracks = st.tracks; this.order = st.order;
@@ -400,23 +453,90 @@ Engine.prototype._tick = function(){
     try { self.voiceFor(tr.voice || name)(self, t + swing, opts); } catch(err){}
   });
 
-  if(this.onstep) this.onstep(i, this.tracks, this.order);
+  if(this.onstep){ var wait = Math.max(0, (t - c.currentTime) * 1000);   // the grid moves when the sound does
+    setTimeout(function(){ self.stepNow = i; if(self.onstep) self.onstep(i, self.tracks, self.order); }, wait); }
   this.step++;
+};
+
+/* The standard lookahead clock: a 25ms timer keeps the next 100ms scheduled on the
+   audio clock, so timer jitter never reaches the audio. */
+Engine.prototype._sched = function(){
+  var now = this.ctx.currentTime;
+  while(this._next < now + 0.1){ this._tick(this._next); this._next += 60 / this.bpm / 4; }
 };
 
 Engine.prototype.setBpm = function(v){
   this.bpm = Math.max(60, Math.min(220, v));
-  if(this.playing){ clearInterval(this._timer);
-    var self = this;
-    this._timer = setInterval(function(){ self._tick(); }, 60 / this.bpm / 4 * 1000); }
 };
 
 Engine.prototype.play = function(){
-  if(this.playing) return; this.start();
-  this.playing = true; this.step = 0;
+  if(this.playing) return; var c = this.start();
+  this.playing = true; this.step = 0; this._next = c.currentTime + 0.05;
   var self = this;
-  this._timer = setInterval(function(){ self._tick(); }, 60 / this.bpm / 4 * 1000);
-  this._tick();
+  this._timer = setInterval(function(){ self._sched(); }, 25);
+  this._sched();
+};
+
+/* -- the keyboard as a controller ---------------------------------------- */
+/* The same table as thud/keymap.py, minus what a browser cannot do. Returns a
+   short message when a key was handled, null when it was not. Pure enough to run
+   in node with no AudioContext: only the sweep and the rate effects need one. */
+
+var PADS = "qwertyuiasdfghjk";
+var KEYS = [
+  ["space", "play / stop"], ["1-8", "focus a track"],
+  ["q w e r t y u i", "steps 1-8 of the focused track  . -> x -> X"],
+  ["a s d f g h j k", "steps 9-16"], ["z / x", "mute / solo the focused track"],
+  ["[ ]  (hold)", "sweep the master filter"], ["/  (hold)", "loop roll"],
+  ["\\", "spinback"], ["`", "tape stop"], ["- =", "tempo"], [", .", "swing"],
+  ["< >", "previous / next section"], ["R", "record what you hear"],
+  ["Esc", "leave the prompt and play the keys"], [":", "back to the prompt"], ["?", "this table"]
+];
+
+Engine.prototype.key = function(k, down){
+  var self = this, foc = this.focus && this.tracks[this.focus] ? this.focus : this.order[0];
+  var tr = foc && this.tracks[foc];
+  if(!down){ if(k === "/" && this.roll){ this.roll = null; return "roll off"; } return null; }
+  if(k === " "){ if(this.playing) this.stop(); else this.play(); return this.playing ? "play" : "stop"; }
+  if(/^[1-8]$/.test(k)){ var n = this.order[+k - 1]; if(!n) return "no track " + k; this.focus = n; return "focus " + n; }
+  var pi = PADS.indexOf(k);
+  if(pi >= 0){
+    if(!tr) return "no track to edit";
+    var pat = (tr.pat || "").padEnd(16, ".").slice(0, 16).split("");   // ponytail: pads see 16 steps; polymeter stays a typed thing
+    var ch = pat[pi], nx = ch === "." || ch === "-" ? "x" : (ch === "x" ? "X" : ".");
+    pat[pi] = nx;
+    var patch = {pat: pat.join("")};
+    if(tr.notes){                              // a pitched track keeps its notes aligned to its hits
+      var notes = tr.notes.slice(0, 16); while(notes.length < 16) notes.push(".");
+      var rest = function(x){ return x === "." || x === "-"; };
+      if(nx === ".") notes[pi] = ".";
+      else { if(rest(notes[pi])) notes[pi] = (notes.filter(function(x){ return !rest(x); })[0] || "a1").replace(/[~!]+$/, "");
+             notes[pi] = notes[pi].replace("!", "") + (nx === "X" ? "!" : ""); }
+      patch.notes = notes;
+    }
+    this.setTrack(foc, patch); this.focus = foc;
+    return foc + " " + patch.pat;
+  }
+  if(k === "z"){ if(!tr) return null; this.setTrack(foc, {mute: !tr.mute}); return foc + (tr.mute ? " muted" : " on"); }
+  if(k === "x"){ if(!tr) return null; var solo = !this._solo; this._solo = solo;
+    this.order.forEach(function(nm){ self.setTrack(nm, {mute: solo && nm !== foc}); });
+    return solo ? "solo " + foc : "solo off"; }
+  if(k === "-" || k === "="){ this.setBpm(this.bpm + (k === "-" ? -1 : 1)); if(this.song) this.song.bpm = this.bpm; return this.bpm + " BPM"; }
+  if(k === "," || k === "."){ this.swing = Math.max(0, Math.min(60, this.swing + (k === "," ? -2 : 2))); return "swing " + this.swing; }
+  if(k === "<" || k === ">"){ if(!this.song) return "no song"; var at = sectionAt(this.song, this.songbar); if(!at) return null;
+    var start = this.songbar - at.within;
+    if(k === ">") this.jump(start + at.sec.bars);
+    else { var pb = at.within > 0 ? start : start - 1, pa = sectionAt(this.song, pb);
+           this.jump(pa ? pb - pa.within : pb); }        // to the START of the previous section
+    var a2 = sectionAt(this.song, this.songbar); return "-> " + (a2 ? a2.name : ""); }
+  if(k === "/"){ if(!this.roll) this.roll = {i: this._index(this.step - 1), step: this.step, len: 1}; return "roll"; }
+  if(k === "[" || k === "]"){
+    this.fc = Math.max(80, Math.min(20000, this.fc * (k === "[" ? 1 / 1.06 : 1.06)));
+    if(this.filter) this.filter.frequency.setTargetAtTime(this.fc, this.ctx.currentTime, 0.02);
+    return "filter " + Math.round(this.fc) + " Hz"; }
+  if(k === "\\"){ this.rateFx(function(t){ return -1.5 * Math.exp(-t / 0.35); }, 1.2); return "spinback"; }
+  if(k === "`"){ this.rateFx(function(t){ return Math.exp(-t / 0.6); }, 1.5); return "tape stop"; }
+  return null;
 };
 
 Engine.prototype.stop = function(){
@@ -426,7 +546,7 @@ Engine.prototype.stop = function(){
 };
 
 global.oontz = {
-  Engine: Engine, VOICES: VOICES, noteHz: noteHz,
+  Engine: Engine, VOICES: VOICES, noteHz: noteHz, KEYS: KEYS, PADS: PADS,
   stateAt: stateAt, sectionAt: sectionAt, totalBars: totalBars, SR: SR
 };
-})(window);
+})(typeof window !== "undefined" ? window : globalThis);

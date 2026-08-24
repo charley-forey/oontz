@@ -146,9 +146,11 @@ FUZZ_ARGS = ["", "0", "-1", "1e9", "-1e9", "nan", "inf", "0.5", "999999",
 def c_fuzz(n=2500):
     from thud import core
     from thud.contracts import COMMANDS
+    import tempfile
     r = random.Random(20240823)
     verbs = list(core.CMDS) + list(COMMANDS) + list(core.ST.tracks)
     crashes = []
+    core.OUTDIR = tempfile.mkdtemp(prefix="thud-fuzz-")   # fuzzed `save`/`render` land here, not in the repo
     for _ in range(n):
         v = r.choice(verbs)
         args = [r.choice(FUZZ_ARGS) for _ in range(r.randrange(0, 4))]
@@ -365,6 +367,7 @@ def report():
 
 
 def main(argv=()):
+    os.environ.setdefault("THUD_OFFLINE", "1")   # 600 fuzzed `ask`s once spent 10 minutes in the claude CLI
     quick = "--quick" in argv
     bless = "--bless" in argv
     check("registries", c_registries)

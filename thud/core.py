@@ -47,6 +47,27 @@ def stereo(x):
 
 
 class State:
+    """Live state. `bpm` is a property because it is assigned from a dozen places
+    - commands, keys, song sections, the composer - and one bad value there makes
+    a bar zero samples long, which the audio callback then divides by. Clamping at
+    the assignment is one guard instead of a dozen."""
+
+    BPM_MIN, BPM_MAX = 20.0, 400.0
+
+    @property
+    def bpm(self):
+        return self._bpm
+
+    @bpm.setter
+    def bpm(self, v):
+        try:
+            v = float(v)
+        except (TypeError, ValueError):
+            v = 132.0
+        if v != v or v in (float("inf"), float("-inf")):   # nan / inf
+            v = 132.0
+        self._bpm = max(State.BPM_MIN, min(State.BPM_MAX, v))
+
     def __init__(self):
         self.bpm = 132.0
         self.swing = 0.0
@@ -407,6 +428,9 @@ def _deck_audio(out, frames):
 
 
 def _callback(out, frames, _t, _status):
+    if len(ST.bar) < 2:                          # nothing to play: silence, not a crash
+        out[:] = 0.0
+        return
     if ST.mode == "deck":
         if _deck_audio(out, frames):
             return
@@ -579,12 +603,13 @@ def _filter(a):
 def _render(a):
     bars = int(a[a.index("--bars") + 1]) if "--bars" in a else 8
     data = np.tile(render_bar(), (bars, 1))
-    with wave.open(a[0], "wb") as w:
+    path = outpath(a[0], ".wav")
+    with wave.open(path, "wb") as w:
         w.setnchannels(2)
         w.setsampwidth(2)
         w.setframerate(SR)
         w.writeframes((np.clip(data, -1, 1) * 32767).astype("<i2").tobytes())
-    return "rendered %s  %d bars  %.1fs" % (a[0], bars, len(data) / SR)
+    return "rendered %s  %d bars  %.1fs" % (path, bars, len(data) / SR)
 
 
 def _num(v):
@@ -618,6 +643,98 @@ def _fx_cmd(a):
 # ------------------------------------------------------------------- song
 
 SONGDIR = "songs"
+
+
+# ------------------------------------------------------- automation recording
+#
+# Move a control by hand while the song plays and the gesture becomes a ramp you
+# can replay. The engine already stores automation; this is the capture path.
+#
+# The gesture decides the CURVE, not just the endpoints. A slow-then-fast sweep
+# and a fast-then-slow sweep have the same start and end and sound nothing alike,
+# so the fit picks whichever of song.CURVES matches the shape you actually made.
+
+AUTOREC = {"on": False, "target": None, "points": [], "section": None}
+
+
+def autorec_on(target=None):
+    """Arm capture. With no target, the first control you touch claims it."""
+    AUTOREC.update({"on": True, "target": target, "points": [],
+                    "section": current_section()[0]})
+    return AUTOREC
+
+
+def autorec_touch(target, value):
+    """Record one point of a gesture. Called wherever a control actually moves."""
+    if not AUTOREC["on"] or ST.song is None:
+        return
+    if AUTOREC["target"] is None:
+        AUTOREC["target"] = target
+    elif AUTOREC["target"] != target:
+        return                                   # one gesture at a time
+    name, sec, within, _i = ST.song.section_at(ST.songbar)
+    if sec is None or (AUTOREC["section"] and name != AUTOREC["section"]):
+        return                                   # gesture left its section; ignore
+    AUTOREC["points"].append((int(within), float(value)))
+
+
+def _fit_curve(points):
+    """Pick the curve in song.CURVES whose shape best matches the gesture.
+
+    Returns (curve_name, lo, hi, start, length). Least squares over the
+    normalised points; ties go to linear because it is the honest default.
+    """
+    pts = sorted(points)
+    t0, t1 = pts[0][0], pts[-1][0]
+    lo, hi = pts[0][1], pts[-1][1]
+    span_t = max(1, t1 - t0)
+    span_v = hi - lo
+    if abs(span_v) < 1e-9 or len(pts) < 3:
+        return "linear", lo, hi, t0, span_t + 1
+    best, best_err = "linear", None
+    for name, fn in songmod.CURVES.items():
+        if name == "step":
+            continue                             # a step is never a gesture
+        err = 0.0
+        for t, v in pts:
+            want = lo + span_v * fn((t - t0) / float(span_t))
+            err += (want - v) ** 2
+        err /= len(pts)
+        if best_err is None or err < best_err - 1e-12:
+            best, best_err = name, err
+    return best, lo, hi, t0, span_t + 1
+
+
+def autorec_off():
+    """Disarm and write the captured gesture into the section as a ramp."""
+    if not AUTOREC["on"]:
+        return "not recording"
+    pts, target = AUTOREC["points"], AUTOREC["target"]
+    AUTOREC.update({"on": False, "target": None, "points": [], "section": None})
+    if not target or len(pts) < 2:
+        return "nothing captured - move a control while it plays"
+    _n, sec = current_section()
+    if sec is None:
+        return "no section to write into"
+    curve, lo, hi, start, length = _fit_curve(pts)
+    sec.automation = [a for a in sec.automation if a[0] != target]
+    sec.automation.append(songmod.ramp(target, lo, hi, start, length, curve))
+    refresh()
+    return "%s %g -> %g over %d bar%s (%s), from %d points" % (
+        target, lo, hi, length, "" if length == 1 else "s", curve, len(pts))
+
+
+def _autorec_cmd(a):
+    """`autorec [target]` arms, `autorec off` writes the ramp."""
+    if a and a[0] in ("off", "stop", "end"):
+        return autorec_off()
+    if AUTOREC["on"]:
+        return autorec_off()
+    if ST.song is None:
+        return "load or compose a song first - a ramp lives in a section"
+    autorec_on(a[0] if a else None)
+    return "recording %s - move a control while it plays, `autorec` again to write" % (
+        AUTOREC["target"] or "the next control you touch")
 
 
 def current_section():
@@ -676,8 +793,8 @@ def _song_cmd(a):
     if sub == "save":
         os.makedirs(SONGDIR, exist_ok=True)
         _sync_section()
-        p = a[1] if len(a) > 1 else "%s/%s.song" % (SONGDIR, sg.name)
-        return "saved " + sg.save(p if p.endswith(".song") else p + ".song")
+        p = os.path.join(SONGDIR, os.path.basename(outpath(a[1] if len(a) > 1 else sg.name, ".song")))
+        return "saved " + sg.save(p)
     if sub == "load":
         p = a[1]
         p = p if p.endswith(".song") else "%s/%s.song" % (SONGDIR, p)
@@ -688,8 +805,7 @@ def _song_cmd(a):
         return "loaded %s - %d bars, %s" % (ST.song.name, ST.song.total_bars(),
                                             _mmss(ST.song.seconds()))
     if sub == "render":
-        p = a[1] if len(a) > 1 else "%s.wav" % sg.name
-        return render_song(p)
+        return render_song(outpath(a[1] if len(a) > 1 else sg.name, ".wav"))
     if sub == "key" and len(a) > 2:
         sg.key, sg.scale = a[1], a[2]
         return None
@@ -890,6 +1006,7 @@ CMDS = {
     "song":      (_song_cmd, "sg", "new|info|save|load|render|key"),
     "sec":       (_sec_cmd, "se", "add|copy|del|len|goto|role|order|list"),
     "goto":      (_goto_cmd, "gt", "scrub to a bar or section"),
+    "autorec":   (_autorec_cmd, "ar", "capture a control gesture as a ramp"),
     "loopsec":   (lambda a: setattr(ST, "loop_section", not ST.loop_section)
                   or ("loop section: %s" % ("on" if ST.loop_section else "off")), "lp", "loop this section"),
     "voice":     (_voice_cmd, "vc", "point a track at a voice"),
@@ -899,7 +1016,7 @@ CMDS = {
     "fxlist":    (lambda a: "  ".join(sorted(FX)), None, "list every registered effect"),
     "songs":     (_songs, "ls", "list the starter songbook"),
     "open":      (_open, "o", "load a song by name"),
-    "save":      (lambda a: save(a[0]), "s", "write .thud"),
+    "save":      (lambda a: save(outpath(a[0], ".thud")), "s", "write .thud"),
     "load":      (lambda a: load(a[0]), "l", "read .thud"),
     "render":    (_render, "rn", "offline wav"),
     "ab":        (_ab, None, "A/B compare slots"),
@@ -910,7 +1027,7 @@ CMDS = {
 }
 NO_LOG = {"play", "stop", "rec", "save", "load", "render", "undo", "redo",
           "ab", "songs", "open", "view", "voices", "fxlist",
-          "song", "sec", "goto", "loopsec", "mode"}
+          "song", "sec", "goto", "loopsec", "mode", "autorec"}
 # How a command is keyed in the session log, which is what a .thud file is. One entry
 # per thing that can be independently set, so a later edit replaces the earlier one.
 KEYED = {"gain", "pan", "tune", "filter", "sidechain", "humanize", "mute", "solo", "voice"}
@@ -946,27 +1063,30 @@ def do(line, log=True):
     if log and verb not in NO_LOG:
         ST.mark()
 
+    # A typo at the prompt must never raise, whichever branch it lands in - a
+    # bad pattern on a track verb and a missing file on `load` used to escape
+    # while a bad number on a command did not. One guard, every path.
+    try:
+        return _dispatch(verb, args, parts, line, log)
+    except (IndexError, ValueError, KeyError, TypeError, OSError) as e:
+        usage = CMDS[verb][2] if verb in CMDS else ""
+        return "? %s %s   (%s)" % (verb, usage, str(e) or type(e).__name__)
+
+
+def _dispatch(verb, args, parts, line, log):
     if verb in ST.tracks:
         if is_pitched(ST.tracks[verb]):
             set_notes(verb, args)
         else:
             set_pattern(verb, args[0])
     elif verb in CMDS:
-        try:
-            out = CMDS[verb][0](args)
-        except (IndexError, ValueError, KeyError, TypeError) as e:
-            # A typo at the prompt must never raise. Show what the verb wants.
-            return "? %s %s   (%s)" % (verb, CMDS[verb][2],
-                                       str(e) or type(e).__name__)
+        out = CMDS[verb][0](args)
         if verb in NO_LOG:
             return out
         if out:
             return out
     elif verb in COMMANDS and verb not in CMDS:
-        try:
-            out = COMMANDS[verb](ST, args)
-        except (IndexError, ValueError, KeyError, TypeError) as e:
-            return "? %s   (%s)" % (verb, str(e) or type(e).__name__)
+        out = COMMANDS[verb](ST, args)
         if isinstance(out, (list, tuple)):               # expanded to primitives
             bad = []
             for cmd in out:
@@ -993,6 +1113,15 @@ def do(line, log=True):
     return None
 
 # ------------------------------------------------------------ save / load
+
+OUTDIR = "."   # where user-named files land; the QA fuzzer points it at a scratch dir
+
+
+def outpath(p, ext):
+    """A user-typed output name becomes `OUTDIR/<basename><ext>`. Basename only:
+    `save ../etc/passwd` must not leave the directory - the fuzzer proved it could."""
+    p = os.path.basename(str(p)).strip() or "untitled"
+    return os.path.join(OUTDIR, p if p.endswith(ext) else p + ext)
 
 
 def save(path):

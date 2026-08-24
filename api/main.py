@@ -27,6 +27,8 @@ from pydantic import BaseModel, Field
 
 DB = os.environ.get("OONTZ_DB", "/data/oontz.db")
 SECRET = os.environ.get("OONTZ_SECRET", "dev-only-not-a-secret")
+if SECRET == "dev-only-not-a-secret" and os.environ.get("RAILWAY_ENVIRONMENT"):
+    raise SystemExit("OONTZ_SECRET is unset: every session would be forgeable. Refusing to start.")
 APP_URL = os.environ.get("OONTZ_APP_URL", "https://oontz.sh")
 SITE_URL = os.environ.get("OONTZ_SITE_URL", "https://oontz.music")
 RESEND_KEY = os.environ.get("RESEND_API_KEY", "")
@@ -204,12 +206,10 @@ def limit(request: Request, bucket, per_min=30):
 
 @app.get("/health")
 def health():
+    """Public: the Railway healthcheck hits this. Diagnostics are in the logs, not here."""
     with closing(db()) as c:
-        n = c.execute("SELECT COUNT(*) n FROM songs").fetchone()["n"]
-        u = c.execute("SELECT COUNT(*) n FROM users").fetchone()["n"]
-    return {"ok": True, "songs": n, "users": u, "mail": bool(RESEND_KEY),
-            "ai": bool(ANTHROPIC_KEY), "mail_error": LAST_MAIL_ERROR["why"],
-            "db": DB, "db_exists": os.path.exists(DB)}
+        c.execute("SELECT 1")
+    return {"ok": True, "mail": bool(RESEND_KEY), "ai": bool(ANTHROPIC_KEY)}
 
 
 @app.post("/auth/request")
@@ -238,7 +238,8 @@ def auth_request(body: EmailIn, request: Request):
 
 
 @app.get("/auth/verify")
-def auth_verify(token: str):
+def auth_verify(token: str, request: Request):
+    limit(request, "verify", 20)                 # 256-bit tokens, but no free guessing either
     with closing(db()) as c:
         row = c.execute("SELECT * FROM links WHERE token=?", (token,)).fetchone()
         if not row or time.time() - row["created"] > LINK_TTL:
@@ -404,6 +405,8 @@ def ai_ask(body: AskIn, request: Request):
         "track add <name> [voice]; fx <track|master> <effect> [k v]; "
         "style <name>; melody <track> <root> <scale> <len>; euc <track> k n; "
         "compose <style> <minutes> <curve>; ramp <track>.<param> <lo> <hi> over <bars>.\n"
+        "If the state lists `commands`, use only verbs from that list - the client "
+        "rejects anything else. Prefer few, decisive lines.\n"
         "Current state:\n" + json.dumps(body.state)[:4000])
     payload = json.dumps({
         "model": "claude-sonnet-5",

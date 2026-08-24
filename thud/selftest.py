@@ -134,6 +134,9 @@ def selftest():
     got = render_bar()
     assert np.array_equal(want, got), "save/load did not round-trip"
     os.remove(p)
+    out = do("save ../etc/passwd")                # a typed name can never leave OUTDIR
+    assert "passwd.thud" in out and not os.path.exists("../etc/passwd.thud"), out
+    os.remove("passwd.thud")
 
     # -- per-track band energy is measured, not guessed ------------------
     do("open industrial")
@@ -158,6 +161,48 @@ def selftest():
         assert gs >= 70, "a well-formed song scored only %d" % gs
         assert bs < gs - 20, "grader cannot separate good (%d) from bad (%d)" % (gs, bs)
         assert theory.advice(theory.critique(bad, None, "hardtechno")), "no advice given"
+    except ImportError:
+        pass
+
+    # -- a hostile bpm must never make a degenerate bar --------------------
+    import numpy as _np
+    for v in ("1e9", "0", "-5", "nan", "inf", "abc", "1e-9"):
+        do("bpm " + v, log=False)
+        assert ST.n > 1000, "bpm %s made a %d-sample bar" % (v, ST.n)
+        assert State.BPM_MIN <= ST.bpm <= State.BPM_MAX, "bpm %s escaped the clamp" % v
+    do("bpm 132", log=False)
+    saved_bar = ST.bar
+    ST.bar = _np.zeros((0, 2), _np.float32)       # the audio thread must survive it
+    _o = _np.zeros((256, 2), _np.float32)
+    core._callback(_o, 256, None, None)
+    assert not _o.any(), "empty bar should play silence, not noise"
+    ST.bar = saved_bar
+
+    # -- automation recording captures the SHAPE, not just the endpoints ---
+    try:
+        from . import compose as _cp, song as _sm
+        core.set_song(_cp.compose_song("hardtechno", 3.0, seed=5))
+        core.ST.songbar = 0
+        core._load_section(0)
+        for want, fn in _sm.CURVES.items():
+            if want == "step":
+                continue                          # a step is never a gesture
+            pts = [(b, 300.0 + 3700.0 * fn(b / 7.0)) for b in range(8)]
+            got, lo, hi, _st, ln = core._fit_curve(pts)
+            assert got == want, "gesture fit chose %s for a %s sweep" % (got, want)
+            assert abs(lo - 300) < 1 and abs(hi - 4000) < 1, "endpoints lost"
+            assert ln == 8, "length %d, want 8" % ln
+        do("autorec")
+        for b in range(8):
+            core.ST.songbar = b
+            core.autorec_touch("bass.fc", 300 + 3700 * (b / 7.0) ** 2)
+        out = do("autorec")
+        _n, _sec = core.current_section()
+        got = [a for a in _sec.automation if a[0] == "bass.fc"]
+        assert got and got[0][5] == "exp", "captured gesture did not become an exp ramp"
+        assert abs(core.ST.song.state_at(7)["tracks"]["bass"]["fc"] - 4000) < 1,             "recorded ramp does not reach its endpoint"
+        core.ST.song = None
+        assert "song" in (do("autorec") or ""), "arming with no song must explain itself"
     except ImportError:
         pass
 
