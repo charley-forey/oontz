@@ -218,6 +218,7 @@ C.help = [
   ["source save",            "the whole song as a 15KB .oontz file. not a recording — the song"],
   ["diff",                   "what changed, in plain lines: bpm, bars, patterns. music, diffed"],
   ["similar",                "what public tracks yours resembles — structure, not tags"],
+  ["room new",               "two browsers, one track, live. the AI is in the room too"],
   ["produce 90",             "the AI produces the track: grade, fix, regrade, until it holds up"],
   ["dream driving acid at 3am", "a sentence in, an arranged track out"],
   ["sounds",                 "the whole voice bank on one line"],
@@ -299,6 +300,10 @@ C.theme_make_usage = "theme make <name> <#hex> <#hex> [more...] - 2-6 colors, yo
 
 C.source_hint = "`source save` downloads it · `source copy` copies it · `load <paste>` round-trips it · `diff` shows what changed.";
 C.load_usage = "load <pasted .oontz JSON> - a song someone `source copy`d, back to playing. the recipe, not the cake.";
+
+C.room_usage = "room new · room <code> · room who · room leave. everyone edits one track; everyone hears their own render.";
+C.room_new = function (code) { return "room " + code + " is open. tell someone: `room " + code + "` at oontz.sh — every musical move you or the AI makes lands in their session too."; };
+C.room_in = function (code) { return "in room " + code + ". your moves broadcast; theirs arrive as ◂ lines. `room leave` exits."; };
 
 g.OONTZ_COPY = C;
 })(window);

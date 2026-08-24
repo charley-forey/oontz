@@ -333,6 +333,19 @@ stale; `qa` runs 192 arrangements through both composers and requires identical 
   and the seed script gained a --token path for when Resend's delivery to the
   house address is too flaky for self-auth.
 
+- 2026-08-24 -- cycle 19: rooms. A room is a chatroom whose messages happen to be
+  music: because every musical action is a command string through one run(), live
+  collaboration is relaying strings - POST /rooms mints a code, WS /ws/room/{code}
+  forwards JSON between members and never interprets it (in-memory, dies on
+  redeploy, ponytail-marked). `room new` / `room <code>` / who / leave; local
+  musical commands broadcast (the musical() filter), incoming ones run echoed as
+  ◂ handle, joiners inherit the room's track, presence sits in the HUD, and the
+  AI's jam turns broadcast like anyone else's because they go through run() too.
+  Verified with two real Chrome tabs: alice's kick landed in bob's session, bob's
+  hat came back into alice's rack, HUD read room · 2 on both sides. Found the
+  hard way: a .song is 15-40KB and the relay's 16KB cap CLOSED the sender - the
+  retry then double-counted presence. 128KB cap, oversize dropped not executed.
+
 ## Cycle log
 
 Append one line per completed cycle: what changed, what it measured, what it learned.

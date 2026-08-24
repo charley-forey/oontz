@@ -35,6 +35,7 @@ Everything except the first two is optional; the service starts and works withou
 | `POST /similar` | — | more like this unsaved song (inline doc), same scorer |
 | `GET /charts` | — | most forked, most-shared patterns, tempo spread, busiest keys |
 | `GET /songs/{id}/remixes` | — | the family tree: ancestors up, public flips down |
+| `POST /rooms` · `WS /ws/room/{code}` | — | rooms: a relay that forwards music between members and never interprets it |
 | `POST /ai/ask` | — | AI proxy; honours `X-Anthropic-Key` (used, never stored or logged) |
 
 Run the tests with `python api/test_api.py` — they spawn a real uvicorn against a

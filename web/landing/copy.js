@@ -56,6 +56,7 @@ C.help = [
   ["gallery like <id>",     "more like this one, scored on structure, reasons included"],
   ["tree <id>",             "the remix family tree: who flipped what"],
   ["charts",                "what the source graph knows: most forked, most-shared patterns, tempos"],
+  ["(at oontz.sh) room new", "two browsers, one track, live — the AI is in the room too"],
   ["open",                  "go to oontz.sh, where the real one lives"],
   ["clear",                 "tidy up"]
 ];

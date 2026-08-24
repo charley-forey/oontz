@@ -221,6 +221,7 @@ function draw(){
     HUD.innerHTML = '<span class="a2">'+esc(song.name)+'</span> <span class="dim">'+
       Math.round(song.bpm)+' BPM · '+esc(song.key+' '+song.scale)+' · bar '+
       (E.songbar+1)+'/'+total+' · '+mmss(songSeconds(song))+' · </span>'+
+      (ROOM.code ? '<span class="a">room '+esc(ROOM.code)+' · '+(ROOM.others+1)+'</span> <span class="dim">· </span>' : '')+
       '<span class="b">'+esc(at?at.name:'')+'</span><br>'+cells;
   }
   var h = '';
@@ -704,6 +705,28 @@ var CMDS = {
       w('  <span class="'+c+'">'+esc(l)+'</span>'); });
     line();
   },
+  room: async function(a){
+    var v = (a[0]||'').toLowerCase();
+    if(v === 'leave'){ var had = ROOM.code; ROOM.code = null;
+      if(ROOM.ws) try{ ROOM.ws.close(); }catch(e){}
+      ROOM.ws = null; ROOM.others = 0; ROOM.gotSong = false; draw();
+      return line(had ? '▸ left '+had : 'you were not in a room','dim'); }
+    if(v === 'who') return line(ROOM.code ? '▸ room '+ROOM.code+' · you and '+ROOM.others+' other'+(ROOM.others===1?'':'s') : 'no room. `room new` starts one.','dim');
+    if(v === 'new' || !v){
+      if(!v && ROOM.code) return CMDS.room(['who']);
+      if(!v) return line(CP.room_usage,'w');
+      try{
+        var r = await fetch(API+'/rooms', {method:'POST'});
+        var j = await r.json();
+        if(!j.code) return line('▸ '+esc(j.error||'no room came back'),'w');
+        ROOM.gotSong = true;                     /* the creator's song is the room's song */
+        roomJoin(j.code);
+        line('▸ '+CP.room_new(j.code),'b');
+      }catch(e){ line('could not reach the server','w'); }
+      return; }
+    ROOM.gotSong = false;
+    roomJoin(v.toUpperCase());
+  },
   similar: async function(){
     if(!song) return line(CP.err_nosong,'w');
     var d = w('<span class="dim">  asking the gallery what this resembles…</span>');
@@ -1038,6 +1061,61 @@ PAL.addEventListener('click', function(e){ if(e.target === PAL) closePal(); });
 var EAR = window.OONTZ_EAR;
 function sev(k){ return {good:'<span class="ok">  ✓ ', warn:'<span class="w">  ! ',
                          bad:'<span class="hot">  ✗ '}[k] || '<span class="dim">  '; }
+/* -- rooms: a chatroom whose messages happen to be music. Local musical
+   commands broadcast; incoming ones run, echoed as ◂ handle. Everyone hears
+   their own render of the same evolving song (shared clock is the v2). -- */
+var ROOM = {code: null, ws: null, others: 0, remote: false, retried: false};
+function roomWire(cmd){                          /* pure: should this line broadcast? */
+  if(!ROOM.ws || ROOM.remote) return false;
+  return musical(cmd);
+}
+function roomSend(obj){
+  try{ if(ROOM.ws && ROOM.ws.readyState === 1) ROOM.ws.send(JSON.stringify(obj)); }catch(e){}
+}
+function roomJoin(code){
+  var url = API.replace(/^http/, 'ws') + '/ws/room/' + encodeURIComponent(code);
+  var ws = new WebSocket(url);
+  ws.onopen = function(){
+    ROOM.code = code; ROOM.ws = ws; ROOM.retried = false;
+    roomSend({t: 'hello', handle: (localStorage.getItem('oontz_handle') || 'someone')});
+    if(!song) roomSend({t: 'sync?'});
+    line('▸ '+CP.room_in(code), 'ok'); draw();
+  };
+  ws.onmessage = function(ev){
+    var m; try{ m = JSON.parse(ev.data); }catch(e){ return; }
+    if(m.t === 'hello'){ ROOM.others++;
+      w('<span class="dim">  ◂ '+esc(m.from)+' joined the room</span>');
+      roomSend({t: 'here', to: m.from});         /* so the joiner can count us */
+      if(song) roomSend({t: 'song', doc: song});
+      draw(); return; }
+    if(m.t === 'here'){
+      if(m.to === (localStorage.getItem('oontz_handle') || 'someone')) ROOM.others++;
+      draw(); return; }
+    if(m.t === 'bye'){ ROOM.others = Math.max(0, ROOM.others - 1);
+      w('<span class="dim">  ◂ '+esc(m.from)+' left</span>'); draw(); return; }
+    if(m.t === 'sync?'){ if(song) roomSend({t: 'song', doc: song}); return; }
+    if(m.t === 'song' && m.doc && !ROOM.gotSong){
+      ROOM.gotSong = true;
+      if(song) snapshot();
+      ROOM.remote = true;
+      try{ loadSong(m.doc, 'the room\u2019s track'); }finally{ ROOM.remote = false; }
+      return; }
+    if(m.t === 'cmd' && m.line){
+      w('<span class="a2">◂ '+esc(m.from||'someone')+'</span> <span class="dim">'+esc(m.line)+'</span>');
+      ROOM.remote = true;
+      try{ run(m.line); }finally{ ROOM.remote = false; }
+      return; }
+  };
+  ws.onclose = function(){
+    if(ROOM.code && !ROOM.retried){ ROOM.retried = true;
+      w('<span class="dim">  the room dropped — retrying once…</span>');
+      setTimeout(function(){ if(ROOM.code) roomJoin(ROOM.code); }, 1500);
+    } else if(ROOM.code){
+      line('the room is gone — you are solo again','w');
+      ROOM.code = null; ROOM.ws = null; ROOM.others = 0; draw();
+    }
+  };
+}
 var JAM = {on:false, bars:8, mark:0, turns:0, busy:false, style:''};
 setInterval(async function(){
   if(!JAM.on || JAM.busy || PRODUCING || !E.playing || MODE === 'deck' || !song) return;
@@ -1099,6 +1177,13 @@ function run(raw){
   if(CMDS[v]){ var r = CMDS[v](args); teach(v); setTimeout(lessonCheck, 60); return r; }
   line(CP.err_cmd?CP.err_cmd(v0):v0+': no', 'w');
 }
+var _soloRun = run;
+run = function(raw){                             /* the room hears every musical move */
+  var s = (raw||'').trim();
+  var out = _soloRun(raw);
+  if(s && roomWire(s)) roomSend({t: 'cmd', line: s});
+  return out;
+};
 
 /* ------------------------------------------------- the prompt, as a real one
    History, completion and a hint strip. A terminal without ↑ and Tab is a text

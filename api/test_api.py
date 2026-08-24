@@ -221,8 +221,33 @@ def main():
         st, si, _ = call("POST", "/similar", {"data": songp})
         assert st == 200 and si["songs"] and si["songs"][0]["why"], ("inline similar found nothing", si)
 
+        # -- rooms: the relay forwards music between members --------------------------
+        import asyncio
+        async def room_relay():
+            import websockets
+            st_r, room, _ = call("POST", "/rooms")
+            assert st_r == 200 and len(room["code"]) == 6, room
+            wsu = "ws://127.0.0.1:%d/ws/room/%s" % (PORT, room["code"])
+            async with websockets.connect(wsu) as a, websockets.connect(wsu) as b:
+                await a.send(json.dumps({"t": "hello", "handle": "left"}))
+                await b.send(json.dumps({"t": "hello", "handle": "right"}))
+                await asyncio.sleep(0.1)
+                # drain the hellos each side relayed to the other
+                for sock in (a, b):
+                    try:
+                        await asyncio.wait_for(sock.recv(), 0.5)
+                    except asyncio.TimeoutError:
+                        pass
+                await a.send(json.dumps({"t": "cmd", "line": "kick x...x...x...x..."}))
+                got = json.loads(await asyncio.wait_for(b.recv(), 2))
+                assert got["t"] == "cmd" and got["line"].startswith("kick") and got["from"] == "left", got
+                await b.send(json.dumps({"t": "sync?"}))
+                got2 = json.loads(await asyncio.wait_for(a.recv(), 2))
+                assert got2["t"] == "sync?" and got2["from"] == "right", got2
+        asyncio.run(room_relay())
+
         print("api checks pass  ·  link -> sqlite -> verify · save · publish · handle · "
-              "playlist · /p/{id} · takes · remix · search/similar/tree/charts · BYO key (upstream said %s)" % st)
+              "playlist · /p/{id} · takes · remix · search/similar/tree/charts · rooms · BYO key (upstream said %s)" % st)
     finally:
         proc.terminate()
         try:

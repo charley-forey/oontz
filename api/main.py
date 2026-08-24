@@ -20,7 +20,8 @@ import secrets
 import urllib.request
 from contextlib import closing
 
-from fastapi import FastAPI, HTTPException, Depends, Header, Request
+from fastapi import (FastAPI, HTTPException, Depends, Header, Request,
+                     WebSocket, WebSocketDisconnect)
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, RedirectResponse
 from pydantic import BaseModel, Field
@@ -933,6 +934,70 @@ def ai_ask(body: AskIn, request: Request, x_anthropic_key: str = Header(default=
     why = next((l.strip().lstrip("#").strip() for l in text.splitlines()
                 if l.strip().startswith("#")), "")
     return {"commands": lines[:24], "why": why[:120], "raw": text}
+
+
+# ---------------------------------------------------------------- rooms
+# A room is a chatroom whose messages happen to be music: the relay forwards
+# JSON between members and never interprets it. The engine is deterministic and
+# command-driven, so relaying command strings IS real-time collaboration.
+# ponytail: in-memory, single instance - rooms die on redeploy, which is fine
+# for a jam; persistence and shared-clock playback are the v2 upgrade path.
+
+ROOMS: dict = {}                                 # code -> list[(WebSocket, handle)]
+ROOM_CAP = 8
+ROOM_MSG_MAX = 128 * 1024                         # a .song is 15-40KB; leave headroom
+
+
+@app.post("/rooms")
+def room_new(request: Request):
+    limit(request, "room", 12)
+    code = "".join(secrets.choice("ABCDEFGHJKMNPQRSTUVWXYZ23456789") for _ in range(6))
+    ROOMS.setdefault(code, [])
+    return {"code": code}
+
+
+async def _room_send(ws, text):
+    try:
+        await ws.send_text(text)
+    except Exception:
+        pass                                     # a dead member is removed on its own recv
+
+
+@app.websocket("/ws/room/{code}")
+async def room_ws(ws: WebSocket, code: str):
+    code = code.upper()[:6]
+    members = ROOMS.setdefault(code, [])
+    if len(members) >= ROOM_CAP:
+        await ws.close(code=1008)
+        return
+    await ws.accept()
+    me = [ws, "someone"]
+    members.append(me)
+    try:
+        while True:
+            text = await ws.receive_text()
+            if len(text) > ROOM_MSG_MAX:
+                continue                          # drop the message, keep the member
+            try:
+                msg = json.loads(text)
+            except ValueError:
+                continue
+            if msg.get("t") == "hello":
+                me[1] = str(msg.get("handle") or "someone")[:24]
+            msg["from"] = me[1]
+            out = json.dumps(msg)
+            for other in list(members):
+                if other[0] is not ws:
+                    await _room_send(other[0], out)
+    except WebSocketDisconnect:
+        pass
+    finally:
+        if me in members:
+            members.remove(me)
+        for other in list(members):
+            await _room_send(other[0], json.dumps({"t": "bye", "from": me[1]}))
+        if not members:
+            ROOMS.pop(code, None)
 
 
 @app.exception_handler(HTTPException)

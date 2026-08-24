@@ -449,4 +449,9 @@ A.ok(dd.some(function(l){ return l.indexOf("drop/kick:") === 0; }), "diff sees t
 A.ok(dd.some(function(l){ return l.indexOf("+ section break2") === 0; }), "diff sees the new section");
 A.deepStrictEqual(OZ.songDiff(d1, JSON.parse(JSON.stringify(d1))), ["identical, note for note"], "no-change is said plainly");
 
-console.log("web checks pass  ·  write-through · pads · viz · touch · midi · voices+4 · viz-auto · themes · stage · pwa · notes · roll · jumps · decks · diff · theory (" + checked + " plans in window) · legible · ear · " + OZ.KEYS.length + " keys listed");
+/* -- rooms: what broadcasts is exactly what is musical ------------------------ */
+var pageSrc = fs2.readFileSync(path2.join(__dirname, "index.html"), "utf8");
+A.ok(pageSrc.indexOf("function roomWire") >= 0 && pageSrc.indexOf("ws/room/") >= 0, "the room client exists");
+A.ok(pageSrc.indexOf("ROOM.remote = true") >= 0, "remote commands must not re-broadcast");
+
+console.log("web checks pass  ·  write-through · pads · viz · touch · midi · voices+4 · viz-auto · themes · stage · pwa · notes · roll · jumps · decks · diff · rooms · theory (" + checked + " plans in window) · legible · ear · " + OZ.KEYS.length + " keys listed");

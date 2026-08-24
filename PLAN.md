@@ -163,7 +163,11 @@ The ladder of intelligence, each rung shipped on the one below:
    spot; two bad rounds and it stops while ahead; one `undo` takes back the pass. *(shipped)*
 4. **dream** — prose in, arranged track out: the AI picks style, length and curve,
    then pushes the result toward the words. `dream driving acid at 3am`. *(shipped)*
-5. Next up: **produce with reference** (the loop's reference-matching lands, and
+5. **rooms** — two browsers, one track, live: musical commands relay through a
+   websocket room; everyone hears their own render of the same evolving song;
+   the AI's jam moves broadcast like anyone else's. *(shipped: shared state;
+   shared clock is the v2.)*
+6. Next up: **produce with reference** (the loop's reference-matching lands, and
    produce aims at a record you love, not just the rulebook); **rooms** (two
    browsers, one clock, jam together); **the /py/ default swap** once the real
    engine's transport is as polished as the port it replaces.
