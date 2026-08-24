@@ -246,6 +246,32 @@ const CMDS = {
   open(){ block(CP.open);
     w(`  <a href="https://oontz.sh" target="_blank" rel="noopener">https://oontz.sh →</a>`);
     line(); },
+  async charts(){
+    const d = w('<span class="dim">  reading the source graph…</span>');
+    try{
+      const r = await fetch(API+'/charts'); const j = await r.json(); d.remove();
+      if(j.most_remixed && j.most_remixed.length){
+        line('▸ most forked','b');
+        j.most_remixed.slice(0,5).forEach(function(m){
+          w('  <span data-cmd="tree '+esc(m.id)+'"><span class="a">'+esc(m.title)+'</span> <span class="dim">'+m.remixes+' flip'+(m.remixes>1?'s':'')+' · by '+esc(m.handle||'?')+' · tree</span></span>'); });
+        line();
+      }
+      if(j.top_patterns && j.top_patterns.length){
+        line('▸ most-shared patterns','b');
+        j.top_patterns.forEach(function(p){
+          w('  <span data-cmd="gallery pat '+esc(p.pat)+'"><span class="a">'+esc(p.pat)+'</span> <span class="dim">in '+p.count+' tracks · e.g. '+esc(p.example.title)+'</span></span>'); });
+        line();
+      }
+      if(j.bpm && j.bpm.length){
+        const max = Math.max.apply(null, j.bpm.map(function(b){ return b[1]; }));
+        const bars = '▁▂▃▅▆▇';
+        line('▸ tempo spread','b');
+        j.bpm.forEach(function(b){
+          const h = bars[Math.min(bars.length-1, Math.round((b[1]/max)*(bars.length-1)))];
+          w('  <span class="dim">'+b[0]+'–'+(b[0]+9)+' BPM </span><span class="a">'+h.repeat(Math.max(1,b[1]))+'</span> <span class="dim">'+b[1]+'</span>'); });
+        line();
+      }
+    }catch(e){ d.remove(); line('could not reach the api','w'); } },
   async tree(a){
     if(!a[0]) return line('tree <track id> — the remix family tree','w');
     try{
@@ -418,7 +444,14 @@ addEventListener('click', e=>{
  (CP.menu||[]).forEach(function(kv){
    w(`  <span class="k">${esc(kv[0])}</span><span class="dim">${esc(kv[1])}</span>`); });
  line();IN.focus();
- if(window.OONTZ_BOOT){ await sleep(300); run(window.OONTZ_BOOT); }})();
+ if(window.OONTZ_BOOT){
+   if(window.OONTZ_WATCH){
+     line('▸ tap anywhere for the light show','a');
+     const go = function(){ removeEventListener('pointerdown', go);
+       run(window.OONTZ_BOOT); setTimeout(function(){ if(window.OONTZ_VIZ) OONTZ_VIZ.watch(true); }, 800); };
+     addEventListener('pointerdown', go);
+   } else { await sleep(300); run(window.OONTZ_BOOT); }
+ }})();
 </script>
 </body>
 </html>

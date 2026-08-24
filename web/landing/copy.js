@@ -55,6 +55,7 @@ C.help = [
   ["gallery pat x...x...x...x...", "search the actual music: every track playing that pattern"],
   ["gallery like <id>",     "more like this one, scored on structure, reasons included"],
   ["tree <id>",             "the remix family tree: who flipped what"],
+  ["charts",                "what the source graph knows: most forked, most-shared patterns, tempos"],
   ["open",                  "go to oontz.sh, where the real one lives"],
   ["clear",                 "tidy up"]
 ];

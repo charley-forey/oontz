@@ -217,6 +217,7 @@ C.help = [
   ["remix <id>",             "any public track opens as source. publish credits the original"],
   ["source save",            "the whole song as a 15KB .oontz file. not a recording — the song"],
   ["diff",                   "what changed, in plain lines: bpm, bars, patterns. music, diffed"],
+  ["similar",                "what public tracks yours resembles — structure, not tags"],
   ["produce 90",             "the AI produces the track: grade, fix, regrade, until it holds up"],
   ["dream driving acid at 3am", "a sentence in, an arranged track out"],
   ["sounds",                 "the whole voice bank on one line"],

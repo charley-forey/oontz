@@ -592,6 +592,63 @@ def remix_tree(sid: str, request: Request = None):
             "remixes": [dict(k) for k in kids]}
 
 
+@app.get("/charts")
+def charts(request: Request = None):
+    """What the source graph knows: only possible because songs are text.
+    ponytail: full scan; an index when the gallery outgrows a few thousand."""
+    limit(request, "get", 60)
+    from collections import Counter
+    most_remixed, pat_count, pat_ex, bpm_bucket, key_count = [], Counter(), {}, Counter(), Counter()
+    with closing(db()) as c:
+        for r in _public_songs(c):
+            if r["kkey"]:
+                key_count[r["kkey"]] += 1
+            if r["bpm"]:
+                bpm_bucket[int(r["bpm"] // 10) * 10] += 1
+            n = c.execute("SELECT COUNT(*) n FROM songs WHERE remix_of=? AND public=1",
+                          (r["id"],)).fetchone()["n"]
+            if n:
+                most_remixed.append({"id": r["id"], "title": r["title"],
+                                     "handle": r["handle"], "remixes": n})
+            try:
+                data = json.loads(r["data"])
+            except ValueError:
+                continue
+            for _t, p in _struct(data)["pats"]:
+                pat_count[p] += 1
+                pat_ex.setdefault(p, {"id": r["id"], "title": r["title"]})
+    most_remixed.sort(key=lambda x: -x["remixes"])
+    top_pats = [{"pat": p, "count": n, "example": pat_ex[p]}
+                for p, n in pat_count.most_common(8) if n > 1]
+    return {"most_remixed": most_remixed[:10],
+            "top_patterns": top_pats,
+            "bpm": sorted(([b, n] for b, n in bpm_bucket.items())),
+            "keys": key_count.most_common(8)}
+
+
+class SimilarIn(BaseModel):
+    data: dict
+
+
+@app.post("/similar")
+def similar_inline(body: SimilarIn, request: Request = None):
+    """More like THIS unsaved song - the create-side of discovery."""
+    limit(request, "get", 60)
+    scored = []
+    with closing(db()) as c:
+        for r in _public_songs(c):
+            try:
+                score, why = _similarity(body.data, json.loads(r["data"]))
+            except ValueError:
+                continue
+            if score > 0.15:
+                scored.append({"id": r["id"], "title": r["title"], "bpm": r["bpm"],
+                               "kkey": r["kkey"], "handle": r["handle"],
+                               "score": score, "why": why})
+    scored.sort(key=lambda x: -x["score"])
+    return {"songs": scored[:10]}
+
+
 @app.get("/gallery")
 def gallery(sort: str = "new", limit_n: int = 40, request: Request = None):
     limit_n = max(1, min(100, limit_n))

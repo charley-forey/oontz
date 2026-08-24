@@ -310,6 +310,19 @@ stale; `qa` runs 192 arrangements through both composers and requires identical 
   a match for the plain pattern - the search reads accents because the music
   does. Also checked the ticked search box off the thesis table in PLAN.md.
 
+- 2026-08-24 -- cycle 17: filled the world, charted it, made shares cinematic.
+  scripts/seed_gallery.py published a house corpus - 15 genres, 3 remixes, 3
+  playlists - so the live gallery finally demonstrates search/similar/tree/mix
+  instead of being empty. Charts arrived (only the source graph can): /charts
+  (most forked, most-shared patterns, tempo spread, busiest keys) with a `charts`
+  command on oontz.music, and POST /similar powering a `similar` command on
+  oontz.sh (what public tracks does mine resemble). And /t/<id> shares got
+  cinematic: server-generated OG cards drawn FROM the song (title, numbers, the
+  real kick/hat as a 16-step strip) via /og/<id>.svg, and ?watch=1 opens the link
+  as a light show after one tap. The landing server learned an API fallback so
+  server-rendered cards survive the custom-domain edge outage. Verified: OG card
+  shows warehouse litany's real drums, watch flow enters fullscreen on tap.
+
 ## Cycle log
 
 Append one line per completed cycle: what changed, what it measured, what it learned.

@@ -32,6 +32,8 @@ Everything except the first two is optional; the service starts and works withou
 | `GET /playlists/public` · `GET /p/{id}` | — | what the landing page reads |
 | `GET /search?pat=&track=&bpm=&key=` | — | find tracks by the music itself: exact pattern, BPM window, key |
 | `GET /similar/{id}` | — | more like this one, scored on structure, reasons included |
+| `POST /similar` | — | more like this unsaved song (inline doc), same scorer |
+| `GET /charts` | — | most forked, most-shared patterns, tempo spread, busiest keys |
 | `GET /songs/{id}/remixes` | — | the family tree: ancestors up, public flips down |
 | `POST /ai/ask` | — | AI proxy; honours `X-Anthropic-Key` (used, never stored or logged) |
 

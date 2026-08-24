@@ -458,7 +458,8 @@ var CMDS = {
         headers:{'content-type':'application/json','authorization':'Bearer '+token},
         body:JSON.stringify({title:song.name, data:Object.assign({format:'thud-song-1'}, song), public:true, remix_of:REMIX_OF||undefined})});
       var j=await r.json();
-      if(j.id) w('<span class="ok">▸ published.</span> <span class="dim">'+esc(j.url||'')+'</span>');
+      if(j.id){ w('<span class="ok">▸ published.</span> <span class="dim">'+esc(j.url||'')+'</span>');
+        if(j.id) w('<span class="dim">  a light-show link (opens as visuals): https://oontz.music/t/'+esc(j.id)+'?watch=1</span>'); }
       else line('▸ '+(j.error||'could not publish'),'w');
     }catch(e){ line('could not reach the server','w'); } },
   clear: function(){ OUT.innerHTML='<div id="slack"></div>'; },
@@ -703,6 +704,19 @@ var CMDS = {
       w('  <span class="'+c+'">'+esc(l)+'</span>'); });
     line();
   },
+  similar: async function(){
+    if(!song) return line(CP.err_nosong,'w');
+    var d = w('<span class="dim">  asking the gallery what this resembles…</span>');
+    try{
+      var r = await fetch(API+'/similar', {method:'POST', headers:{'content-type':'application/json'},
+        body: JSON.stringify({data: song})});
+      var j = await r.json(); d.remove();
+      if(!j.songs || !j.songs.length) return line('nothing public is structurally close — you are onto something original','ok');
+      line('▸ public tracks like yours:','b');
+      j.songs.forEach(function(sg){
+        w('  <span class="a">'+esc(sg.id)+'</span> '+esc(sg.title)+' <span class="dim">'+Math.round(sg.score*100)+'% · '+esc((sg.why||[]).join(', '))+' · by '+esc(sg.handle||'?')+'</span>'); });
+      line('<span class="dim">  hear one on oontz.music: play &lt;id&gt;</span>');
+    }catch(e){ d.remove(); line('could not reach the server','w'); } },
   remix: async function(a){
     var id = (a[0]||'').trim();
     if(!id) return line(CP.remix_usage,'w');

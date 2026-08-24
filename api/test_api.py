@@ -214,8 +214,15 @@ def main():
         st, tree2, _ = call("GET", "/songs/%s/remixes" % rb["id"])
         assert st == 200 and tree2["ancestors"] and tree2["ancestors"][0]["id"] == ra["id"], ("no ancestor", tree2)
 
+        # -- charts + inline similar --------------------------------------------------
+        st, ch, _ = call("GET", "/charts")
+        assert st == 200 and "top_patterns" in ch and "bpm" in ch, ("charts shape", ch)
+        assert any(mr["id"] == ra["id"] for mr in ch["most_remixed"]), ("charts miss the remixed one", ch)
+        st, si, _ = call("POST", "/similar", {"data": songp})
+        assert st == 200 and si["songs"] and si["songs"][0]["why"], ("inline similar found nothing", si)
+
         print("api checks pass  ·  link -> sqlite -> verify · save · publish · handle · "
-              "playlist · /p/{id} · takes · remix · search/similar/tree · BYO key (upstream said %s)" % st)
+              "playlist · /p/{id} · takes · remix · search/similar/tree/charts · BYO key (upstream said %s)" % st)
     finally:
         proc.terminate()
         try:
