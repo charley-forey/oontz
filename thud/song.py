@@ -260,7 +260,10 @@ def render(song, render_bar_fn, bars=None, on_progress=None):
     out, last_key, last_buf = [], None, None
     for b in range(total):
         st = song.state_at(b)
+        st["barno"] = b
         key = _state_key(st)
+        if any("?" in (tr.get("pat") or "") for tr in st["tracks"].values()):
+            key += "|bar%d" % b                  # maybe-steps differ per bar; no reuse
         if key != last_key:
             last_buf = render_bar_fn(st)
             last_key = key

@@ -454,4 +454,21 @@ var pageSrc = fs2.readFileSync(path2.join(__dirname, "index.html"), "utf8");
 A.ok(pageSrc.indexOf("function roomWire") >= 0 && pageSrc.indexOf("ws/room/") >= 0, "the room client exists");
 A.ok(pageSrc.indexOf("ROOM.remote = true") >= 0, "remote commands must not re-broadcast");
 
-console.log("web checks pass  ·  write-through · pads · viz · touch · midi · voices+4 · viz-auto · themes · stage · pwa · notes · roll · jumps · decks · diff · rooms · theory (" + checked + " plans in window) · legible · ear · " + OZ.KEYS.length + " keys listed");
+/* -- pattern language v2 + midi out ----------------------------------------- */
+A.strictEqual(OZ.expandPat(["x...", "*4"]), "x...x...x...x...", "*N expands");
+A.strictEqual(OZ.expandPat(["x..."]), "x...", "no star, no change");
+A.ok(OZ.expandPat(["xxxxxxxxxxxxxxxx", "*9"]).length <= 64, "*N is capped");
+A.strictEqual(OZ.maybe("hat", 4, 2), OZ.maybe("hat", 4, 2), "same bar, same answer");
+var outcomes = {};
+for(var mb = 0; mb < 32; mb++) outcomes[OZ.maybe("hat", mb, 2)] = 1;
+A.ok(outcomes[true] && outcomes[false], "32 bars include both outcomes");
+var msong = song();
+msong.sections.drop.tracks.hat = {voice: "hat", pat: "..?...?...?...?.", gain: 1};
+msong.sections.drop.order.push("hat");
+var mid = OZ.songToMidi(msong);
+A.strictEqual(String.fromCharCode(mid[0], mid[1], mid[2], mid[3]), "MThd", "midi header");
+A.ok(mid.length > 200, "midi has events: " + mid.length + " bytes");
+var mid2 = OZ.songToMidi(msong);
+A.strictEqual(mid.length, mid2.length, "midi export is deterministic");
+
+console.log("web checks pass  ·  write-through · pads · viz · touch · midi · voices+4 · viz-auto · themes · stage · pwa · notes · roll · jumps · decks · diff · pat2 · midi · rooms · theory (" + checked + " plans in window) · legible · ear · " + OZ.KEYS.length + " keys listed");

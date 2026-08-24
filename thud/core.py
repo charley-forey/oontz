@@ -101,6 +101,7 @@ class State:
         self.master_fx = []
         self.song = None                             # a Song, or None for jam mode
         self.songbar = 0                             # absolute bar in the song
+        self.barno = 0                               # the bar identity `?` decisions use
         self.mode = "studio"                         # studio | deck
         self.section = None                          # name of the section playing
         self.edit_section = None                     # the section the editor actually holds
@@ -140,7 +141,19 @@ ST = State()
 # ---------------------------------------------------------------- sequencer
 
 
-def hits(name, tr, n, swing):
+def maybe(name, bar, i):
+    """The `?` step: a 70% chance, decided per (track, bar, step) so the same
+    source renders the same audio every time. The exact same hash lives in the
+    JS engine - both players make identical maybe-decisions."""
+    s = "%s|%d|%d" % (name, bar, i)
+    h = 0
+    for ch in s:
+        h = (h * 31 + ord(ch)) & 0xFFFFFFFF
+    h ^= h >> 15
+    return (h % 1000) < 700
+
+
+def hits(name, tr, n, swing, bar=0):
     """Yield (step, sample_pos, accent) for every hit in the pattern."""
     pat = tr["pat"]
     L = len(pat) or 16
@@ -148,6 +161,8 @@ def hits(name, tr, n, swing):
     jit = rng(name).uniform(-1, 1, L) * tr["hum"] * SR / 1000.0
     for i, c in enumerate(pat):
         if c in ".-":
+            continue
+        if c == "?" and not maybe(name, bar, i):
             continue
         p = i * step + (swing / 100.0 * step if i % 2 else 0.0) + jit[i]
         yield i, int(p) % n, c.isupper()
@@ -277,6 +292,7 @@ def render_state(d):
     tmp.tracks = d.get("tracks", {})
     tmp.order = d.get("order", list(tmp.tracks))
     tmp.master_fx = d.get("master_fx", [])
+    tmp.barno = d.get("barno", 0)
     tmp.rms, tmp.bands = {}, {}
     out = render_bar(tmp)
     ST.rms, ST.bands = tmp.rms, tmp.bands                                  # meters follow what is playing
@@ -288,7 +304,8 @@ def render_bar(st=None):
     n = st.n
     mix = np.zeros((n, 2))
     soloed = [k for k, t in st.tracks.items() if t["solo"]]
-    kicks = [p for _, p, _ in hits("kick", st.tracks["kick"], n, st.swing)]
+    barno = getattr(st, "barno", 0)
+    kicks = [p for _, p, _ in hits("kick", st.tracks["kick"], n, st.swing, barno)]
     duck = duck_env(n, kicks)
     for name in st.order:
         tr = st.tracks.get(name)
@@ -303,7 +320,7 @@ def render_bar(st=None):
         L = len(tr["pat"])
         dur = round(n / L / SR, 3)
         prev = 0.0
-        for i, p, acc in hits(name, tr, n, st.swing):
+        for i, p, acc in hits(name, tr, n, st.swing, barno):
             hz = slide = 0.0
             if is_pitched(tr):
                 tok = tr["notes"][i] if i < len(tr["notes"]) else "."
@@ -371,12 +388,15 @@ def render_next():
                 _n, sec, within, _i = ST.song.section_at(ST.songbar)
                 if sec and within + 1 >= sec.bars:
                     nxt = ST.songbar - within     # back to the top of this section
-            ST.next = render_state(ST.song.state_at(nxt))
+            sd = ST.song.state_at(nxt)
+            sd["barno"] = nxt
+            ST.next = render_state(sd)
         else:
             idx = ST.bars + 1
             for hook in BAR_HOOKS:               # arrange.py drives automation here
                 for line in hook(idx) or ():
                     do(line, log=False)
+            ST.barno = idx
             ST.next = render_bar()
     except Exception:
         ST.next = None                           # never let a bad hook kill the clock
@@ -588,9 +608,20 @@ REC = Recorder()
 # ---------------------------------------------------------------------- dsl
 
 
+def expand_pat(args):
+    """`x... *4` is sugar for the pattern written four times. Capped at 64 steps."""
+    pat = args[0] if args else ""
+    if len(args) > 1 and args[1].startswith("*"):
+        try:
+            pat = pat * max(1, min(64 // max(1, len(pat)), int(args[1][1:])))
+        except ValueError:
+            pass
+    return pat
+
+
 def set_pattern(name, pat):
-    if not pat or any(c not in "xX.-" for c in pat):
-        raise ValueError("pattern uses x X . - only")
+    if not pat or any(c not in "xX.-?" for c in pat):
+        raise ValueError("pattern uses x X . - and ? only")
     ST.tracks[name]["pat"] = pat
 
 
@@ -1096,7 +1127,7 @@ def _dispatch(verb, args, parts, line, log):
         if is_pitched(ST.tracks[verb]):
             set_notes(verb, args)
         else:
-            set_pattern(verb, args[0])
+            set_pattern(verb, expand_pat(args))
     elif verb in CMDS:
         out = CMDS[verb][0](args)
         if verb in NO_LOG:

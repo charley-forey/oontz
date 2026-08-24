@@ -161,6 +161,15 @@ def selftest():
         assert gs >= 70, "a well-formed song scored only %d" % gs
         assert bs < gs - 20, "grader cannot separate good (%d) from bad (%d)" % (gs, bs)
 
+        # `?` maybe-steps: per-bar deterministic, varying across bars
+        from .core import maybe, expand_pat
+        assert maybe("hat", 4, 2) == maybe("hat", 4, 2), "same bar, same answer"
+        outcomes = {maybe("hat", b, 2) for b in range(32)}
+        assert outcomes == {True, False}, "32 bars should include both outcomes"
+        assert expand_pat(["x...", "*4"]) == "x..." * 4, "*N expands"
+        assert expand_pat(["x..."]) == "x...", "no star, no change"
+        assert len(expand_pat(["x" * 16, "*9"])) <= 64, "*N is capped"
+
         # the exported theory the browser and the API read must match this module
         assert not theory.stale(), "stale: %s - run `python -m thud theory export`" % theory.stale()
         # so must the package the browser fetches

@@ -235,10 +235,11 @@ function draw(){
     for(var q=0;q<16;q++){
       var ch = tr.pat[OZ.patIndex(tr.pat, E.songbar, q)] || '.';
       var on = ch !== '.' && ch !== '-';
+      var maybeStep = ch === '?';
       var cur = q === i && E.playing;
-      cells += '<span class="st" data-t="'+esc(n)+'" data-i="'+q+'" style="color:var('+(on?col:'--dim')+')'+
+      cells += '<span class="st" data-t="'+esc(n)+'" data-i="'+q+'" style="color:var('+(on?col:'--dim')+')'+(maybeStep?';opacity:.55':'')+
         (cur?';background:var('+(on?col:'--line')+');color:#000':'')+'">'+
-        (on?'█':'·')+'</span>' + (q%4===3?' ':'');
+        (maybeStep?'▒':(on?'█':'·'))+'</span>' + (q%4===3?' ':'');
     }
     h += '<div><span class="trk '+(n===foc?'a2':'dim')+'" data-t="'+esc(n)+'">'+(n===foc?'▸ ':'  ')+esc(n.padEnd(7))+'</span>'+cells+'</div>';
   });
@@ -858,7 +859,20 @@ var CMDS = {
   xf: function(a){ var v = parseFloat(a[0]); if(!isFinite(v)) return line('xf -1..1   (-1 is all A)','w');
     if(v > 1 && v <= 100) v = v/50 - 1;                      // xf 0..100 also works
     E.crossfade(Math.max(-1, Math.min(1, v))); draw(); },
-  export: async function(){
+  export: async function(a){
+    if((a && a[0]) === 'midi'){
+      if(!song) return line(CP.err_nosong,'w');
+      var bytes = OZ.songToMidi(song);
+      var mname = 'oontz-'+song.name.replace(/[^\w-]+/g,'_')+'.mid';
+      var mel = document.createElement('a');
+      mel.href = URL.createObjectURL(new Blob([bytes], {type:'audio/midi'}));
+      mel.download = mname; document.body.appendChild(mel); mel.click(); mel.remove();
+      setTimeout(function(){ URL.revokeObjectURL(mel.href); }, 30000);
+      return line('▸ '+mname+' — '+(bytes.length/1024).toFixed(1)+'KB of standard MIDI. it opens in any DAW.','ok');
+    }
+    return CMDS._exportWav();
+  },
+  _exportWav: async function(){
     if(!song) return line(CP.err_nosong,'w'); E.start();
     var pr = w('<span class="dim">  rendering '+esc(song.name)+' offline…</span>');
     try{ var rr = await OZ.renderSong(song); var name = 'oontz-'+song.name.replace(/[^\w-]+/g,'_')+'.wav';
@@ -1164,13 +1178,14 @@ function run(raw){
     E.start(); E.setTrack(v, {voice: v, pat: "", gain: 1});   // name a voice and you have a track
   }
   if(E.tracks && E.tracks[v]){
+    if(args.length === 2 && /^\*\d+$/.test(args[1])) args = [OZ.expandPat(args)];  // x... *4
     var pat=args[0]||'';
     if(args.length>1 || /^[a-g]/i.test(pat)){        // notes: bass a1 . a1~ c2!
       var notes=args.map(function(t){ return t.toLowerCase(); });
       if(!notes.every(function(t){ return t==='.'||t==='-'||OZ.noteHz(t)>0; })) return line(CP.err_pattern,'w');
       E.setTrack(v,{notes:notes, pat:notes.map(function(t){ return t==='.'||t==='-'?'.':(t.indexOf('!')>=0?'X':'x'); }).join('')});
     } else {
-      if(!/^[xXoO.\-]+$/.test(pat)) return line(CP.err_pattern,'w');
+      if(!/^[xXoO.\-?]+$/.test(pat)) return line(CP.err_pattern,'w');
       E.setTrack(v,{pat:pat}); }
     if(!E.playing) E.play(); draw();
     line('▸ '+v+' '+args.join(' '),'dim'); teach(v); setTimeout(lessonCheck, 60); return; }

@@ -607,13 +607,33 @@ Engine.prototype.jump = function(bar){
 /* One 16th of one bar: schedule every hit into `dest` on context `c`. Pure in
    the sense that matters - it reads only its arguments - so the live clock and
    an OfflineAudioContext render share it. */
+/* The `?` maybe-step: a 70% chance decided per (track, bar, step) with the
+   exact hash the Python engine uses - both players make identical decisions,
+   and the same source renders the same audio every time. */
+function maybe(name, bar, i){
+  var s = name + "|" + (bar|0) + "|" + (i|0), h = 0;
+  for(var k = 0; k < s.length; k++) h = ((h * 31) + s.charCodeAt(k)) >>> 0;
+  h = (h ^ (h >>> 15)) >>> 0;
+  return (h % 1000) < 700;
+}
+
+/* `x... *4` is sugar for the pattern written four times. Capped at 64 steps. */
+function expandPat(args){
+  var pat = args[0] || "";
+  if(args.length > 1 && /^\*\d+$/.test(args[1])){
+    var n = Math.max(1, Math.min(Math.floor(64 / Math.max(1, pat.length)), parseInt(args[1].slice(1), 10)));
+    pat = new Array(n + 1).join(pat);
+  }
+  return pat;
+}
+
 Engine.prototype._hits = function(c, dest, t, i, tracks, order, bpm, swing, bar){
   var self = this;
   bar = bar | 0;
   var kickHit = false;
   var kt = tracks.kick;
-  if(kt && kt.pat){ var kc = kt.pat[patIndex(kt.pat, bar, i)];
-    if(kc && kc !== "." && kc !== "-") kickHit = true; }
+  if(kt && kt.pat){ var ki = patIndex(kt.pat, bar, i), kc = kt.pat[ki];
+    if(kc && kc !== "." && kc !== "-" && (kc !== "?" || maybe("kick", bar, ki))) kickHit = true; }
   var e = {ctx: c};
   order.forEach(function(name){
     var tr = tracks[name];
@@ -621,6 +641,7 @@ Engine.prototype._hits = function(c, dest, t, i, tracks, order, bpm, swing, bar)
     var idx = patIndex(tr.pat, bar, i);
     var ch = tr.pat[idx];
     if(!ch || ch === "." || ch === "-") return;
+    if(ch === "?" && !maybe(name, bar, idx)) return;
     if(tr.mute) return;
     var gain = (tr.gain == null ? 1 : tr.gain);
     /* Velocity: the accent curve is what stops sixteen identical hits sounding
@@ -744,6 +765,69 @@ function songDiff(a, b){
     Object.keys(ta).forEach(function(t){ if(!tb[t]) out.push(n + ": - " + t); });
   });
   return out.length ? out : ["identical, note for note"];
+}
+
+/* The song as a standard MIDI file - the first non-audio output. Drums land on
+   channel 10 with GM notes; each pitched track gets its own channel. 16 steps a
+   bar at 24 ticks a step (96 PPQ). Deterministic: `?` steps use maybe(). */
+var GM_DRUM = {kick: 36, kick_hard: 36, kick_dist: 36, hat: 42, oh: 46, clap: 39,
+               snare: 38, perc: 37, rumble: 41, ride: 51, rim: 37, tom: 45, crash: 49};
+function songToMidi(song){
+  var PPQ = 96, STEP = PPQ / 4, total = totalBars(song);
+  var drums = [], melo = {};                     /* name -> events */
+  for(var b = 0; b < total; b++){
+    var st = stateAt(song, b);
+    (st.order || []).forEach(function(name){
+      var tr = st.tracks[name];
+      if(!tr || !tr.pat || tr.mute) return;
+      var L = tr.pat.length || 16;
+      for(var i = 0; i < 16; i++){
+        var idx = ((b * 16 + i) % L + L) % L;    /* the polymeter walk patIndex does */
+        var ch = tr.pat[idx];
+        if(!ch || ch === "." || ch === "-") continue;
+        if(ch === "?" && !maybe(name, b, idx)) continue;
+        var tick = (b * 16 + i) * STEP;
+        var vel = ch === "X" || ch === "O" ? 112 : 88;
+        var noteTok = tr.notes && tr.notes[idx];
+        if(noteTok && noteTok !== "." && noteTok !== "-"){
+          var hz = noteHz(String(noteTok).replace(/[~!]/g, ""));
+          if(hz > 0){
+            var note = Math.max(0, Math.min(127, Math.round(69 + 12 * Math.log2(hz / 440))));
+            (melo[name] = melo[name] || []).push({tick: tick, note: note, vel: vel, dur: STEP});
+            continue;
+          }
+        }
+        drums.push({tick: tick, note: GM_DRUM[tr.voice || name] || GM_DRUM[name] || 37, vel: vel, dur: STEP / 2});
+      }
+    });
+  }
+  function vlq(n){ var b = [n & 0x7f]; while((n >>= 7)) b.unshift((n & 0x7f) | 0x80); return b; }
+  function trackBytes(events, chan, tempoMeta){
+    var out = [], last = 0;
+    if(tempoMeta){ var us = Math.round(60000000 / (song.bpm || 120));
+      out = out.concat([0, 0xFF, 0x51, 0x03, (us >> 16) & 255, (us >> 8) & 255, us & 255]); }
+    var seq = [];
+    events.forEach(function(e){
+      seq.push({t: e.tick, on: 1, n: e.note, v: e.vel});
+      seq.push({t: e.tick + e.dur, on: 0, n: e.note, v: 0});
+    });
+    seq.sort(function(a, b2){ return a.t - b2.t || b2.on - a.on; });
+    seq.forEach(function(e){
+      out = out.concat(vlq(e.t - last)); last = e.t;
+      out.push((e.on ? 0x90 : 0x80) | chan, e.n, e.v);
+    });
+    out = out.concat([0, 0xFF, 0x2F, 0x00]);
+    var head = [0x4D, 0x54, 0x72, 0x6B,
+                (out.length >> 24) & 255, (out.length >> 16) & 255, (out.length >> 8) & 255, out.length & 255];
+    return head.concat(out);
+  }
+  var names = Object.keys(melo);
+  var ntrks = 1 + (names.length ? names.length : 0) + (drums.length ? 1 : 0);
+  var bytes = [0x4D, 0x54, 0x68, 0x64, 0, 0, 0, 6, 0, 1, 0, ntrks, 0, PPQ];
+  bytes = bytes.concat(trackBytes([], 0, true));            /* tempo track */
+  if(drums.length) bytes = bytes.concat(trackBytes(drums, 9));
+  names.forEach(function(n, i2){ bytes = bytes.concat(trackBytes(melo[n], i2 % 8 < 9 ? i2 % 8 : 0)); });
+  return new Uint8Array(bytes);
 }
 
 /* The whole song, offline, through the same _hits the live clock uses. Mono:
@@ -1050,7 +1134,7 @@ Engine.prototype.stop = function(){
 global.oontz = {
   Engine: Engine, VOICES: VOICES, noteHz: noteHz, KEYS: KEYS, PADS: PADS,
   Deck: Deck, gridFor: gridFor, renderSong: renderSong, renderSlice: renderSlice,
-  songDiff: songDiff,
+  songDiff: songDiff, songToMidi: songToMidi, maybe: maybe, expandPat: expandPat,
   patIndex: patIndex, grooveOf: grooveOf, buildMaster: buildMaster, keepsLows: keepsLows,
   renderTracks: renderTracks,
   xfGains: xfGains, wavBlob: wavBlob,

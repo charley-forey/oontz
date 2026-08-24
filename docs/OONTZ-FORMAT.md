@@ -49,10 +49,16 @@ filter bass lp 340 res 0.94
 sidechain bass 0.7
 ```
 
-Pattern language: `x` hit · `X` accent · `.` rest · `-` tie. Patterns may be
-any length — a 5-step hat against a 16-step kick is polymeter, free. Pitched
-tracks take note tokens (`a1`, `f#2`); `~` slides into the note, `!` accents
-it. Real examples live in [`songs/`](../songs/).
+Pattern language: `x` hit · `X` accent · `.` rest · `-` tie · `?` **maybe** —
+a 70% chance decided per (track, bar, step) with a hash both engines share, so
+the same source renders the same audio every time, while the groove varies bar
+to bar. `x... *4` is repeat sugar for the pattern written four times (capped at
+64 steps). Patterns may be any length — a 5-step hat against a 16-step kick is
+polymeter, free. Pitched tracks take note tokens (`a1`, `f#2`); `~` slides into
+the note, `!` accents it. Real examples live in [`songs/`](../songs/).
+
+Prior art behind these choices — and what oontz deliberately declines — is
+audited in [PRIOR-ART.md](PRIOR-ART.md).
 
 ### `.song` — the compiled timeline (JSON)
 
@@ -99,6 +105,10 @@ the Python original (`thud/`) and the browser port (`web/app/oontz.js`) —
 derive their music theory from one file and are held to identical output by a
 360-arrangement cross-language gate.
 
+(Precisely: the Python engine is held *byte-identical* by golden renders; the
+browser engine makes identical musical decisions — every hit, every `?` — while
+WebAudio's float scheduling may differ at the last bit.)
+
 Because rendering is deterministic, **storing audio is unnecessary**: a take
 is the text that reproduces it, a "recording" is a compiled artifact the way a
 PDF is compiled from a document.
@@ -114,6 +124,9 @@ PDF is compiled from a document.
   source, never a black-box render.
 - **Search the music itself**: the gallery filters on real fields (bpm, key)
   because the fields are real; pattern-level search is a straight extension.
+- **Leave for any DAW**: `export midi` renders the song as a standard MIDI
+  file — drums on channel 10, pitched tracks on their own channels, tempo
+  included. The first non-audio output; OSC is on the roadmap.
 - **Move it anywhere**: `source` prints the song; `source save` downloads it;
   `load` accepts a pasted one. No project files, no stems, no 400 MB.
 

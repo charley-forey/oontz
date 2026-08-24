@@ -152,6 +152,9 @@ What is true today vs. future (kept honest so the loop builds in order):
 | Adaptive/game runtime (music as logic reacting to state) | later |
 | Deliberate edit-history dataset (RLHF-for-music) | later; needs a privacy decision first |
 
+**Prior art:** the audit of Strudel/Tidal/Sonic Pi/SuperCollider/ABC — what we
+absorb and what we decline — lives in `docs/PRIOR-ART.md`.
+
 ## The next level (added 2026-08-24)
 
 The ladder of intelligence, each rung shipped on the one below:

@@ -39,6 +39,12 @@ no loop.
 
 ## Later — the source-code-for-music layers (see PLAN.md thesis, docs/OONTZ-FORMAT.md)
 
+- [ ] **Mini-notation subdivision** — `[xx..]` inside a step (32nds); the next
+      pattern-language rung after `*N` and `?` proved the path. Both engines + spec.
+- [ ] **OSC output** — the third output after WAV and MIDI; events to external
+      systems. Only when someone asks.
+- [ ] **@oontz/* package split** — carve core/parser/outputs into packages the day
+      the FIRST external consumer appears, not before.
 - [ ] **Structural search** — the gallery filters on bpm/key because the fields are
       real; extend the API to match patterns and section shapes ("every public track
       using this exact kick pattern", "drop structure like this one").
@@ -383,6 +389,18 @@ stale; `qa` runs 192 arrangements through both composers and requires identical 
   code finds the rave (blacklight + kaleido + a ten-second hot-pink flare), and
   five clicks on the logo spinback, obviously. Everything verified in-browser;
   focus-visible outlines joined for keyboard users.
+
+- 2026-08-24 -- cycle 23: prior art absorbed, on the record. docs/PRIOR-ART.md
+  audits Strudel, Tidal, Sonic Pi, SuperCollider and ABC - what oontz takes, what
+  it declines, and (kept honest) what it already had: the .song doc IS the AST/IR,
+  two gate-held runtimes ARE the language/engine split, thud-song-1 IS the
+  versioned spec. Two decisions implemented, both engines, both gated: the pattern
+  language grows `?` (a maybe-step: 70% per bar, decided by the SAME hash in
+  Python and JS, so determinism holds - scrub==render and the goldens passed
+  untouched) and `x... *4` repeat sugar (entry-time, capped 64); and `export midi`
+  ships the first non-audio output - a standard .mid with drums on channel 10,
+  pitched tracks on their own channels, byte-asserted in the gate. The offline
+  render's identical-state cache learned that ?-bars are never identical.
 
 ## Cycle log
 

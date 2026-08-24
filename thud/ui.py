@@ -94,7 +94,7 @@ def track_row(t, i, s, w):
     tag = c(231 if i == s.focus else col, tag)
     cells = []
     for j, ch in enumerate(t.pat):
-        glyph = "·" if ch in ".-" else "█"
+        glyph = "·" if ch in ".-" else ("▒" if ch == "?" else "█")
         g = DIM + glyph + OFF if ch in ".-" else c(231 if ch.isupper() else col, glyph)
         if j == s.step and s.playing:
             g = INV + g + OFF
