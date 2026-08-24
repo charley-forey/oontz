@@ -1060,7 +1060,11 @@ function hudSeek(e){
 }
 HUD.addEventListener('pointerdown', function(e){
   if(!song) return;
-  hudSeek(e); HUD.setPointerCapture && HUD.setPointerCapture(e.pointerId); HUD.dataset.drag = '1';
+  hudSeek(e);
+  /* capture throws NotFoundError when there is no live pointer (a synthetic event,
+     or a pointer that ended before we got here) - dragging still works without it */
+  try{ HUD.setPointerCapture && HUD.setPointerCapture(e.pointerId); }catch(err){}
+  HUD.dataset.drag = '1';
 });
 HUD.addEventListener('pointermove', function(e){ if(HUD.dataset.drag) hudSeek(e); });
 addEventListener('pointerup', function(){ delete HUD.dataset.drag; });

@@ -711,6 +711,43 @@ function renderSlice(song, opts){
   return off.startRendering();
 }
 
+/* Every track of one bar, each on its own channel, in a SINGLE render.
+ *
+ * The ear used to call renderSlice once per track: eight tracks meant eight
+ * OfflineAudioContexts per measurement, and `improve` runs six measurements, so a
+ * single command opened fifty-odd contexts. Browsers stop handing them out long
+ * before that - the tab simply stalls with renders that never resolve.
+ *
+ * One context, one ChannelMerger, one channel per track. Raw on purpose: a solo'd
+ * track pushed through a limiter tuned for the whole mix is not what that track
+ * sounds like in the mix.
+ */
+function renderTracks(song, opts){
+  opts = opts || {};
+  var bar = opts.bar | 0, st = stateAt(song, bar);
+  if(!st) return Promise.reject(new Error("nothing to render"));
+  var names = (opts.names || st.order).filter(function(n){
+    var tr = st.tracks[n];
+    return tr && tr.pat && !tr.mute && tr.pat.replace(/[.\-]/g, "").length;
+  }).slice(0, 32);                               // a ChannelMerger tops out at 32
+  if(!names.length) return Promise.resolve({names: [], buf: null});
+
+  var spb = 60 / (st.bpm || song.bpm || 138), dur = 4 * spb;
+  var C = global.OfflineAudioContext || global.webkitOfflineAudioContext;
+  var off = new C(names.length, Math.ceil((dur + 1.2) * SR), SR);
+  var merger = off.createChannelMerger(names.length);
+  merger.connect(off.destination);
+
+  var fake = new Engine(); fake.ctx = off; fake.groove = grooveOf(song);
+  names.forEach(function(n, ch){
+    var bus = off.createGain(); bus.gain.value = 1;
+    bus.connect(merger, 0, ch);
+    for(var i = 0; i < 16; i++)
+      fake._hits(off, bus, i * spb / 4, i, st.tracks, [n], st.bpm || song.bpm || 138, st.swing || 0, bar);
+  });
+  return off.startRendering().then(function(buf){ return {names: names, buf: buf}; });
+}
+
 /* A deck is a rendered song, a read position, and a rate. AudioBufferSourceNodes
    have no readable playhead, so position is anchor arithmetic and every seek
    makes a new source. Rate is native and sample-exact: that is the sync. */
@@ -928,6 +965,7 @@ global.oontz = {
   Engine: Engine, VOICES: VOICES, noteHz: noteHz, KEYS: KEYS, PADS: PADS,
   Deck: Deck, gridFor: gridFor, renderSong: renderSong, renderSlice: renderSlice,
   patIndex: patIndex, grooveOf: grooveOf, buildMaster: buildMaster, keepsLows: keepsLows,
+  renderTracks: renderTracks,
   xfGains: xfGains, wavBlob: wavBlob,
   stateAt: stateAt, sectionAt: sectionAt, totalBars: totalBars, SR: SR
 };

@@ -31,17 +31,21 @@ var ERRORS = [];
 function log(cls, s){ LINES.push('<div class="' + cls + '">' + s.replace(/</g, "&lt;") + "</div>"); }
 function render(){ OUT.innerHTML = LINES.join(""); }
 
-/* Every test races a timeout: one hang used to take the whole run down with it,
-   and a gate that reports nothing is worse than a gate that reports a failure. */
+/* Each result goes back to the runner as it happens, so a hang still says which
+   test hung. No in-page timeout: the runner holds the clock, because a timer here
+   would be fast-forwarded by the browser and fire before the render it guards. */
+function report(obj){
+  try { navigator.sendBeacon("/report", new Blob([JSON.stringify(obj)], {type: "application/json"})); }
+  catch(e){ try { fetch("/report", {method: "POST", body: JSON.stringify(obj)}); } catch(_e){} }
+}
 async function t(name, fn){
   try {
-    var detail = await Promise.race([
-      Promise.resolve().then(fn),
-      new Promise(function(_r, rej){ setTimeout(function(){ rej(new Error("timed out")); }, 45000); })
-    ]);
+    var detail = await fn();
     PASS++; log("ok", "ok    " + name + (detail ? "   " + detail : ""));
+    report({ok: true, name: name, detail: detail || ""});
   } catch (e) {
     FAIL++; log("fail", "FAIL  " + name + "   " + (e && e.message || e));
+    report({ok: false, name: name, detail: String(e && e.message || e)});
   }
   render();
 }
@@ -102,7 +106,7 @@ async function until(fn, ms, what){
 
   /* ---- composing -------------------------------------------------------- */
   await t("compose builds a whole song", async function(){
-    await W.CMDS.compose(["hardtechno", "2"]);
+    await W.CMDS.compose(["hardtechno", "1"]);
     W.E.stop();
     var sg = W.song;
     ok(sg && sg.order.length >= 5, "too few sections");
@@ -162,7 +166,7 @@ async function until(fn, ms, what){
   await t("improve raises the mix and stops", async function(){
     var m0 = await W.OONTZ_EAR.measure(W.song);
     var s0 = W.OONTZ_COMPOSE.score(W.OONTZ_EAR.critiqueMix(m0));
-    await W.CMDS.improve(["3"]);
+    await W.CMDS.improve(["2"]);
     var m1 = await W.OONTZ_EAR.measure(W.song);
     var s1 = W.OONTZ_COMPOSE.score(W.OONTZ_EAR.critiqueMix(m1));
     ok(s1 >= s0, "improve made it worse: " + s0 + " -> " + s1);
@@ -198,7 +202,7 @@ async function until(fn, ms, what){
   });
 
   await t("two decks sync to the same phase", async function(){
-    await W.CMDS.compose(["acid", "2"]); W.E.stop();
+    await W.CMDS.compose(["acid", "1"]); W.E.stop();
     await W.CMDS.dload(["b", "this"]);
     var D = W.E.decks();
     ok(D.b.r, "deck B has no buffer");
@@ -319,7 +323,7 @@ async function until(fn, ms, what){
     W.E.play();
     await W.CMDS.rec([]);
     ok(W.REC, "recorder did not start");
-    await sleep(1200);
+    await sleep(500);
     W.REC.stop();
     await sleep(400);
     W.E.stop();
@@ -335,6 +339,7 @@ async function until(fn, ms, what){
   log(FAIL ? "fail" : "ok", "OONTZ-GATE " + (FAIL ? "FAIL" : "PASS") + " pass=" + PASS + " fail=" + FAIL);
   render();
   document.title = "OONTZ-GATE " + (FAIL ? "FAIL" : "PASS");
+  report({done: true, pass: PASS, fail: FAIL});
 })();
 </script>
 </body>

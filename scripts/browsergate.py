@@ -4,20 +4,25 @@ check.js covers the pure half. This covers everything that needs a DOM or an
 AudioContext - decks, the offline renders, the ear, the keyboard, the palette -
 by driving the actual index.html in an iframe.
 
+The page reports each result back over HTTP as it runs, so a hang still tells you
+which test hung. Chrome's --virtual-time-budget fast-forwards timers, which makes
+an in-page timeout fire long before the real render it is guarding has finished -
+so this runs in real time and the runner holds the clock.
+
     python scripts/browsergate.py            # quiet unless it fails
     python scripts/browsergate.py -v         # print every line
 
-Exit 0 only if the page prints OONTZ-GATE PASS.
+Exit 0 only if every test passed.
 """
+import http.server
+import json
 import os
-import re
 import shutil
 import socket
 import subprocess
 import sys
 import threading
-import http.server
-import functools
+import time
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 APP = os.path.join(ROOT, "web", "app")
@@ -28,6 +33,9 @@ BROWSERS = [
     r"C:\Program Files\Google\Chrome\Application\chrome.exe",
     r"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe",
 ]
+
+RESULTS = []
+DONE = threading.Event()
 
 
 def find_browser():
@@ -41,6 +49,29 @@ def find_browser():
     return None
 
 
+class Handler(http.server.SimpleHTTPRequestHandler):
+    def __init__(self, *a, **kw):
+        super().__init__(*a, directory=APP, **kw)
+
+    def log_message(self, *a, **k):
+        pass
+
+    def do_POST(self):
+        n = int(self.headers.get("content-length", 0))
+        body = self.rfile.read(n).decode("utf-8", "replace")
+        self.send_response(204)
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.end_headers()
+        try:
+            msg = json.loads(body)
+        except ValueError:
+            return
+        if msg.get("done"):
+            DONE.set()
+        else:
+            RESULTS.append(msg)
+
+
 def free_port():
     s = socket.socket()
     s.bind(("127.0.0.1", 0))
@@ -49,56 +80,60 @@ def free_port():
     return port
 
 
-def serve(port):
-    """The app must come off http, not file:// - modules and fetch need an origin."""
-    handler = functools.partial(http.server.SimpleHTTPRequestHandler, directory=APP)
-    handler.log_message = lambda *a, **k: None
-    httpd = http.server.ThreadingHTTPServer(("127.0.0.1", port), handler)
-    threading.Thread(target=httpd.serve_forever, daemon=True).start()
-    return httpd
+def show(r):
+    print("  %-4s  %s%s" % ("ok" if r.get("ok") else "FAIL",
+                            r.get("name", "?"),
+                            ("   " + r["detail"]) if r.get("detail") else ""))
 
 
 def main(argv):
     verbose = "-v" in argv or "--verbose" in argv
+    budget = 600
     exe = find_browser()
     if not exe:
         print("browsergate: no Chrome or Edge found - skipping")
         return 0
 
     port = free_port()
-    httpd = serve(port)
+    httpd = http.server.ThreadingHTTPServer(("127.0.0.1", port), Handler)
+    threading.Thread(target=httpd.serve_forever, daemon=True).start()
+
+    profile = os.path.join(ROOT, ".browsergate-profile")
+    proc = subprocess.Popen(
+        [exe, "--headless=new", "--disable-gpu", "--no-sandbox", "--mute-audio",
+         "--autoplay-policy=no-user-gesture-required",
+         "--user-data-dir=" + profile,
+         "http://127.0.0.1:%d/test.html" % port],
+        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+    seen = 0
     try:
-        out = subprocess.run(
-            [exe, "--headless=new", "--disable-gpu", "--no-sandbox", "--mute-audio",
-             "--autoplay-policy=no-user-gesture-required",
-             "--virtual-time-budget=900000", "--dump-dom",
-             "http://127.0.0.1:%d/test.html" % port],
-            capture_output=True, text=True, timeout=420, encoding="utf-8", errors="replace")
-    except subprocess.TimeoutExpired:
-        print("browsergate: the browser did not finish in 420s")
-        return 1
+        t0 = time.time()
+        while time.time() - t0 < budget and not DONE.is_set():
+            while len(RESULTS) > seen:
+                r = RESULTS[seen]
+                seen += 1
+                if verbose or not r.get("ok"):
+                    show(r)
+            time.sleep(0.2)
     finally:
+        proc.terminate()
         httpd.shutdown()
+        shutil.rmtree(profile, ignore_errors=True)
 
-    dom = out.stdout or ""
-    # The DOM comes back as one line of HTML; recover the rows.
-    rows = re.findall(r'<div class="(ok|fail|note)">(.*?)</div>', dom, re.S)
-    text = [re.sub(r"<[^>]+>", "", r[1]).replace("&lt;", "<").replace("&amp;", "&").strip()
-            for r in rows]
-    verdict = [t for t in text if t.startswith("OONTZ-GATE")]
+    while len(RESULTS) > seen:
+        r = RESULTS[seen]
+        seen += 1
+        if verbose or not r.get("ok"):
+            show(r)
 
-    fails = [t for t in text if t.startswith("FAIL")]
-    if verbose or fails or not verdict:
-        for t in text:
-            if t:
-                print("  " + t)
-    if not verdict:
-        print("browsergate: the page never reported a verdict")
-        if not verbose:
-            print((out.stderr or "")[-600:])
+    fails = [r for r in RESULTS if not r.get("ok")]
+    if not DONE.is_set():
+        last = RESULTS[-1].get("name") if RESULTS else "nothing"
+        print("  browsergate: did not finish in %ds (last test: %s)" % (budget, last))
         return 1
-    print("  " + verdict[0])
-    return 0 if "PASS" in verdict[0] else 1
+    print("  browsergate: %d passed, %d failed" % (len(RESULTS) - len(fails), len(fails)))
+    return 1 if fails else 0
 
 
 if __name__ == "__main__":

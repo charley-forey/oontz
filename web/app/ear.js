@@ -186,16 +186,17 @@ function measure(song, opts){
   var bar = barOfSection(song, sec);
   var st = OZ.stateAt(song, bar);
   if(!st) return Promise.reject(new Error("nothing to measure"));
-  var names = st.order.filter(function(n){
-    var tr = st.tracks[n];
-    return tr && tr.pat && !tr.mute && tr.pat.replace(/[.\-]/g, "").length; });
-  var jobs = names.map(function(n){ return OZ.renderSlice(song, {bar: bar, bars: 1, only: n, channels: 1}); });
-  jobs.push(OZ.renderSlice(song, {bar: bar, bars: 1, channels: 2}));
-  return Promise.all(jobs).then(function(bufs){
-    var master = bufs[bufs.length - 1], sr = master.sampleRate;
-    var tracks = {}, abs = {};
+  /* Two renders, not one per track: the whole mix through the master chain (which
+     is what the headroom and mono rules judge), and every track at once on its own
+     channel (which is what the masking rules need). */
+  return Promise.all([
+    OZ.renderTracks(song, {bar: bar}),
+    OZ.renderSlice(song, {bar: bar, bars: 1, channels: 2})
+  ]).then(function(both){
+    var per = both[0], master = both[1], sr = master.sampleRate;
+    var names = per.names, tracks = {}, abs = {};
     names.forEach(function(n, i){
-      var ch = bufs[i].getChannelData(0);
+      var ch = per.buf.getChannelData(i);
       tracks[n] = bandEnergy(ch, sr);
       abs[n] = bandAbs(ch, sr);
     });
