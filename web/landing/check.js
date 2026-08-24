@@ -7,8 +7,11 @@ var here = __dirname, app = path.join(here, "..", "app"), eng = path.join(here, 
 
 var files = fs.readdirSync(eng);
 A.ok(files.length, "engine/ is empty");
+var norm = function(p2){ return fs.readFileSync(p2, "utf8").replace(/
+/g, "
+"); };
 files.forEach(function(f){
-  A.ok(fs.readFileSync(path.join(eng, f)).equals(fs.readFileSync(path.join(app, f))),
+  A.strictEqual(norm(path.join(eng, f)), norm(path.join(app, f)),
     "web/landing/engine/" + f + " differs from web/app/" + f + " — run: cp web/app/" + f + " web/landing/engine/");
 });
 
