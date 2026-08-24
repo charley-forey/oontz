@@ -424,6 +424,7 @@ A.strictEqual(V.autoFor("nosuchrole"), "tunnel", "unknown roles still draw");
 /* -- layout: the stage is one block, the deck folds -------------------------- */
 var page = fs2.readFileSync(path2.join(__dirname, "index.html"), "utf8");
 A.ok(page.indexOf('id="rack"') < page.indexOf('id="out"'), "the rack belongs to the stage, above the log");
+A.ok(page.indexOf("sugPick") >= 0 && page.indexOf("#sug") >= 0, "the command dropdown exists and is pickable");
 var touchSrc = fs2.readFileSync(path2.join(__dirname, "touch.js"), "utf8");
 A.ok(touchSrc.indexOf("oontz_deck") >= 0 && touchSrc.indexOf(".shut") >= 0, "the deck must fold and remember");
 

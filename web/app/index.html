@@ -72,7 +72,17 @@
   #hint b{color:var(--accent);font-weight:normal}
   #hint i{color:var(--bright);font-style:normal;background:rgba(63,240,224,.16);
     border-radius:3px;padding:0 3px}
-  #bar{display:flex;align-items:center;gap:8px;margin-top:6px;padding:8px 9px;
+  #sug{position:absolute;left:0;right:0;bottom:100%;margin-bottom:4px;display:none;
+    background:var(--bg,#07090b);border:1px solid var(--line);border-radius:8px;
+    box-shadow:0 -8px 30px rgba(0,0,0,.55);
+    overflow:hidden;z-index:5}
+  #sug.on{display:block}
+  #sug div{padding:7px 12px;cursor:pointer;display:flex;gap:12px;align-items:baseline}
+  #sug div b{color:var(--accent);font-weight:normal;min-width:11ch}
+  #sug div span{color:var(--dim);font-size:.85em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  #sug div.sel,#sug div:hover{background:rgba(63,240,224,.12)}
+  @media (pointer: coarse){ #sug div{padding:11px 12px} }
+  #bar{position:relative;display:flex;align-items:center;gap:8px;margin-top:6px;padding:8px 9px;
     background:var(--plate);border:1px solid var(--line);border-radius:5px;
     backdrop-filter:blur(7px);-webkit-backdrop-filter:blur(7px)}
   #ps1{color:var(--accent2);white-space:nowrap}
@@ -1126,12 +1136,47 @@ function hint(){
     (hits.length > 9 ? '  <span style="opacity:.6">+' + (hits.length - 9) + '</span>' : '') +
     '   <span style="opacity:.7">Tab</span>';
 }
-IN.addEventListener('input', function(){ TABS = null; hint(); });
+/* The dropdown: what you could type, visible and pickable. ArrowDown enters it,
+   Enter/Tab takes the highlighted row, a tap takes any row, Esc dismisses. With
+   nothing highlighted every key behaves exactly as before. */
+var SUG = document.createElement('div'); SUG.id = 'sug';
+document.getElementById('bar').appendChild(SUG);
+var SUGS = {hits: [], i: -1};
+function sugClose(){ SUGS.hits = []; SUGS.i = -1; SUG.classList.remove('on'); }
+function sugRender(){
+  if(!SUGS.hits.length) return sugClose();
+  SUG.innerHTML = SUGS.hits.map(function(v, i){
+    var u = usageFor(ALIAS[v] || v) || '';
+    return '<div data-v="'+esc(v)+'"'+(i===SUGS.i?' class="sel"':'')+'><b>'+esc(v)+'</b><span>'+
+      esc(u.replace(/^\S+\s*/, ''))+'</span></div>';
+  }).join('');
+  SUG.classList.add('on');
+}
+function sugPick(v){ IN.value = v + ' '; sugClose(); IN.focus(); hint(); }
+function suggest(){
+  var v = IN.value, parts = v.trim().split(/\s+/), head = (parts[0]||'').toLowerCase();
+  if(!head || parts.length > 1 || v.slice(-1) === ' ') return sugClose();
+  var hits = verbs().filter(function(x){ return x.indexOf(head) === 0 && x !== head; }).slice(0, 6);
+  SUGS.hits = hits; if(SUGS.i >= hits.length) SUGS.i = -1;
+  sugRender();
+}
+SUG.addEventListener('pointerdown', function(e){
+  e.preventDefault();
+  var d = e.target.closest('[data-v]'); if(d) sugPick(d.dataset.v);
+});
+
+IN.addEventListener('input', function(){ TABS = null; hint(); suggest(); });
 
 IN.addEventListener('keydown', function(e){
   if((e.ctrlKey || e.metaKey) && (e.key === 'k' || e.key === 'K')){ e.preventDefault(); openPal(); return; }
   if(scrollKey(e.key)){ e.preventDefault(); return; }
-  if(e.key==='Enter'){ var v=IN.value; IN.value=''; TABS=null;
+  if(SUGS.hits.length){
+    if(e.key === 'ArrowDown'){ e.preventDefault(); SUGS.i = (SUGS.i + 1) % SUGS.hits.length; sugRender(); return; }
+    if(e.key === 'ArrowUp' && SUGS.i >= 0){ e.preventDefault(); SUGS.i--; sugRender(); return; }
+    if((e.key === 'Enter' || e.key === 'Tab') && SUGS.i >= 0){ e.preventDefault(); sugPick(SUGS.hits[SUGS.i]); return; }
+    if(e.key === 'Escape'){ e.preventDefault(); sugClose(); return; }
+  }
+  if(e.key==='Enter'){ var v=IN.value; IN.value=''; TABS=null; sugClose();
     if(v.trim()){ if(HIST[HIST.length-1] !== v.trim()) HIST.push(v.trim());
       if(HIST.length > 100) HIST.shift();
       try{ localStorage.setItem('oontz_hist', JSON.stringify(HIST)); }catch(err){} }
@@ -1148,7 +1193,7 @@ IN.addEventListener('keydown', function(e){
     if(!TABS.hits.length) return;
     TABS.i = (TABS.i + 1) % TABS.hits.length;
     IN.value = TABS.hits[TABS.i] + (TABS.hits.length === 1 ? ' ' : '');
-    hint();
+    hint(); suggest();
   }
   else if(e.key==='ArrowUp'){ e.preventDefault();
     if(HI === HIST.length) DRAFT = IN.value;
@@ -1158,7 +1203,7 @@ IN.addEventListener('keydown', function(e){
   else if(e.key==='l' && e.ctrlKey){ e.preventDefault(); CMDS.clear(); }
   else if(e.key==='u' && e.ctrlKey){ e.preventDefault(); IN.value=''; hint(); }
   else if(e.key==='Escape'){ e.preventDefault(); IN.blur(); } });
-IN.addEventListener('blur', function(){ PS1.innerHTML='<span class="w">perform</span> <span class="dim">: to type</span>'; });
+IN.addEventListener('blur', function(){ sugClose(); PS1.innerHTML='<span class="w">perform</span> <span class="dim">: to type</span>'; });
 IN.addEventListener('focus', function(){ PS1.innerHTML='oontz.sh&nbsp;&gt;'; });
 var PS1 = document.getElementById('ps1');
 var lastMsg = null;
