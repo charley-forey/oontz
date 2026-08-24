@@ -5,3 +5,4 @@ takes/
 demo/
 .thudcache/
 *.song.bak
+.claude/
