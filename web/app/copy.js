@@ -223,6 +223,8 @@ C.help = [
   ["bands",                 "who owns which frequencies, and why"],
   ["viz tunnel",            "the canvas. it knows where the drop is"],
   ["theme acid",            "colours. a song remembers its own"],
+  ["calm",                  "dim the visuals when you want to read"],
+  ["text 17",               "bigger words. text + and text - also work"],
   ["clear",                 "wipe the screen, keep the vibes"]
 ];
 

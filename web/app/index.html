@@ -7,51 +7,89 @@
 <meta name="description" content="A terminal instrument for making and mixing techno. Whole songs, two DJ decks, an AI that grades your arrangement. Free, runs in your browser.">
 <style>
   :root{
-    --bg:#07090b; --line:#18212b; --dim:#46545f; --fg:#c6d2dc; --bright:#f4f9fc;
-    --accent:#22e0d0; --accent2:#ff4fa3; --warn:#ffb020; --hot:#ff3b3b; --ok:#4ade80;
+    --bg:#07090b; --line:#24313d; --dim:#93a4b3; --fg:#dbe6f0; --bright:#ffffff;
+    --accent:#3ff0e0; --accent2:#ff7ac0; --warn:#ffc247; --hot:#ff6b6b; --ok:#6ee79a;
     --mono:ui-monospace,"SF Mono",Menlo,Consolas,"DejaVu Sans Mono",monospace;
+    /* Text sits over moving graphics, so every glyph carries its own dark halo.
+       This is what makes it readable without hiding the art behind a slab. */
+    --halo:0 0 3px rgba(4,6,8,.98), 0 0 9px rgba(4,6,8,.85), 0 1px 2px rgba(0,0,0,.95);
+    --plate:rgba(6,9,12,.62);          /* dense panels get a plate as well as a halo */
+    --size:15px;
   }
   *{box-sizing:border-box}
   html,body{height:100%}
-  body{margin:0;background:var(--bg);color:var(--fg);font:14px/1.5 var(--mono);overflow:hidden}
+  body{margin:0;background:var(--bg);color:var(--fg);overflow:hidden;
+    font:var(--size)/1.55 var(--mono)}
   #bg{position:fixed;inset:0;z-index:0;opacity:.55}
   #viz{position:fixed;inset:0;z-index:1}
-  #scan{position:fixed;inset:0;z-index:3;pointer-events:none;
-    background:repeating-linear-gradient(180deg,rgba(0,0,0,0) 0 2px,rgba(0,0,0,.3) 2px 4px);
+  /* Scanlines and vignette are FILM ON THE PICTURE, not on the words: they sit
+     under #wrap. They used to be above it, multiplying 30% black through every
+     glyph and dropping 80% black over the HUD and the prompt. */
+  #scan{position:fixed;inset:0;z-index:2;pointer-events:none;
+    background:repeating-linear-gradient(180deg,rgba(0,0,0,0) 0 2px,rgba(0,0,0,.22) 2px 4px);
     mix-blend-mode:multiply}
-  #vig{position:fixed;inset:0;z-index:3;pointer-events:none;
-    background:radial-gradient(ellipse at 50% 45%,transparent 38%,rgba(0,0,0,.8) 100%)}
-  #wrap{position:relative;z-index:2;height:100%;display:flex;flex-direction:column;
-    max-width:1180px;margin:0 auto;padding:14px 18px}
-  #hud{border-bottom:1px solid var(--line);padding-bottom:6px;margin-bottom:8px;
-    font-size:13px;min-height:1.5em}
-  #out{flex:1;overflow-y:auto;white-space:pre-wrap;word-break:break-word;
-    scrollbar-width:thin;scrollbar-color:var(--line) transparent}
-  #out::-webkit-scrollbar{width:8px}
-  #out::-webkit-scrollbar-thumb{background:var(--line);border-radius:4px}
-  #bar{display:flex;align-items:center;gap:8px;border-top:1px solid var(--line);
-    padding-top:9px;margin-top:6px}
+  #vig{position:fixed;inset:0;z-index:2;pointer-events:none;
+    background:radial-gradient(ellipse at 50% 45%,transparent 45%,rgba(0,0,0,.72) 100%)}
+  #wrap{position:relative;z-index:4;height:100%;display:flex;flex-direction:column;
+    max-width:1180px;margin:0 auto;padding:14px 18px;text-shadow:var(--halo)}
+  #hud{padding:5px 9px;margin-bottom:8px;font-size:.92em;min-height:1.5em;
+    background:var(--plate);border:1px solid var(--line);border-radius:5px;
+    backdrop-filter:blur(7px);-webkit-backdrop-filter:blur(7px)}
+  /* A terminal fills from the bottom: the spacer eats the slack so the first
+     lines sit just above the prompt instead of floating in a void. */
+  #out{flex:1;overflow-y:auto;overflow-x:hidden;white-space:pre-wrap;word-break:break-word;
+    padding:2px 4px;scrollbar-width:thin;scrollbar-color:var(--line) transparent;
+    overscroll-behavior:contain;display:flex;flex-direction:column}
+  #out>#slack{margin-top:auto;flex:0 0 auto}
+  #out::-webkit-scrollbar{width:9px}
+  #out::-webkit-scrollbar-thumb{background:var(--line);border-radius:5px}
+  /* The rack is STATIC: the live grid used to live inside the scrollback, which
+     meant it scrolled away and every 16th note yanked you back to the bottom. */
+  #rack{margin-top:6px;padding:6px 9px;background:var(--plate);border:1px solid var(--line);
+    border-radius:5px;backdrop-filter:blur(7px);-webkit-backdrop-filter:blur(7px);
+    max-height:34vh;overflow-y:auto;scrollbar-width:thin;display:none}
+  #rack.on{display:block}
+  #hint{min-height:1.35em;padding:2px 10px 0;font-size:.85em;color:var(--dim);
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  #hint b{color:var(--accent);font-weight:normal}
+  #hint i{color:var(--bright);font-style:normal;background:rgba(63,240,224,.16);
+    border-radius:3px;padding:0 3px}
+  #bar{display:flex;align-items:center;gap:8px;margin-top:6px;padding:8px 9px;
+    background:var(--plate);border:1px solid var(--line);border-radius:5px;
+    backdrop-filter:blur(7px);-webkit-backdrop-filter:blur(7px)}
   #ps1{color:var(--accent2);white-space:nowrap}
   #in{flex:1;background:none;border:0;outline:0;color:var(--bright);font:inherit;
     caret-color:var(--accent2)}
+  /* "jump to now" - shown only while you are reading history */
+  #tail{position:absolute;right:26px;bottom:96px;z-index:5;display:none;cursor:pointer;
+    padding:4px 11px;border:1px solid var(--accent);border-radius:14px;font-size:.85em;
+    background:rgba(6,9,12,.9);color:var(--accent)}
+  #tail.on{display:block}
   .dim{color:var(--dim)} .b{color:var(--bright)} .a{color:var(--accent)}
   .a2{color:var(--accent2)} .w{color:var(--warn)} .ok{color:var(--ok)} .hot{color:var(--hot)}
-  .k{color:var(--accent);min-width:22ch;display:inline-block}
-  a{color:var(--accent);border-bottom:1px solid rgba(34,224,208,.3);text-decoration:none}
+  .k{color:var(--accent);min-width:22ch;display:inline-block;cursor:pointer}
+  .k:hover{color:var(--bright)}
+  a{color:var(--accent);border-bottom:1px solid rgba(63,240,224,.45);text-decoration:none}
   a:hover{color:var(--bright)}
   .big{font-size:min(2.4vw,15px);line-height:1.05;letter-spacing:.5px}
-  .grid{font-size:13px;letter-spacing:1px}
-  .k{cursor:pointer}
-  @media (max-width:640px){body{font-size:12px}#wrap{padding:10px}.k{min-width:12ch}}
+  .grid{font-size:.95em;letter-spacing:1px}
+  /* `calm` for anyone who wants the words to win outright */
+  body.calm #bg{opacity:.16} body.calm #viz{opacity:.2} body.calm #scan{display:none}
+  body.calm #vig{background:radial-gradient(ellipse at 50% 45%,transparent 60%,rgba(0,0,0,.5) 100%)}
+  body.calm{--plate:rgba(6,9,12,.86)}
+  @media (max-width:640px){#wrap{padding:10px}.k{min-width:12ch}#rack{max-height:30vh}}
   @media (pointer: coarse){ #in,#bar{font-size:16px} #out .k{padding:5px 0} }
-  @media (prefers-reduced-motion:reduce){#bg{display:none}}
+  @media (prefers-reduced-motion:reduce){#bg{display:none}#viz{opacity:.35}}
 </style>
 </head>
 <body>
 <canvas id="bg"></canvas><canvas id="viz"></canvas><div id="scan"></div><div id="vig"></div>
 <div id="wrap">
   <div id="hud"></div>
-  <div id="out"></div>
+  <div id="out"><div id="slack"></div></div>
+  <div id="tail">↓ live</div>
+  <div id="rack"></div>
+  <div id="hint"></div>
   <div id="bar"><span id="ps1">oontz.sh&nbsp;&gt;</span><input id="in" autocomplete="off"
     autocapitalize="off" spellcheck="false" aria-label="terminal input"></div>
 </div>
@@ -65,11 +103,19 @@
 var API = "https://api.oontz.sh";
 var CP = window.OONTZ_COPY || {}, CO = window.OONTZ_COMPOSE, OZ = window.oontz;
 var OUT = document.getElementById('out'), IN = document.getElementById('in'),
-    HUD = document.getElementById('hud');
+    HUD = document.getElementById('hud'), RACK = document.getElementById('rack'),
+    TAIL = document.getElementById('tail');
 var esc = function(s){ return String(s).replace(/[&<>]/g, function(c){
   return {'&':'&amp;','<':'&lt;','>':'&gt;'}[c]; }); };
-function w(html, cls){ var d=document.createElement('div'); if(cls)d.className=cls;
-  d.innerHTML=html; OUT.appendChild(d); OUT.scrollTop=OUT.scrollHeight; return d; }
+/* Autoscroll only when the reader is already at the bottom. Scrolling up is how
+   you read what just went by; the log must not fight you for it. */
+function atBottom(){ return OUT.scrollHeight - OUT.scrollTop - OUT.clientHeight < 24; }
+function tail(){ OUT.scrollTop = OUT.scrollHeight; TAIL.classList.remove('on'); }
+function w(html, cls){ var stick = atBottom();
+  var d=document.createElement('div'); if(cls)d.className=cls;
+  d.innerHTML=html; OUT.appendChild(d);
+  if(stick) tail(); else TAIL.classList.add('on');
+  return d; }
 function line(s, cls){ return w(esc(s===undefined?'':s), cls); }
 var sleep = function(ms){ return new Promise(function(r){ setTimeout(r,ms); }); };
 async function type(s, cls, sp){ var d=w('',cls);
@@ -87,7 +133,7 @@ function block(rows){ line();
 /* ------------------------------------------------------------- the engine */
 var E = new OZ.Engine();
 if(window.OONTZ_VIZ) OONTZ_VIZ.start(E);
-var song = null, gridEl = null, token = localStorage.getItem('oontz_token') || '';
+var song = null, token = localStorage.getItem('oontz_token') || '';
 
 
 function mmss(s){ s = Math.max(0, Math.floor(s||0));
@@ -134,7 +180,6 @@ function draw(){
       (E.songbar+1)+'/'+total+' · '+mmss(songSeconds(song))+' · </span>'+
       '<span class="b">'+esc(at?at.name:'')+'</span><br>'+cells;
   }
-  if(!gridEl) gridEl = w('','grid');
   var h = '';
   (E.order||[]).forEach(function(n){
     var tr = E.tracks[n]; if(!tr || !tr.pat) return;
@@ -153,8 +198,8 @@ function draw(){
     }
     h += '<div><span class="'+(n===foc?'a2':'dim')+'">'+(n===foc?'▸ ':'  ')+n.padEnd(7)+'</span>'+cells+'</div>';
   });
-  gridEl.innerHTML = h;
-  OUT.scrollTop = OUT.scrollHeight;
+  RACK.innerHTML = h;
+  RACK.classList.toggle('on', !!h);        // no rack until there is something in it
 }
 
 /* ------------------------------------------------------- psychedelic bg */
@@ -315,7 +360,7 @@ var CMDS = {
       if(j.id) w('<span class="ok">▸ published.</span> <span class="dim">'+esc(j.url||'')+'</span>');
       else line('▸ '+(j.error||'could not publish'),'w');
     }catch(e){ line('could not reach the server','w'); } },
-  clear: function(){ OUT.innerHTML=''; gridEl=null; },
+  clear: function(){ OUT.innerHTML='<div id="slack"></div>'; },
   mute: function(a){ var t=a[0]; if(!E.tracks[t]) return line('mute <track>','w');
     E.setTrack(t,{mute:!E.tracks[t].mute}); draw(); line('▸ '+t+(E.tracks[t].mute?' muted':' on'),'dim'); },
   solo: function(a){ E.focus=a[0]||E.focus; line('▸ '+E.key('x',true),'dim'); draw(); },
@@ -325,6 +370,19 @@ var CMDS = {
     E.swing=Math.max(0,Math.min(60,v)); if(song) song.swing=E.swing; line('▸ swing '+E.swing,'dim'); },
   focus: function(a){ if(!E.tracks[a[0]]) return line('focus <track>','w'); E.focus=a[0]; draw(); line('▸ pads edit '+a[0],'dim'); },
   perform: function(){ IN.blur(); },
+  /* Two knobs for legibility, because a fixed answer is wrong for someone. */
+  calm: function(a){ var on = a[0] ? a[0] !== 'off' : !document.body.classList.contains('calm');
+    document.body.classList.toggle('calm', on);
+    try{ localStorage.setItem('oontz_calm', on ? '1' : ''); }catch(e){}
+    line('▸ visuals ' + (on ? 'dimmed - the words win' : 'back up'), 'dim'); },
+  text: function(a){
+    var cur = parseInt(getComputedStyle(document.documentElement).getPropertyValue('--size'), 10) || 15;
+    var v = a[0] === '+' ? cur + 1 : a[0] === '-' ? cur - 1 : parseInt(a[0], 10);
+    if(!isFinite(v)) return line('text 17 · text + · text -   (11-28)', 'w');
+    v = Math.max(11, Math.min(28, v));
+    document.documentElement.style.setProperty('--size', v + 'px');
+    try{ localStorage.setItem('oontz_size', String(v)); }catch(e){}
+    draw(); line('▸ ' + v + 'px', 'dim'); },
   /* R / `rec`: what you hear, effects and all, tapped after the compressor. `rec screen`
      adds a screen capture and lets the browser mux the two. */
   rec: async function(a){
@@ -499,12 +557,86 @@ function run(raw){
   line(CP.err_cmd?CP.err_cmd(v0):v0+': no', 'w');
 }
 
+/* ------------------------------------------------- the prompt, as a real one
+   History, completion and a hint strip. A terminal without ↑ and Tab is a text
+   box wearing a terminal costume. */
+var HINT = document.getElementById('hint');
+var HIST = [], HI = 0, DRAFT = '', TABS = null;
+try { HIST = JSON.parse(localStorage.getItem('oontz_hist') || '[]'); } catch(e){}
+HI = HIST.length;
+
+function verbs(){
+  return Object.keys(CMDS).concat(Object.keys(ALIAS), Object.keys(E.tracks || {}))
+    .filter(function(v, i, a){ return a.indexOf(v) === i; }).sort();
+}
+function usageFor(v){
+  var row = (CP.help || []).filter(function(kv){ return kv[0].split(' ')[0] === v; })[0];
+  if(row) return row[0] + '   ' + row[1];
+  if(E.tracks && E.tracks[v]) return v + ' x...x...x...x...   a pattern for ' + v +
+    (E.tracks[v].notes ? ', or notes: ' + v + ' a1 . c2 .' : '');
+  return null;
+}
+/* PgUp/PgDn/Home/End scroll the log from anywhere, typing or performing. */
+function scrollKey(k){
+  var page = OUT.clientHeight * 0.85;
+  if(k === 'PageUp') OUT.scrollTop -= page;
+  else if(k === 'PageDown') OUT.scrollTop += page;
+  else if(k === 'Home') OUT.scrollTop = 0;
+  else if(k === 'End') { tail(); return true; }
+  else return false;
+  TAIL.classList.toggle('on', !atBottom());
+  return true;
+}
+function hint(){
+  var v = IN.value, parts = v.trim().split(/\s+/), head = (parts[0] || '').toLowerCase();
+  if(!v.trim()){ HINT.innerHTML = PENDING
+    ? '<b>Enter</b> runs the ' + PENDING.length + ' proposed lines · type anything else to discard'
+    : ''; return; }
+  if(parts.length > 1 || v.slice(-1) === ' '){
+    var u = usageFor(ALIAS[head] || head);
+    HINT.innerHTML = u ? esc(u).replace(/^(\S+)/, '<b>$1</b>') : '';
+    return;
+  }
+  var hits = verbs().filter(function(x){ return x.indexOf(head) === 0; });
+  if(!hits.length){ HINT.innerHTML = '<span style="color:var(--warn)">no command starts with ' + esc(head) + '</span>'; return; }
+  if(hits.length === 1){ var u2 = usageFor(ALIAS[hits[0]] || hits[0]);
+    HINT.innerHTML = '<i>' + esc(hits[0]) + '</i>' + (u2 ? '   ' + esc(u2.replace(/^\S+\s*/, '')) : '') + '   <span style="opacity:.7">Tab</span>';
+    return; }
+  HINT.innerHTML = hits.slice(0, 9).map(function(x, i){
+    return i ? '<b>' + esc(x) + '</b>' : '<i>' + esc(x) + '</i>'; }).join('  ') +
+    (hits.length > 9 ? '  <span style="opacity:.6">+' + (hits.length - 9) + '</span>' : '') +
+    '   <span style="opacity:.7">Tab</span>';
+}
+IN.addEventListener('input', function(){ TABS = null; hint(); });
+
 IN.addEventListener('keydown', function(e){
-  if(e.key==='Enter'){ var v=IN.value; IN.value='';
+  if(scrollKey(e.key)){ e.preventDefault(); return; }
+  if(e.key==='Enter'){ var v=IN.value; IN.value=''; TABS=null;
+    if(v.trim()){ if(HIST[HIST.length-1] !== v.trim()) HIST.push(v.trim());
+      if(HIST.length > 100) HIST.shift();
+      try{ localStorage.setItem('oontz_hist', JSON.stringify(HIST)); }catch(err){} }
+    HI = HIST.length; DRAFT = '';
     if(PENDING){ var ps=PENDING; PENDING=null;
-      if(!v.trim()){ snapshot(); ps.forEach(run); return; }
+      if(!v.trim()){ snapshot(); ps.forEach(run); hint(); return; }
       line('  discarded','dim'); }
-    run(v); }
+    run(v); hint(); }
+  else if(e.key==='Tab'){                       // complete, then cycle
+    e.preventDefault();
+    var parts = IN.value.trim().split(/\s+/), head = (parts[0]||'').toLowerCase();
+    if(parts.length > 1) return;
+    if(!TABS){ TABS = {hits: verbs().filter(function(x){ return x.indexOf(head) === 0; }), i: -1, stem: head}; }
+    if(!TABS.hits.length) return;
+    TABS.i = (TABS.i + 1) % TABS.hits.length;
+    IN.value = TABS.hits[TABS.i] + (TABS.hits.length === 1 ? ' ' : '');
+    hint();
+  }
+  else if(e.key==='ArrowUp'){ e.preventDefault();
+    if(HI === HIST.length) DRAFT = IN.value;
+    if(HI > 0){ HI--; IN.value = HIST[HI]; hint(); } }
+  else if(e.key==='ArrowDown'){ e.preventDefault();
+    if(HI < HIST.length){ HI++; IN.value = HI === HIST.length ? DRAFT : HIST[HI]; hint(); } }
+  else if(e.key==='l' && e.ctrlKey){ e.preventDefault(); CMDS.clear(); }
+  else if(e.key==='u' && e.ctrlKey){ e.preventDefault(); IN.value=''; hint(); }
   else if(e.key==='Escape'){ e.preventDefault(); IN.blur(); } });
 IN.addEventListener('blur', function(){ PS1.innerHTML='<span class="w">perform</span> <span class="dim">: to type</span>'; });
 IN.addEventListener('focus', function(){ PS1.innerHTML='oontz.sh&nbsp;&gt;'; });
@@ -512,6 +644,7 @@ var PS1 = document.getElementById('ps1');
 var lastMsg = null;
 addEventListener('keydown', function(e){
   if(document.activeElement===IN || e.ctrlKey || e.metaKey || e.altKey) return;
+  if(scrollKey(e.key)){ e.preventDefault(); return; }
   if(e.key===':' || e.key==='Enter'){ e.preventDefault(); IN.focus(); return; }
   if(e.key==='?'){ e.preventDefault(); block((MODE==='deck'?DECK_KEYS:OZ.KEYS).map(function(kv){ return {c:kv[0], d:kv[1]}; })); return; }
   if(e.key==='R'){ e.preventDefault(); CMDS.rec && CMDS.rec([]); return; }
@@ -524,9 +657,12 @@ addEventListener('keydown', function(e){
   draw();
 });
 addEventListener('keyup', function(e){ if(document.activeElement!==IN){ var m=E.key(e.key,false); if(m) w('<span class="dim">  '+esc(m)+'</span>'); } });
+OUT.addEventListener('scroll', function(){ TAIL.classList.toggle('on', !atBottom()); });
+TAIL.addEventListener('click', function(e){ e.stopPropagation(); tail(); });
 var COARSE = matchMedia('(pointer: coarse)').matches;
 addEventListener('click', function(e){
   if(e.target.tagName==='A') return;
+  if(e.target.id==='tail') return;
   var k = e.target.closest('.k');                 /* tap a listed command: it runs */
   if(k && OUT.contains(k)){ run(k.textContent.trim()); return; }
   if(COARSE && !e.target.closest('#bar')) return; /* a phone tap should not summon the keyboard */
@@ -555,6 +691,10 @@ addEventListener('beforeunload', function(){ try{ if(song) localStorage.setItem(
   if(deep){ try{ var dr = await fetch(API+'/songs/'+encodeURIComponent(deep)); var dj = await dr.json();
       if(dj && dj.data){ loadSong(dj.data, 'from the gallery'); IN.focus(); return; }
   }catch(e){} }
+  try{ var sz = localStorage.getItem('oontz_size');
+    if(sz) document.documentElement.style.setProperty('--size', sz + 'px');
+    if(localStorage.getItem('oontz_calm')) document.body.classList.add('calm');
+  }catch(e){}
   try{ var saved = localStorage.getItem('oontz_song');
     if(saved){ song = JSON.parse(saved); E.loadSong(song); draw();
       w('<span class="dim">  restored <span class="b">'+esc(song.name)+'</span> from last time. <span class="a">play</span> to hear it.</span>'); }

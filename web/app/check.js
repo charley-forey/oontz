@@ -168,4 +168,53 @@ TD.ROW_MAIN.concat(TD.ROW_FX).forEach(function(k){
 });
 A.ok(TD.ROW_FX.filter(function(k){ return k[2]; }).length === 3, "exactly [ ] / are hold keys");
 
-console.log("web checks pass  ·  write-through · pads · viz · touch · notes · roll · jumps · decks · theory (" + checked + " plans in window) · " + OZ.KEYS.length + " keys listed");
+/* -- the page must stay readable: this bug shipped once ---------------------
+   The scanlines and the vignette used to sit ABOVE the text, multiplying 30%
+   black through every glyph and dropping 80% black over the HUD and prompt.
+   And .dim carries most of the prose, so its contrast is not decoration. */
+var fs = require("fs"), path = require("path");
+var html = fs.readFileSync(path.join(__dirname, "index.html"), "utf8");
+function blockFor(sel){
+  var i = html.indexOf(sel + "{");
+  A.ok(i >= 0, "no CSS rule for " + sel);
+  return html.slice(i, html.indexOf("}", i));
+}
+function zOf(sel){
+  var b = blockFor(sel), k = b.indexOf("z-index:");
+  A.ok(k >= 0, "no z-index for " + sel);
+  return parseInt(b.slice(k + 8), 10);
+}
+var zWrap = zOf("#wrap");
+["#scan", "#vig", "#bg", "#viz"].forEach(function(sel){
+  A.ok(zOf(sel) < zWrap, sel + " (z " + zOf(sel) + ") must sit UNDER the text (z " + zWrap + ")");
+});
+A.ok(blockFor("#wrap").indexOf("text-shadow:var(--halo)") >= 0,
+  "the text needs its halo to survive the visuals");
+
+function lum(hex){
+  var c = [1, 3, 5].map(function(i){ return parseInt(hex.substr(i, 2), 16) / 255; })
+    .map(function(v){ return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); });
+  return 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2];
+}
+function ratio(a, b){ var l1 = lum(a), l2 = lum(b);
+  return (Math.max(l1, l2) + 0.05) / (Math.min(l1, l2) + 0.05); }
+function tok(name){
+  var i = html.indexOf("--" + name + ":");
+  A.ok(i >= 0, "token --" + name + " not found");
+  return html.substr(html.indexOf("#", i), 7);
+}
+var bg = tok("bg");
+[["fg", 7], ["dim", 4.5], ["bright", 7], ["accent", 4.5], ["accent2", 4.5], ["ok", 4.5], ["warn", 4.5], ["hot", 4.5]]
+  .forEach(function(p){
+    var r = ratio(tok(p[0]), bg);
+    A.ok(r >= p[1], "--" + p[0] + " " + tok(p[0]) + " on " + bg + " is " + r.toFixed(1) +
+      ":1, needs " + p[1] + ":1");
+  });
+
+/* the live grid belongs in the static rack, never in the scrolling log */
+A.ok(/RACK\.innerHTML = h;/.test(html), "the grid must render into the rack");
+/* only tail() may pin the log to the bottom; draw() used to do it every 16th note */
+A.strictEqual(html.split("OUT.scrollTop = OUT.scrollHeight").length - 1, 1,
+  "exactly one place may jump the log to the bottom, and it is tail()");
+
+console.log("web checks pass  ·  write-through · pads · viz · touch · notes · roll · jumps · decks · theory (" + checked + " plans in window) · legible · " + OZ.KEYS.length + " keys listed");
