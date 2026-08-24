@@ -49,6 +49,21 @@
     border-radius:5px;backdrop-filter:blur(7px);-webkit-backdrop-filter:blur(7px);
     max-height:34vh;overflow-y:auto;scrollbar-width:thin;display:none}
   #rack.on{display:block}
+  /* the palette: everything you can do, one fuzzy search away */
+  #pal{position:fixed;inset:0;z-index:9;display:none;background:rgba(3,5,7,.72);
+    backdrop-filter:blur(3px);-webkit-backdrop-filter:blur(3px)}
+  #pal.on{display:block}
+  #palbox{max-width:640px;margin:9vh auto 0;background:rgba(8,12,16,.97);
+    border:1px solid var(--accent);border-radius:8px;overflow:hidden;
+    box-shadow:0 24px 70px rgba(0,0,0,.75)}
+  #palin{width:100%;background:none;border:0;outline:0;color:var(--bright);
+    font:inherit;font-size:1.05em;padding:13px 15px;border-bottom:1px solid var(--line)}
+  #pallist{max-height:52vh;overflow-y:auto;scrollbar-width:thin}
+  .pi{padding:7px 15px;cursor:pointer;display:flex;gap:12px;align-items:baseline}
+  .pi.sel{background:rgba(63,240,224,.14)}
+  .pi .pc{color:var(--accent);min-width:16ch;white-space:nowrap;flex:0 0 auto}
+  .pi .pd{color:var(--dim);font-size:.9em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  #hud{cursor:pointer}
   #hint{min-height:1.35em;padding:2px 10px 0;font-size:.85em;color:var(--dim);
     white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   #hint b{color:var(--accent);font-weight:normal}
@@ -86,6 +101,8 @@
 </head>
 <body>
 <canvas id="bg"></canvas><canvas id="viz"></canvas><div id="scan"></div><div id="vig"></div>
+<div id="pal"><div id="palbox"><input id="palin" autocomplete="off" spellcheck="false"
+  placeholder="what do you want to do?" aria-label="command palette"><div id="pallist"></div></div></div>
 <div id="wrap">
   <div id="hud"></div>
   <div id="out"><div id="slack"></div></div>
@@ -167,7 +184,7 @@ function draw(){
   /* HUD: where we are in the whole song */
   if(song){
     var at = OZ.sectionAt(song, E.songbar), total = OZ.totalBars(song);
-    var cells = '', acc = 0, w0 = Math.max(20, Math.min(90, Math.floor(innerWidth/14)));
+    var cells = '', acc = 0, barAt = 0, w0 = Math.max(20, Math.min(90, Math.floor(innerWidth/14)));
     song.order.forEach(function(n){
       var s = song.sections[n]; if(!s) return;
       var span = Math.max(1, Math.round(s.bars/total*w0));
@@ -176,7 +193,10 @@ function draw(){
       var gl = s.energy>0.8?'█':(s.energy>0.5?'▓':'▒');
       for(var k=0;k<span;k++){ acc++;
         var here = at && n===at.name && Math.abs(acc - Math.round((E.songbar+1)/total*w0))<1;
-        cells += '<span style="color:var('+col+')'+(here?';background:var('+col+');color:#000':'')+'">'+gl+'</span>'; }
+        /* every cell knows which bar it is, so the map is a transport */
+        cells += '<span class="sq" data-bar="'+Math.round(barAt + s.bars*k/span)+'" title="'+esc(n)+'" style="color:var('+col+')'+
+          (here?';background:var('+col+');color:#000':'')+'">'+gl+'</span>'; }
+      barAt += s.bars;
     });
     HUD.innerHTML = '<span class="a2">'+esc(song.name)+'</span> <span class="dim">'+
       Math.round(song.bpm)+' BPM · '+esc(song.key+' '+song.scale)+' · bar '+
@@ -369,7 +389,9 @@ var CMDS = {
       w('<span class="dim">  where each track actually lives, on <span class="a">'+esc(m.section)+'</span></span>'); line();
       EAR.table(m).forEach(function(r){ w('<span class="dim">  '+esc(r)+'</span>'); }); line();
     }catch(e){ pr.remove(); line('  could not render: '+(e.message||e),'w'); } },
-  play: function(){ if(!song) return line(CP.err_nosong,'w'); E.play(); line('▸ playing','dim'); },
+  play: function(){
+    if(!song && !(E.order||[]).length) return line(CP.err_nosong,'w');
+    E.play(); line('▸ playing','dim'); },
   stop: function(){ E.stop(); line('▸ stopped','dim'); },
   bpm: function(a){ var v=parseFloat(a[0]);
     if(!isFinite(v)||v<60||v>220) return line(CP.err_bpm,'w');
@@ -424,10 +446,45 @@ var CMDS = {
   solo: function(a){ E.focus=a[0]||E.focus; line('▸ '+E.key('x',true),'dim'); draw(); },
   gain: function(a){ var t=a[0], v=parseFloat(a[1]); if(!E.tracks[t]||!isFinite(v)) return line('gain <track> 0..1.2','w');
     E.setTrack(t,{gain:Math.max(0,Math.min(1.2,v))}); line('▸ '+t+' gain '+v,'dim'); },
+  /* The mixer verbs the AI prompt and the lesson both assume exist. */
+  sidechain: function(a){ var t=a[0], v=parseFloat(a[1]);
+    if(!E.tracks[t]||!isFinite(v)) return line('sidechain <track> 0..1   (how hard it ducks on the kick)','w');
+    E.setTrack(t,{sc:Math.max(0,Math.min(1,v))}); teach('sidechain');
+    line('▸ '+t+' ducks '+Math.round(Math.max(0,Math.min(1,v))*100)+'% on every kick','dim'); },
+  pan: function(a){ var t=a[0], v=parseFloat(a[1]);
+    if(!E.tracks[t]||!isFinite(v)) return line('pan <track> -1..1','w');
+    E.setTrack(t,{pan:Math.max(-1,Math.min(1,v))}); teach('pan'); line('▸ '+t+' pan '+v,'dim'); },
+  filter: function(a){ var t=a[0], hz=parseFloat(a[1]);
+    if(!E.tracks[t]||!isFinite(hz)) return line('filter <track> <hz>   (the lowpass on a pitched voice)','w');
+    E.setTrack(t,{fc:Math.max(40,Math.min(18000,hz))}); teach('cutoff'); line('▸ '+t+' cutoff '+Math.round(hz)+' Hz','dim'); },
+  tune: function(a){ var t=a[0], hz=parseFloat(a[1]);
+    if(!E.tracks[t]||!isFinite(hz)) return line('tune <track> <hz>','w');
+    E.setTrack(t,{tune:hz}); teach('tune'); line('▸ '+t+' tune '+hz,'dim'); },
   swing: function(a){ var v=parseFloat(a[0]); if(!isFinite(v)) return line('swing 0..60','w');
     E.swing=Math.max(0,Math.min(60,v)); if(song) song.swing=E.swing; line('▸ swing '+E.swing,'dim'); },
   focus: function(a){ if(!E.tracks[a[0]]) return line('focus <track>','w'); E.focus=a[0]; draw(); line('▸ pads edit '+a[0],'dim'); },
   perform: function(){ IN.blur(); },
+  /* what a thing does, in sound terms - the same table the desktop teaches from */
+  why: function(a){
+    var T = window.OONTZ_THEORY, topic = (a[0]||'').toLowerCase();
+    if(!topic){
+      if(!song) return line('why <thing> — e.g. why sidechain, why swing, why cutoff','w');
+      var at = OZ.sectionAt(song, E.songbar); line();
+      w('<span class="dim">  you are in <span class="b">'+esc(at?at.name:'?')+'</span>'+
+        (at?' ('+at.sec.role+', energy '+(at.sec.energy||0).toFixed(2)+', bar '+(at.within+1)+' of '+at.sec.bars+')':'')+'</span>');
+      var g = (T.genres||{})[(song.meta||{}).style];
+      if(g) w('<span class="dim">  '+esc(g.note)+'</span>');
+      var gr = T.grooves && T.grooves[song.groove];
+      if(gr) w('<span class="dim">  groove <span class="a">'+esc(song.groove)+'</span>: '+esc(gr.why)+'</span>');
+      line(); return w('<span class="dim">  <span class="a">why sidechain</span> · <span class="a">why swing</span> · <span class="a">rules</span> · <span class="a">grade</span></span>');
+    }
+    var txt = (T.why||{})[topic];
+    if(!txt){ var hits = Object.keys(T.why||{}).filter(function(k){ return k.indexOf(topic)===0; });
+      if(hits.length===1) txt = T.why[hits[0]];
+      else return line('no explanation for '+topic+'. try: '+Object.keys(T.why||{}).slice(0,14).join(' '),'w'); }
+    line(); w('<span class="dim">  '+esc(txt)+'</span>'); line(); },
+  learn: function(){ LESSON_AT = 0; TEACH = true; lessonStep(); },
+  palette: function(){ openPal(); },
   /* Two knobs for legibility, because a fixed answer is wrong for someone. */
   calm: function(a){ var on = a[0] ? a[0] !== 'off' : !document.body.classList.contains('calm');
     document.body.classList.toggle('calm', on);
@@ -605,6 +662,106 @@ function deckKey(k){
   return null;
 }
 var REC = null, PENDING = null, UNDO = [], EARLAST = null;
+var TEACH = false, TOLD = {}, LESSON_AT = -1;
+
+/* ---------------------------------------------------------- teaching by doing */
+/* One line, the first time you touch a thing. Never twice - a tutor that repeats
+   itself is a nag, and this is the same table the desktop teaches from. */
+function teach(verb){
+  if(!TEACH || TOLD[verb]) return;
+  var txt = ((window.OONTZ_THEORY||{}).why||{})[verb];
+  if(!txt) return;
+  TOLD[verb] = 1;
+  w('<span class="dim">  ⓘ '+esc(txt.split(". ")[0])+'.</span>');
+}
+
+var LESSON = [
+  ["a kick", "type <span class=\"a\">kick x...x...x...x...</span> — four on the floor, the heartbeat of the whole genre.",
+   function(){ return hasHits('kick'); }],
+  ["press play", "type <span class=\"a\">play</span>, or press Esc then space. It loops until you stop it; nothing here breaks.",
+   function(){ return E.playing; }],
+  ["hats", "type <span class=\"a\">hat ..x...x...x...x.</span> — between the kicks. A hat on the offbeat is why house feels faster than it is.",
+   function(){ return hasHits('hat'); }],
+  ["by hand", "press Esc to leave the prompt, then <span class=\"a\">2</span> to focus the hats and <span class=\"a\">k</span> to toggle step 16. Or just click the step in the rack.",
+   function(){ var t=E.tracks.hat; return t && t.pat && /[xX]/.test(t.pat.slice(15,16)); }],
+  ["a bassline", "type <span class=\"a\">bass a1 . a1~ . c2 . a1 .</span> — a1 is a note, ~ slides into the next one.",
+   function(){ return hasHits('bass'); }],
+  ["get out of the kick's way", "type <span class=\"a\">sidechain bass 0.7</span> — now the bass ducks on every kick instead of fighting it for the same 60Hz.",
+   function(){ var t=E.tracks.bass; return t && t.sc >= 0.5; }],
+  ["a whole song", "type <span class=\"a\">go</span>. That is the arrangement grammar writing you a track, drop and all.",
+   function(){ return !!song; }],
+  ["let it mark its own homework", "type <span class=\"a\">grade</span>. It renders the loudest section and measures it — then <span class=\"a\">improve</span> fixes what it finds.",
+   function(){ return !!EARLAST; }]
+];
+function hasHits(n){ var t = E.tracks[n]; return !!(t && t.pat && t.pat.replace(/[.\-]/g,'').length); }
+function lessonStep(){
+  if(LESSON_AT < 0) return;
+  if(LESSON_AT >= LESSON.length){ LESSON_AT = -1; line();
+    w('<span class="ok">  that is the whole instrument.</span> <span class="dim">everything else is more of this. <span class="a">help</span> for the rest.</span>'); line(); return; }
+  var st = LESSON[LESSON_AT]; line();
+  w('<span class="a2">  '+(LESSON_AT+1)+'/'+LESSON.length+'  '+esc(st[0])+'</span>');
+  w('<span class="dim">  '+st[1]+'</span>');
+}
+function lessonCheck(){
+  if(LESSON_AT < 0 || LESSON_AT >= LESSON.length) return;
+  if(LESSON[LESSON_AT][2]()){ LESSON_AT++;
+    w('<span class="ok">  ✓</span>'); lessonStep(); }
+}
+
+/* ------------------------------------------------------------- the palette */
+var PAL = document.getElementById('pal'), PALIN = document.getElementById('palin'),
+    PALLIST = document.getElementById('pallist'), PALSEL = 0, PALROWS = [];
+function palItems(){
+  var out = [], T = window.OONTZ_THEORY || {};
+  (CP.help||[]).forEach(function(kv){ out.push([kv[0], kv[1], kv[0]]); });
+  Object.keys(CMDS).forEach(function(c){
+    if(!out.some(function(o){ return o[2].split(' ')[0] === c; })) out.push([c, 'command', c]); });
+  Object.keys(CO.GENRES||{}).forEach(function(g){
+    out.push(['compose '+g, T.genres && T.genres[g] ? T.genres[g].note : 'a whole song', 'compose '+g+' 5']); });
+  Object.keys(T.why||{}).forEach(function(k){ out.push(['why '+k, T.why[k].split('. ')[0], 'why '+k]); });
+  (E.order||[]).forEach(function(n){ out.push(['focus '+n, 'the pads edit '+n, 'focus '+n]); });
+  Object.keys(OZ.VOICES).forEach(function(n){
+    var r = (T.freq_roles||{})[n];
+    out.push([n+' x...x...x...x...', r ? r.note : 'a pattern on '+n, n+' x...x...x...x...']); });
+  return out;
+}
+/* subsequence match, so "cmpac" finds "compose acid" */
+function fuzzy(q, s){
+  q = q.toLowerCase(); s = s.toLowerCase();
+  if(!q) return 0;
+  var i = 0, score = 0, last = -1;
+  for(var k = 0; k < s.length && i < q.length; k++){
+    if(s[k] === q[i]){ score += (last === k-1 ? 3 : 1) + (k === 0 ? 5 : 0); last = k; i++; }
+  }
+  return i === q.length ? score : -1;
+}
+function palRender(){
+  var q = PALIN.value.trim();
+  PALROWS = palItems().map(function(it){ return {it: it, s: q ? fuzzy(q, it[0]+' '+it[1]) : 1}; })
+    .filter(function(r){ return r.s >= 0; })
+    .sort(function(a, b){ return b.s - a.s; }).slice(0, 60).map(function(r){ return r.it; });
+  if(PALSEL >= PALROWS.length) PALSEL = 0;
+  PALLIST.innerHTML = PALROWS.map(function(it, i){
+    return '<div class="pi'+(i===PALSEL?' sel':'')+'" data-i="'+i+'"><span class="pc">'+
+      esc(it[0])+'</span><span class="pd">'+esc(it[1])+'</span></div>'; }).join('');
+  var sel = PALLIST.querySelector('.sel'); if(sel) sel.scrollIntoView({block:'nearest'});
+}
+function openPal(){ PAL.classList.add('on'); PALIN.value=''; PALSEL=0; palRender(); PALIN.focus(); }
+function closePal(){ PAL.classList.remove('on'); IN.focus(); }
+function palRun(){ var it = PALROWS[PALSEL]; if(!it) return; closePal(); run(it[2]); }
+PALIN.addEventListener('input', function(){ PALSEL = 0; palRender(); });
+PALIN.addEventListener('keydown', function(e){
+  if(e.key === 'Escape'){ e.preventDefault(); closePal(); }
+  else if(e.key === 'Enter'){ e.preventDefault(); palRun(); }
+  else if(e.key === 'ArrowDown'){ e.preventDefault(); PALSEL = Math.min(PALROWS.length-1, PALSEL+1); palRender(); }
+  else if(e.key === 'ArrowUp'){ e.preventDefault(); PALSEL = Math.max(0, PALSEL-1); palRender(); }
+  e.stopPropagation();
+});
+PALLIST.addEventListener('click', function(e){
+  var row = e.target.closest('.pi'); if(!row) return;
+  PALSEL = +row.dataset.i; palRun();
+});
+PAL.addEventListener('click', function(e){ if(e.target === PAL) closePal(); });
 var EAR = window.OONTZ_EAR;
 function sev(k){ return {good:'<span class="ok">  ✓ ', warn:'<span class="w">  ! ',
                          bad:'<span class="hot">  ✗ '}[k] || '<span class="dim">  '; }
@@ -647,6 +804,9 @@ function run(raw){
   w('<span class="a2">oontz.sh &gt;</span> '+esc(s));
   var parts=s.split(/\s+/), v0=parts[0], args=parts.slice(1);
   var v=ALIAS[v0.toLowerCase()]||v0.toLowerCase();
+  if(E.tracks && !E.tracks[v] && OZ.VOICES[v] && args.length){
+    E.start(); E.setTrack(v, {voice: v, pat: "", gain: 1});   // name a voice and you have a track
+  }
   if(E.tracks && E.tracks[v]){
     var pat=args[0]||'';
     if(args.length>1 || /^[a-g]/i.test(pat)){        // notes: bass a1 . a1~ c2!
@@ -657,8 +817,8 @@ function run(raw){
       if(!/^[xXoO.\-]+$/.test(pat)) return line(CP.err_pattern,'w');
       E.setTrack(v,{pat:pat}); }
     if(!E.playing) E.play(); draw();
-    return line('▸ '+v+' '+args.join(' '),'dim'); }
-  if(CMDS[v]) return CMDS[v](args);
+    line('▸ '+v+' '+args.join(' '),'dim'); teach(v); setTimeout(lessonCheck, 60); return; }
+  if(CMDS[v]){ var r = CMDS[v](args); teach(v); setTimeout(lessonCheck, 60); return r; }
   line(CP.err_cmd?CP.err_cmd(v0):v0+': no', 'w');
 }
 
@@ -715,6 +875,7 @@ function hint(){
 IN.addEventListener('input', function(){ TABS = null; hint(); });
 
 IN.addEventListener('keydown', function(e){
+  if((e.ctrlKey || e.metaKey) && (e.key === 'k' || e.key === 'K')){ e.preventDefault(); openPal(); return; }
   if(scrollKey(e.key)){ e.preventDefault(); return; }
   if(e.key==='Enter'){ var v=IN.value; IN.value=''; TABS=null;
     if(v.trim()){ if(HIST[HIST.length-1] !== v.trim()) HIST.push(v.trim());
@@ -748,6 +909,8 @@ IN.addEventListener('focus', function(){ PS1.innerHTML='oontz.sh&nbsp;&gt;'; });
 var PS1 = document.getElementById('ps1');
 var lastMsg = null;
 addEventListener('keydown', function(e){
+  if((e.ctrlKey || e.metaKey) && (e.key === 'k' || e.key === 'K')){ e.preventDefault(); openPal(); return; }
+  if(PAL.classList.contains('on')) return;
   if(document.activeElement===IN || e.ctrlKey || e.metaKey || e.altKey) return;
   if(scrollKey(e.key)){ e.preventDefault(); return; }
   if(e.key===':' || e.key==='Enter'){ e.preventDefault(); IN.focus(); return; }
@@ -770,6 +933,19 @@ RACK.addEventListener('click', function(e){
     line('▸ ' + E.toggleStep(st.dataset.t, +st.dataset.i), 'dim'); draw(); return; }
   var tk = e.target.closest('.trk');
   if(tk){ e.stopPropagation(); E.focus = tk.dataset.t; draw(); } });
+
+/* The section map is a transport: click a bar, or drag across it to scrub. */
+function hudSeek(e){
+  var sq = e.target.closest && e.target.closest('.sq');
+  if(!sq || !song) return;
+  E.jump(+sq.dataset.bar); draw();
+}
+HUD.addEventListener('pointerdown', function(e){
+  if(!song) return;
+  hudSeek(e); HUD.setPointerCapture && HUD.setPointerCapture(e.pointerId); HUD.dataset.drag = '1';
+});
+HUD.addEventListener('pointermove', function(e){ if(HUD.dataset.drag) hudSeek(e); });
+addEventListener('pointerup', function(){ delete HUD.dataset.drag; });
 
 OUT.addEventListener('scroll', function(){ TAIL.classList.toggle('on', !atBottom()); });
 TAIL.addEventListener('click', function(e){ e.stopPropagation(); tail(); });
@@ -808,6 +984,15 @@ addEventListener('beforeunload', function(){ try{ if(song) localStorage.setItem(
   try{ var sz = localStorage.getItem('oontz_size');
     if(sz) document.documentElement.style.setProperty('--size', sz + 'px');
     if(localStorage.getItem('oontz_calm')) document.body.classList.add('calm');
+  }catch(e){}
+  /* A first-time visitor gets taught, once. Anyone who has been here keeps the
+     screen they know. */
+  try{
+    if(!localStorage.getItem('oontz_seen')){
+      localStorage.setItem('oontz_seen', '1');
+      TEACH = true;
+      w('<span class="dim">  first time? <span class="a">learn</span> builds a track with you in about a minute. <span class="a">Ctrl+K</span> finds anything.</span>');
+    }
   }catch(e){}
   try{ var saved = localStorage.getItem('oontz_song');
     if(saved){ song = JSON.parse(saved); E.loadSong(song); draw();

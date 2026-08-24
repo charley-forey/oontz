@@ -296,8 +296,20 @@ def prompt_text():
     return "\n".join(lines)
 
 
+def _why_table():
+    """teach.WHY - what a parameter does, in sound terms. Imported lazily because
+    teach imports core and core imports this module; at export time everything is
+    loaded, so there is no cycle to trip over."""
+    try:
+        from . import teach
+        return dict(teach.WHY)
+    except Exception:
+        return {}
+
+
 def as_dict():
-    return {"genres": GENRES, "freq_roles": FREQ_ROLES, "rhythm": RHYTHM,
+    return {"why": _why_table(),
+            "genres": GENRES, "freq_roles": FREQ_ROLES, "rhythm": RHYTHM,
             "arrangement": ARRANGEMENT, "mixing": MIXING, "dj": DJ,
             "templates": TEMPLATES, "role_bars": ROLE_BARS,
             "bands_hz": [list(b) for b in BANDS_HZ],
