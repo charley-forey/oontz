@@ -45,17 +45,19 @@ except (OSError, ValueError):
     pass
 
 MAX_SONG_BYTES = 512 * 1024          # a .song is a few KB; this is generous
+MAX_TAKE_BYTES = 64 * 1024           # a take is the command log, not audio
 LINK_TTL = 900                       # magic links die in 15 minutes
 SESSION_TTL = 60 * 60 * 24 * 90
 
 EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+HANDLE_RE = re.compile(r"^[a-z0-9_]{3,24}$")
 
 app = FastAPI(title="oontz", docs_url=None, redoc_url=None)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[APP_URL, SITE_URL, "http://localhost:3000", "http://localhost:5173"],
     allow_credentials=False,
-    allow_methods=["GET", "POST", "DELETE", "OPTIONS"],
+    allow_methods=["GET", "POST", "PATCH", "PUT", "DELETE", "OPTIONS"],
     allow_headers=["*"],
 )
 
@@ -86,6 +88,20 @@ def init():
         CREATE INDEX IF NOT EXISTS songs_public ON songs(public, updated DESC);
         CREATE TABLE IF NOT EXISTS links(
           token TEXT PRIMARY KEY, email TEXT NOT NULL, created REAL NOT NULL);
+        CREATE UNIQUE INDEX IF NOT EXISTS users_handle ON users(handle);
+        CREATE TABLE IF NOT EXISTS takes(
+          id TEXT PRIMARY KEY, user_id INTEGER NOT NULL, song_id TEXT,
+          name TEXT NOT NULL, data TEXT NOT NULL, created REAL NOT NULL,
+          FOREIGN KEY(user_id) REFERENCES users(id));
+        CREATE INDEX IF NOT EXISTS takes_user ON takes(user_id);
+        CREATE TABLE IF NOT EXISTS playlists(
+          id TEXT PRIMARY KEY, user_id INTEGER NOT NULL, title TEXT NOT NULL,
+          public INTEGER DEFAULT 0, created REAL NOT NULL, updated REAL NOT NULL,
+          FOREIGN KEY(user_id) REFERENCES users(id));
+        CREATE INDEX IF NOT EXISTS playlists_user ON playlists(user_id);
+        CREATE TABLE IF NOT EXISTS playlist_items(
+          playlist_id TEXT NOT NULL, pos INTEGER NOT NULL, song_id TEXT NOT NULL,
+          PRIMARY KEY(playlist_id, pos));
         """)
         c.commit()
 
@@ -190,6 +206,29 @@ class SongIn(BaseModel):
     public: bool = False
 
 
+class MeIn(BaseModel):
+    handle: str = Field(max_length=64)
+
+
+class TakeIn(BaseModel):
+    song_id: str | None = Field(default=None, max_length=32)
+    name: str = Field(default="take", max_length=120)
+    data: str
+
+
+class PlaylistIn(BaseModel):
+    title: str = Field(default="untitled", max_length=120)
+
+
+class PlaylistPatch(BaseModel):
+    title: str | None = Field(default=None, max_length=120)
+    public: bool | None = None
+
+
+class ItemsIn(BaseModel):
+    song_ids: list[str] = Field(max_length=200)
+
+
 # --------------------------------------------------------------------- rate
 
 _HITS = {}
@@ -274,6 +313,21 @@ def me(user=Depends(current_user)):
         n = c.execute("SELECT COUNT(*) n FROM songs WHERE user_id=?",
                       (user["id"],)).fetchone()["n"]
     return {"email": user["email"], "handle": user["handle"], "songs": n}
+
+
+@app.patch("/me")
+def set_handle(body: MeIn, request: Request, user=Depends(current_user)):
+    limit(request, "handle", 10)
+    h = body.handle.strip().lower()
+    if not HANDLE_RE.match(h):
+        raise HTTPException(400, "a handle is one word, 3-24 of a-z 0-9 _")
+    with closing(db()) as c:
+        try:
+            c.execute("UPDATE users SET handle=? WHERE id=?", (h, user["id"]))
+            c.commit()
+        except sqlite3.IntegrityError:
+            raise HTTPException(409, "someone already has that handle")
+    return {"handle": h}
 
 
 def _meta(data):
@@ -386,10 +440,187 @@ def gallery(sort: str = "new", limit_n: int = 40, request: Request = None):
     out = []
     for r in rows:
         d = dict(r)
-        d["by"] = d.pop("handle") or (d.pop("email").split("@")[0] + "@…")
+        d["by"] = d["handle"] or (d.pop("email").split("@")[0] + "@…")
         d.pop("email", None)
         out.append(d)
     return {"songs": out, "sort": sort}
+
+
+# -------------------------------------------------------------------- takes
+# A take is the .thud command log of a session: text, a few KB, re-rendered by
+# the deterministic engine wherever it is played. Never audio.
+
+def _nid():
+    return secrets.token_hex(6)
+
+
+@app.post("/takes")
+def save_take(body: TakeIn, request: Request, user=Depends(current_user)):
+    limit(request, "take", 60)
+    if len(body.data.encode()) > MAX_TAKE_BYTES:
+        raise HTTPException(413, "a take is a command log; that one is too big to be one")
+    tid = _nid()
+    with closing(db()) as c:
+        c.execute("INSERT INTO takes(id,user_id,song_id,name,data,created) VALUES(?,?,?,?,?,?)",
+                  (tid, user["id"], body.song_id, body.name, body.data, time.time()))
+        c.commit()
+    return {"id": tid, "name": body.name, "song_id": body.song_id}
+
+
+@app.get("/takes")
+def my_takes(user=Depends(current_user)):
+    with closing(db()) as c:
+        rows = c.execute("""SELECT id,song_id,name,length(data) bytes,created
+                            FROM takes WHERE user_id=? ORDER BY created DESC""",
+                         (user["id"],)).fetchall()
+    return {"takes": [dict(r) for r in rows]}
+
+
+@app.get("/takes/{tid}")
+def get_take(tid: str, user=Depends(current_user)):
+    with closing(db()) as c:
+        row = c.execute("SELECT * FROM takes WHERE id=? AND user_id=?",
+                        (tid, user["id"])).fetchone()
+    if not row:
+        raise HTTPException(404, "no such take of yours")
+    return dict(row)
+
+
+@app.delete("/takes/{tid}")
+def delete_take(tid: str, user=Depends(current_user)):
+    with closing(db()) as c:
+        r = c.execute("DELETE FROM takes WHERE id=? AND user_id=?", (tid, user["id"]))
+        c.commit()
+    if not r.rowcount:
+        raise HTTPException(404, "no such take of yours")
+    return {"deleted": tid}
+
+
+# ---------------------------------------------------------------- playlists
+
+def _playlist(c, pid):
+    row = c.execute("""SELECT p.*, u.handle FROM playlists p JOIN users u ON u.id=p.user_id
+                       WHERE p.id=?""", (pid,)).fetchone()
+    if not row:
+        raise HTTPException(404, "no such playlist")
+    return row
+
+
+def _playlist_songs(c, pid):
+    rows = c.execute("""SELECT s.id,s.title,s.bpm,s.kkey,s.seconds,s.sections,s.plays,
+                        s.public,u.handle FROM playlist_items i
+                        JOIN songs s ON s.id=i.song_id JOIN users u ON u.id=s.user_id
+                        WHERE i.playlist_id=? ORDER BY i.pos""", (pid,)).fetchall()
+    return [dict(r) for r in rows]
+
+
+@app.post("/playlists")
+def new_playlist(body: PlaylistIn, request: Request, user=Depends(current_user)):
+    limit(request, "playlist", 30)
+    pid, now = _nid(), time.time()
+    with closing(db()) as c:
+        c.execute("INSERT INTO playlists(id,user_id,title,public,created,updated) VALUES(?,?,?,0,?,?)",
+                  (pid, user["id"], body.title, now, now))
+        c.commit()
+    return {"id": pid, "title": body.title, "public": False}
+
+
+@app.get("/playlists/public")
+def public_playlists(limit_n: int = 40):
+    limit_n = max(1, min(100, limit_n))
+    with closing(db()) as c:
+        rows = c.execute("""SELECT p.id,p.title,p.created,p.updated,u.handle,
+                            (SELECT COUNT(*) FROM playlist_items i WHERE i.playlist_id=p.id) n
+                            FROM playlists p JOIN users u ON u.id=p.user_id
+                            WHERE p.public=1 ORDER BY p.updated DESC LIMIT ?""",
+                         (limit_n,)).fetchall()
+    return {"playlists": [dict(r) for r in rows]}
+
+
+@app.get("/playlists")
+def my_playlists(user=Depends(current_user)):
+    with closing(db()) as c:
+        rows = c.execute("""SELECT p.id,p.title,p.public,p.created,p.updated,
+                            (SELECT COUNT(*) FROM playlist_items i WHERE i.playlist_id=p.id) n
+                            FROM playlists p WHERE p.user_id=? ORDER BY p.updated DESC""",
+                         (user["id"],)).fetchall()
+    return {"playlists": [dict(r) for r in rows]}
+
+
+@app.get("/playlists/{pid}")
+def get_playlist(pid: str, user=Depends(optional_user)):
+    with closing(db()) as c:
+        row = _playlist(c, pid)
+        if not row["public"] and (not user or user["id"] != row["user_id"]):
+            raise HTTPException(403, "that playlist is private")
+        songs = _playlist_songs(c, pid)
+    return {"id": row["id"], "title": row["title"], "public": bool(row["public"]),
+            "handle": row["handle"], "created": row["created"], "updated": row["updated"],
+            "songs": songs}
+
+
+@app.patch("/playlists/{pid}")
+def patch_playlist(pid: str, body: PlaylistPatch, user=Depends(current_user)):
+    with closing(db()) as c:
+        row = c.execute("SELECT * FROM playlists WHERE id=? AND user_id=?",
+                        (pid, user["id"])).fetchone()
+        if not row:
+            raise HTTPException(404, "no such playlist of yours")
+        title = body.title if body.title is not None else row["title"]
+        public = int(body.public) if body.public is not None else row["public"]
+        c.execute("UPDATE playlists SET title=?,public=?,updated=? WHERE id=?",
+                  (title, public, time.time(), pid))
+        c.commit()
+    return {"id": pid, "title": title, "public": bool(public),
+            "url": "%s/p/%s" % (SITE_URL, pid) if public else None}
+
+
+@app.delete("/playlists/{pid}")
+def delete_playlist(pid: str, user=Depends(current_user)):
+    with closing(db()) as c:
+        r = c.execute("DELETE FROM playlists WHERE id=? AND user_id=?", (pid, user["id"]))
+        if r.rowcount:
+            c.execute("DELETE FROM playlist_items WHERE playlist_id=?", (pid,))
+        c.commit()
+    if not r.rowcount:
+        raise HTTPException(404, "no such playlist of yours")
+    return {"deleted": pid}
+
+
+@app.put("/playlists/{pid}/items")
+def set_items(pid: str, body: ItemsIn, user=Depends(current_user)):
+    """Replaces the ordered list. Every song must be yours or public."""
+    with closing(db()) as c:
+        row = c.execute("SELECT id FROM playlists WHERE id=? AND user_id=?",
+                        (pid, user["id"])).fetchone()
+        if not row:
+            raise HTTPException(404, "no such playlist of yours")
+        for sid in body.song_ids:
+            s = c.execute("SELECT public,user_id FROM songs WHERE id=?", (sid,)).fetchone()
+            if not s or (not s["public"] and s["user_id"] != user["id"]):
+                raise HTTPException(400, "song %s is not yours and not public" % sid)
+        c.execute("DELETE FROM playlist_items WHERE playlist_id=?", (pid,))
+        c.executemany("INSERT INTO playlist_items(playlist_id,pos,song_id) VALUES(?,?,?)",
+                      [(pid, i, sid) for i, sid in enumerate(body.song_ids)])
+        c.execute("UPDATE playlists SET updated=? WHERE id=?", (time.time(), pid))
+        c.commit()
+    return {"id": pid, "count": len(body.song_ids)}
+
+
+@app.get("/p/{pid}")
+def public_playlist(pid: str, request: Request):
+    """The share URL's data. Public playlists only; 404 keeps private ones invisible.
+    A song that went private after it was added is left out, not leaked."""
+    limit(request, "get", 120)
+    with closing(db()) as c:
+        row = _playlist(c, pid)
+        if not row["public"]:
+            raise HTTPException(404, "no such playlist")
+        songs = [s for s in _playlist_songs(c, pid) if s["public"]]
+    for s in songs:
+        s.pop("public", None)
+    return {"id": row["id"], "title": row["title"], "handle": row["handle"],
+            "created": row["created"], "songs": songs}
 
 
 class AskIn(BaseModel):
@@ -398,10 +629,16 @@ class AskIn(BaseModel):
 
 
 @app.post("/ai/ask")
-def ai_ask(body: AskIn, request: Request):
-    """Proxy so no API key ever reaches the browser. Returns command lines only."""
+def ai_ask(body: AskIn, request: Request, x_anthropic_key: str = Header(default="")):
+    """Proxy so the shared API key never reaches the browser. Returns command lines only.
+
+    Bring your own key: an `X-Anthropic-Key` header wins over the server key. It is
+    used for this one request and never logged or stored.
+    """
     limit(request, "ai", 12)
-    if not ANTHROPIC_KEY:
+    own = x_anthropic_key.strip()
+    key = own if own.startswith("sk-ant-") else ANTHROPIC_KEY
+    if not key:
         raise HTTPException(503, "the AI helper is not configured on this deployment")
     system = (
         "You control 'oontz', a terminal techno instrument. Reply with ONLY bare "
@@ -427,7 +664,7 @@ def ai_ask(body: AskIn, request: Request):
     }).encode()
     req = urllib.request.Request(
         "https://api.anthropic.com/v1/messages", data=payload,
-        headers={"x-api-key": ANTHROPIC_KEY, "anthropic-version": "2023-06-01",
+        headers={"x-api-key": key, "anthropic-version": "2023-06-01",
                  "content-type": "application/json"})
     try:
         with urllib.request.urlopen(req, timeout=30) as r:
