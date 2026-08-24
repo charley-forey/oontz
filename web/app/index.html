@@ -15,6 +15,7 @@
   html,body{height:100%}
   body{margin:0;background:var(--bg);color:var(--fg);font:14px/1.5 var(--mono);overflow:hidden}
   #bg{position:fixed;inset:0;z-index:0;opacity:.55}
+  #viz{position:fixed;inset:0;z-index:1}
   #scan{position:fixed;inset:0;z-index:3;pointer-events:none;
     background:repeating-linear-gradient(180deg,rgba(0,0,0,0) 0 2px,rgba(0,0,0,.3) 2px 4px);
     mix-blend-mode:multiply}
@@ -45,7 +46,7 @@
 </style>
 </head>
 <body>
-<canvas id="bg"></canvas><div id="scan"></div><div id="vig"></div>
+<canvas id="bg"></canvas><canvas id="viz"></canvas><div id="scan"></div><div id="vig"></div>
 <div id="wrap">
   <div id="hud"></div>
   <div id="out"></div>
@@ -56,6 +57,7 @@
 <script src="oontz.js"></script>
 <script src="theory.js"></script>
 <script src="compose.js"></script>
+<script src="viz.js"></script>
 <script>
 "use strict";
 var API = "https://api-production-bd3d8.up.railway.app";
@@ -82,6 +84,7 @@ function block(rows){ line();
 
 /* ------------------------------------------------------------- the engine */
 var E = new OZ.Engine();
+if(window.OONTZ_VIZ) OONTZ_VIZ.start(E);
 var song = null, gridEl = null, token = localStorage.getItem('oontz_token') || '';
 
 
@@ -204,6 +207,7 @@ var LOGO = ["  ▄▄▄   ▄▄▄  ▄▄▄▄▄ ▄▄▄▄▄ ▄▄▄�
 
 function loadSong(sg, why){
   song = sg; E.loadSong(sg); E.play();
+  if(window.OONTZ_VIZ) OONTZ_VIZ.song(sg);
   var crit = CO.critique(sg), sc = CO.score(crit);
   line();
   w('<span class="a2">▸ '+esc(sg.name)+'</span> <span class="dim">'+
@@ -366,6 +370,24 @@ var CMDS = {
   },
   undo: function(){ if(!UNDO.length) return line('nothing to undo','w');
     song = UNDO.pop(); E.loadSong(song); draw(); line('▸ undone','dim'); },
+  viz: function(a){ var V = window.OONTZ_VIZ; if(!V) return;
+    var v = (a[0]||'').toLowerCase();
+    if(!v) return line('▸ '+CP.viz_status(V.status())+' · '+CP.viz_usage,'dim');
+    if(v==='why') return line(CP.viz_why,'dim');
+    if(v==='modes'){ line(); (CP.viz_modes||[]).forEach(function(kv){
+        w('  <span class="k">'+esc(kv[0])+'</span><span class="dim">'+esc(kv[1])+'</span>'); }); return line(); }
+    if(v==='set'){ var x = V.set(a[1], a[2]);
+      return x==null ? line(CP.viz_usage,'w') : line('▸ '+CP.viz_set(a[1], x),'dim'); }
+    if(!V.mode(v)) return line(CP.err_viz(v),'w');
+    line('▸ viz '+v,'dim'); },
+  theme: function(a){ var V = window.OONTZ_VIZ; if(!V) return;
+    var t = (a[0]||'').toLowerCase();
+    if(!t){ line(); Object.keys(V.THEMES).forEach(function(k){
+        var th=V.THEMES[k]; w('  <span class="k">'+esc(k)+'</span><span class="dim">'+
+          th.colors.map(function(c){return '<span style="color:'+c+'">█</span>';}).join('')+'</span>'); });
+      return line(); }
+    if(!V.theme(t)) return line('not a theme. `theme` lists them.','w');
+    line('▸ theme '+t,'dim'); },
   /* -- decks -- */
   mode: function(a){ var m = (a[0]||(MODE==='deck'?'studio':'deck')).toLowerCase();
     if(m!=='deck' && m!=='studio') return line('mode deck|studio','w');
