@@ -124,6 +124,12 @@
 <script>
 "use strict";
 var API = "https://api.oontz.sh";
+/* If the custom domain's edge is having a day, fall back to the address that
+   always works. Four seconds, once, at boot - then every call rides the winner. */
+var API_FALLBACK = 'https://api-production-bd3d8.up.railway.app';
+(function(){ var c = new AbortController(); setTimeout(function(){ c.abort(); }, 4000);
+  fetch(API + '/health', {signal: c.signal}).catch(function(){ API = API_FALLBACK; }); })();
+
 var CP = window.OONTZ_COPY || {}, CO = window.OONTZ_COMPOSE, OZ = window.oontz;
 var OUT = document.getElementById('out'), IN = document.getElementById('in'),
     HUD = document.getElementById('hud'), RACK = document.getElementById('rack'),

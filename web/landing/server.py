@@ -24,7 +24,7 @@ PORT = int(os.environ.get("PORT", "8080"))
 
 with open(os.path.join(ROOT, "index.html"), encoding="utf-8") as f:
     INDEX = f.read()
-API = re.search(r'const API = "([^"]+)"', INDEX).group(1)
+API = re.search(r'(?:const|var) API = "([^"]+)"', INDEX).group(1)
 if os.environ.get("OONTZ_API"):                  # a local run pointed at a local API
     INDEX = INDEX.replace(API, os.environ["OONTZ_API"])
     API = os.environ["OONTZ_API"]

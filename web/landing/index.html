@@ -328,7 +328,13 @@ async function playTrack(id, fromQueue){
     }
   }catch(e){ d.remove(); line('could not reach the api','w'); }
 }
-const API = "https://api.oontz.sh";
+var API = "https://api.oontz.sh";
+/* If the custom domain's edge is having a day, fall back to the address that
+   always works. Four seconds, once, at boot - then every call rides the winner. */
+var API_FALLBACK = 'https://api-production-bd3d8.up.railway.app';
+(function(){ var c = new AbortController(); setTimeout(function(){ c.abort(); }, 4000);
+  fetch(API + '/health', {signal: c.signal}).catch(function(){ API = API_FALLBACK; }); })();
+
 const ALIAS={'?':'help','ls':'help','start':'demo','about':'what',
   'sh':'open','app':'open','quit':'stop','exit':'stop','cls':'clear','music':'theory'};
 

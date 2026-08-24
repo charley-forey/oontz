@@ -14,7 +14,7 @@ files.forEach(function(f){
 });
 
 var html = fs.readFileSync(path.join(here, "index.html"), "utf8");
-A.ok(/const API = "https?:\/\/[^"]+"/.test(html), "server.py reads the API base from index.html's `const API = \"...\"` line");
+A.ok(/(?:const|var) API = "https?:\/\/[^"]+"/.test(html), "server.py reads the API base from index.html's `API = \"...\"` line");
 A.ok(html.indexOf('src="/engine/oontz.js"') >= 0, "index.html must load /engine/oontz.js by absolute path (it is served at /t/<id> too)");
 
 var r = require("child_process").spawnSync("python", [path.join(here, "server.py"), "check"], {encoding: "utf8"});

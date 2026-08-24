@@ -237,6 +237,18 @@ stale; `qa` runs 192 arrangements through both composers and requires identical 
   scale aliases (pentatonic, not pentatonic_min) and a pack that names an unknown
   scale silently falls back to defaults - the tempo told on it.
 
+- 2026-08-24 -- the edge outage spread (~16:20 UTC): ALL THREE custom domains
+  (oontz.sh, api.oontz.sh, oontz.music) now TLS-reset at Railway's edge while both
+  railway.app hostnames serve 200. status.railway.com says fully operational, so
+  this needs a support ticket (or Cloudflare in front of all three). Mitigations
+  shipped: the app service now has a permanent fallback URL
+  **app-production-ca85.up.railway.app** (created by briefly removing and re-adding
+  the oontz.sh domain - new CNAME target `l08sxgk0.up.railway.app`, verify TXT
+  unchanged), and both pages probe the API at boot and fall back to
+  api-production-bd3d8.up.railway.app within 4s if the custom domain is dead.
+  Namecheap updates when convenient: ALIAS @ oontz.music -> 5j4213fn, ALIAS @
+  oontz.sh -> l08sxgk0 (both TXT records stay as they are).
+
 ## Cycle log
 
 Append one line per completed cycle: what changed, what it measured, what it learned.
