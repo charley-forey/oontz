@@ -360,6 +360,81 @@ async function until(fn, ms, what){
     return bg.clientWidth + "x" + bg.clientHeight;
   });
 
+  await t("share hands over a link, with a chip that carries its own gesture", async function(){
+    await W.CMDS.compose(["techno", "1"]); W.E.stop();
+    var calls = [], realFetch = W.fetch, realShare = W.navigator.share;
+    W.fetch = function(u, o){
+      if(String(u).indexOf("/songs") >= 0 && o && o.method === "POST")
+        return Promise.resolve({json: function(){ return Promise.resolve(
+          {id: "abc123", url: "https://oontz.music/t/abc123", claim: "tok_1"}); }});
+      return realFetch.apply(W, arguments);
+    };
+    try{ W.navigator.share = function(d){ calls.push(d); return Promise.resolve(); }; }catch(e){}
+    await W.CMDS.share([]);
+    var txt = W.document.getElementById("out").textContent;
+    ok(/oontz\.music\/t\/abc123/.test(txt), "the share link was not shown");
+    ok(!/oontz\.sh\/\?song=/.test(txt), "handed out the app link, which cannot preview");
+    /* the claim token must be kept, or a later sign-in cannot adopt the track */
+    ok(/tok_1/.test(W.localStorage.getItem("oontz_claims") || ""), "claim token not kept");
+    /* the send chip must exist and must only fire on its own click */
+    var chip = null, chips = W.document.querySelectorAll("#out .chip");
+    for(var i = 0; i < chips.length; i++) if(/send/.test(chips[i].textContent)) chip = chips[i];
+    if(W.navigator.share){
+      ok(chip, "no send chip rendered");
+      ok(calls.length === 0, "share fired without a tap");
+      chip.click();
+      ok(calls.length === 1 && calls[0].url === "https://oontz.music/t/abc123", "chip did not share the link");
+    }
+    W.fetch = realFetch;
+    try{ W.navigator.share = realShare; }catch(e){}
+    return "link + claim + chip";
+  });
+
+  await t("share why still prints the manifesto", function(){
+    var before = W.document.getElementById("out").textContent.length;
+    W.CMDS.share(["why"]);
+    var after = W.document.getElementById("out").textContent;
+    ok(after.length > before, "share why printed nothing");
+    ok(/recipe/.test(after), "the copy is not reachable any more");
+  });
+
+  await t("a whole song survives a trip through a URL", async function(){
+    await W.CMDS.compose(["hardtechno", "1"]); W.E.stop();
+    var packed = await W.oontz.packSong(Object.assign({format: "oontz-song-1"}, W.song));
+    var back = await W.oontz.unpackSong(packed);
+    eq(back.order.length, W.song.order.length, "sections lost in the link");
+    eq(Math.round(back.bpm), Math.round(W.song.bpm), "bpm lost in the link");
+    ok(("https://oontz.sh/#s=" + packed).length < 8000, "link too long to paste");
+    return packed.length + " chars";
+  });
+
+  await t("the clip helpers are right, because a bad crop ships silently", function(){
+    var r = W.clipRect(1600, 900);
+    ok(r.s === 900 && r.sx === 350 && r.sy === 0, "landscape crop wrong: " + JSON.stringify(r));
+    var r2 = W.clipRect(400, 800);
+    ok(r2.s === 400 && r2.sx === 0 && r2.sy === 200, "portrait crop wrong: " + JSON.stringify(r2));
+    var r3 = W.clipRect(500, 500);
+    ok(r3.s === 500 && r3.sx === 0 && r3.sy === 0, "square crop wrong");
+    /* mp4 must win when both are offered - webm is rejected by Instagram and TikTok */
+    var real = W.MediaRecorder.isTypeSupported;
+    W.MediaRecorder.isTypeSupported = function(m){ return true; };
+    ok(/mp4/.test(W.pickMime(["video/mp4", "video/webm"])), "mp4 must be preferred");
+    W.MediaRecorder.isTypeSupported = function(){ return false; };
+    ok(W.pickMime(["video/mp4"]) === null, "an unsupported set must return null");
+    W.MediaRecorder.isTypeSupported = real;
+  });
+
+  await t("clip refuses gracefully where the browser cannot do it", async function(){
+    var cv = W.document.getElementById("viz"), real = cv.captureStream;
+    cv.captureStream = null;                       /* what iOS Safari looks like */
+    var before = W.document.getElementById("out").textContent.length;
+    await W.CMDS.clip([]);
+    var txt = W.document.getElementById("out").textContent.slice(before);
+    ok(txt.length > 0, "clip failed silently");
+    ok(/screen recorder|cannot capture/.test(txt), "no useful advice: " + txt.slice(0, 120));
+    cv.captureStream = real;
+  });
+
   /* ---- Phase 3: arrangement, library, undo, stems ---------------------- */
   await t("sec edits the arrangement", async function(){
     await W.CMDS.compose(["techno", "1"]); W.E.stop();

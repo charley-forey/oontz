@@ -48,6 +48,13 @@ except (OSError, ValueError):
     pass
 
 MAX_SONG_BYTES = 512 * 1024          # a .song is a few KB; this is generous
+# Anonymous shares. ANON_UID owns them until somebody claims them; it is a real row so
+# the NOT NULL user_id and its foreign key both still hold, and no migration is needed.
+ANON_UID = 0
+# The escape hatch. Flip this to 0 and anonymous shares become reachable-by-link but
+# unlisted (public=2), which every gallery/search/charts query filters out - a spam
+# wave can be contained with an env var instead of a deploy.
+ANON_PUBLIC = os.environ.get("OONTZ_ANON_PUBLIC", "1") == "1"
 MAX_TAKE_BYTES = 64 * 1024           # a take is the command log, not audio
 LINK_TTL = 900                       # magic links die in 15 minutes
 SESSION_TTL = 60 * 60 * 24 * 90
@@ -111,6 +118,14 @@ def init():
             c.execute("ALTER TABLE songs ADD COLUMN remix_of TEXT")
         except sqlite3.OperationalError:
             pass
+        try:                                     # so did anonymous sharing
+            c.execute("ALTER TABLE songs ADD COLUMN claim TEXT")
+        except sqlite3.OperationalError:
+            pass
+        # The owner of every unclaimed share. A row, not a NULL: songs.user_id is
+        # NOT NULL with a foreign key, and SQLite cannot drop either in place.
+        c.execute("INSERT OR IGNORE INTO users(id,email,created) VALUES(?,?,?)",
+                  (ANON_UID, "anon@oontz.invalid", time.time()))
         c.commit()
 
 
@@ -356,42 +371,60 @@ def _meta(data):
 
 
 @app.post("/songs")
-def save_song(body: SongIn, request: Request, user=Depends(current_user)):
-    limit(request, "save", 60)
+def save_song(body: SongIn, request: Request, user=Depends(optional_user)):
+    """Save a song. Signed in it is yours; signed out it is still shareable.
+
+    Sharing used to require an account, which meant the path to a link ran: type an
+    email, leave for your inbox, come back, publish. Almost nobody finishes that, and
+    a share nobody completes is a share that never happens. Anonymous saves get a real
+    id and a real link, and a claim token so they can be adopted later.
+    """
+    uid = user["id"] if user else ANON_UID
+    limit(request, "save" if user else "anon", 60 if user else 6)
     blob = json.dumps(body.data, separators=(",", ":"))
     if len(blob.encode()) > MAX_SONG_BYTES:
         raise HTTPException(413, "that song is unusually large")
-    sid = hashlib.sha1(("%s%s%s" % (user["id"], body.title, time.time()))
+    title = (body.title or "untitled")[:60]      # the client caps this; the server must too
+    sid = hashlib.sha1(("%s%s%s" % (uid, title, time.time()))
                        .encode()).hexdigest()[:12]
+    claim = None if user else secrets.token_urlsafe(16)
+    public = int(body.public) if (user or ANON_PUBLIC) else 2   # 2 = reachable by link, unlisted
     bpm, kkey, seconds, nsec = _meta(body.data)
     now = time.time()
     with closing(db()) as c:
         if body.remix_of:                        # credit must point at a real, hearable track
             src = c.execute("SELECT public,user_id FROM songs WHERE id=?",
                             (body.remix_of,)).fetchone()
-            if not src or (not src["public"] and src["user_id"] != user["id"]):
+            if not src or (not src["public"] and src["user_id"] != uid):
                 raise HTTPException(400, "remix_of must name a public track (or one of yours)")
+        # Same title updates the same song - but ONLY for a real account. Anonymous
+        # saves all share one uid, so honouring it there would let anybody overwrite a
+        # stranger's track by guessing its title.
         row = c.execute("SELECT id FROM songs WHERE user_id=? AND title=?",
-                        (user["id"], body.title)).fetchone()
+                        (uid, title)).fetchone() if user else None
         if row:                                  # same title from the same user updates
             sid = row["id"]
             c.execute("""UPDATE songs SET data=?,bpm=?,kkey=?,seconds=?,sections=?,
                          public=?,remix_of=?,updated=? WHERE id=?""",
-                      (blob, bpm, kkey, seconds, nsec, int(body.public), body.remix_of, now, sid))
+                      (blob, bpm, kkey, seconds, nsec, public, body.remix_of, now, sid))
         else:
             c.execute("""INSERT INTO songs(id,user_id,title,data,bpm,kkey,seconds,
-                         sections,public,remix_of,created,updated) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)""",
-                      (sid, user["id"], body.title, blob, bpm, kkey, seconds, nsec,
-                       int(body.public), body.remix_of, now, now))
+                         sections,public,remix_of,claim,created,updated)
+                         VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                      (sid, uid, title, blob, bpm, kkey, seconds, nsec,
+                       public, body.remix_of, claim, now, now))
         c.commit()
     # A public song's shareable address is the SHARE page, not the instrument.
     # /t/<id> is the only URL that carries a card and boots the track; ?song= is
     # the bare app with no meta tags at all, so every link handed out from here
     # previewed as nothing anywhere. A private song has nothing to share yet, so
     # it keeps the working link back into the instrument.
-    return {"id": sid, "title": body.title, "public": body.public,
-            "url": ("%s/t/%s" % (SITE_URL, sid)) if body.public
-                   else ("%s/?song=%s" % (APP_URL, sid))}
+    out = {"id": sid, "title": title, "public": bool(public),
+           "url": ("%s/t/%s" % (SITE_URL, sid)) if public
+                  else ("%s/?song=%s" % (APP_URL, sid))}
+    if claim:
+        out["claim"] = claim                     # the browser keeps this to adopt it later
+    return out
 
 
 @app.get("/songs")
@@ -412,8 +445,11 @@ def get_song(sid: str, request: Request, user=Depends(optional_user)):
             raise HTTPException(404, "no such song")
         if not row["public"] and (not user or user["id"] != row["user_id"]):
             raise HTTPException(403, "that song is private")
-        c.execute("UPDATE songs SET plays=plays+1 WHERE id=?", (sid,))
-        c.commit()
+        # Reading a song is not hearing it. This counted every fetch, and the share
+        # page fetches twice per crawler hit (once for the tags, once for the card) -
+        # so a single link preview logged two plays and the charts were ranking
+        # crawler traffic. POST /songs/{id}/play is the honest counter; it fires when
+        # a listener's own gesture actually starts the audio.
         author = c.execute("SELECT handle,email FROM users WHERE id=?",
                            (row["user_id"],)).fetchone()
     who = (author["handle"] if author and author["handle"] else "anon")
@@ -426,7 +462,7 @@ def get_song(sid: str, request: Request, user=Depends(optional_user)):
     return {"id": row["id"], "title": row["title"], "bpm": row["bpm"],
             "remix_of": dict(parent) if parent else None, "remixes": n_remixes,
             "key": row["kkey"], "seconds": row["seconds"], "sections": row["sections"],
-            "public": bool(row["public"]), "plays": row["plays"] + 1, "by": who,
+            "public": bool(row["public"]), "plays": row["plays"], "by": who,
             "data": json.loads(row["data"])}
 
 
@@ -438,6 +474,43 @@ def delete_song(sid: str, user=Depends(current_user)):
     if not r.rowcount:
         raise HTTPException(404, "no such song of yours")
     return {"deleted": sid}
+
+
+@app.post("/songs/{sid}/play")
+def count_play(sid: str, request: Request):
+    """One play, when a human actually heard it. Fire-and-forget from the client."""
+    limit(request, "play", 30)
+    with closing(db()) as c:
+        c.execute("UPDATE songs SET plays=plays+1 WHERE id=? AND public!=0", (sid,))
+        c.commit()
+    return {"ok": True}
+# ponytail: one IP can inflate a count 30/min; add a per-song cooldown if a chart
+# ever decides anything that matters.
+
+
+class ClaimIn(BaseModel):
+    claims: list[str] = Field(default_factory=list, max_length=50)
+
+
+@app.post("/songs/claim")
+def claim_songs(body: ClaimIn, request: Request, user=Depends(current_user)):
+    """Adopt the tracks this browser shared before it had an account.
+
+    The token is the proof - it was returned once, to the browser that made the
+    track, and it is cleared on adoption so a leaked one cannot be replayed.
+    """
+    limit(request, "claim", 10)
+    got = 0
+    with closing(db()) as c:
+        for tok in body.claims[:50]:
+            if not tok:
+                continue
+            got += c.execute("UPDATE songs SET user_id=?, claim=NULL "
+                             "WHERE claim=? AND user_id=?",
+                             (user["id"], tok, ANON_UID)).rowcount
+        c.commit()
+    return {"claimed": got}
+# ponytail: claim is a full scan; index it when songs pass ~100k rows.
 
 
 @app.post("/songs/{sid}/publish")

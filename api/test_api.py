@@ -162,6 +162,44 @@ def main():
         assert call("DELETE", "/playlists/" + pl2["id"], token=tok2)[0] == 200
         assert call("GET", "/playlists/" + pl2["id"], token=tok2)[0] == 404
 
+        # -- anonymous sharing: a link without an account ------------------------------
+        st, a1, _ = call("POST", "/songs", {"title": "anon track", "data": song, "public": True})
+        assert st == 200 and a1["id"] and a1["url"] == "https://oontz.music/t/" + a1["id"], a1
+        assert a1.get("claim"), "an anonymous save must return a claim token"
+        st, ag, _ = call("GET", "/songs/" + a1["id"])
+        assert st == 200 and ag["by"] == "anon", ag
+        # it must be visible everywhere, not just the gallery - a half-done job here
+        # reads to the sharer as their track silently vanishing
+        st, gal, _ = call("GET", "/gallery")
+        assert any(x["id"] == a1["id"] for x in gal["songs"]), "anon track missing from gallery"
+        st, sr, _ = call("GET", "/search?q=anon")
+        assert any(x["id"] == a1["id"] for x in sr["songs"]), "anon track missing from search"
+        # two anonymous saves of the SAME title must be two songs. They share one uid,
+        # so honouring same-title-updates would let anyone overwrite a stranger's track.
+        st, a2, _ = call("POST", "/songs", {"title": "anon track", "data": song, "public": True})
+        assert st == 200 and a2["id"] != a1["id"], (a1, a2)
+        # pydantic rejects past 120; between that and 60 the server truncates, so a
+        # gallery row cannot be filled with someone's essay
+        assert call("POST", "/songs", {"title": "z" * 200, "data": song})[0] == 422, "120 cap"
+        st, a3, _ = call("POST", "/songs", {"title": "z" * 100, "data": song, "public": True})
+        assert st == 200 and len(a3["title"]) == 60, a3
+
+        # -- claiming ------------------------------------------------------------------
+        st, cl, _ = call("POST", "/songs/claim", {"claims": [a1["claim"], "bogus"]}, token=tok)
+        assert st == 200 and cl["claimed"] == 1, cl
+        st, mine, _ = call("GET", "/songs", token=tok)
+        assert any(x["id"] == a1["id"] for x in mine["songs"]), "claimed song is not mine"
+        st, again, _ = call("POST", "/songs/claim", {"claims": [a1["claim"]]}, token=tok)
+        assert again["claimed"] == 0, "a claim token must not be replayable"
+
+        # -- plays: reading is not hearing ---------------------------------------------
+        st, p0, _ = call("GET", "/songs/" + a2["id"])
+        st, p1, _ = call("GET", "/songs/" + a2["id"])
+        assert p1["plays"] == p0["plays"], ("a read incremented plays", p0, p1)
+        call("POST", "/songs/%s/play" % a2["id"])
+        st, p2, _ = call("GET", "/songs/" + a2["id"])
+        assert p2["plays"] == p0["plays"] + 1, ("play did not count", p0, p2)
+
         # -- takes --------------------------------------------------------------------
         log = "# oontz session\nbpm 140\nkick x...x...x...x...\nbass a1 . a1~ c2\n"
         st, t, _ = call("POST", "/takes", {"song_id": sid, "name": "first", "data": log}, token=tok)

@@ -678,6 +678,8 @@ const HUD = document.getElementById('hud');
 let STRIP_TRIED = false;
 function tfetch(url){ const c = new AbortController(); setTimeout(function(){ c.abort(); }, 4000);
   return fetch(url, {signal: c.signal}); }
+/* the same eight events the instrument fires, so the funnel is one report */
+function ev(n, p){ try{ if(window.gtag) gtag('event', n, p || {}); }catch(e){} }
 let NOWPLAYING = null;                        /* {id,title} while a track plays here */
 async function strip(){
   await API_READY;                              /* never race the fallback probe */
@@ -735,12 +737,20 @@ addEventListener('click', e=>{
    w(`  <span class="a">first time?</span> <span class="dim">${esc(CP.first_visit)}</span>`); line(); } }catch(e){}
  if(!window.OONTZ_BOOT) OUT.scrollTop = 0;       /* arrival = the title, not the tail */
  if(window.OONTZ_BOOT){
-   if(window.OONTZ_WATCH){
-     line('▸ tap anywhere for the light show','a');
-     const go = function(){ removeEventListener('pointerdown', go);
-       run(window.OONTZ_BOOT); setTimeout(function(){ if(window.OONTZ_VIZ) OONTZ_VIZ.watch(true); }, 800); };
-     addEventListener('pointerdown', go);
-   } else { await sleep(300); run(window.OONTZ_BOOT); }
+   /* Arriving on somebody's share. The watch path always asked for a tap; the plain
+      path ran on a 300ms timer instead, which creates a SUSPENDED AudioContext no
+      browser will resume without a gesture - so it announced a track and then sat
+      there in silence. Both paths ask now, and both say what you are about to hear. */
+   const m = window.OONTZ_META || {};
+   if(m.title) w(`<span class="b">▸ ${esc(m.title)}</span> <span class="dim">${esc(m.sub||'')}</span>`);
+   line(window.OONTZ_WATCH ? '▸ tap anywhere for the light show' : '▸ tap anywhere to hear it','a');
+   const go = function(){ removeEventListener('pointerdown', go); removeEventListener('keydown', go);
+     run(window.OONTZ_BOOT);
+     ev('share_play', {id: m.id || ''});
+     if(m.id) fetch(API+'/songs/'+encodeURIComponent(m.id)+'/play',{method:'POST'}).catch(function(){});
+     if(window.OONTZ_WATCH) setTimeout(function(){ if(window.OONTZ_VIZ) OONTZ_VIZ.watch(true); }, 800); };
+   addEventListener('pointerdown', go); addEventListener('keydown', go);
+   ev('share_open', {id: m.id || '', watch: window.OONTZ_WATCH ? 1 : 0});
  }})();
 </script>
 </body>

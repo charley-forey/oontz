@@ -214,7 +214,10 @@ C.help = [
   ["jam style darker",       "lean the jam somewhere. it hears the grade and fixes faults first"],
   ["mix <playlist id>",      "a playlist becomes a set: beat-synced 16-bar blends, decks stay yours"],
   ["midi",                   "plug a controller in. pads are steps, the sustain pedal is play"],
-  ["remix <id>",             "any public track opens as source. publish credits the original"],
+  ["remix <id>",             "any public track opens as source. share credits the original"],
+  ["share",                  "a link anyone can open and flip. no account needed"],
+  ["link",                   "the whole song IN the url. no server involved at all"],
+  ["clip",                   "ten seconds of it as a video, visuals and sound"],
   ["source save",            "the whole song as a 15KB .oontz file. not a recording — the song"],
   ["export midi",            "the song as a .mid — it leaves for any DAW"],
   ["tilt",                   "phone only: lean the phone to sweep the filter. shake = spinback"],
@@ -292,11 +295,11 @@ C.real_go = "loading the real one - the desktop Python instrument, whole, in thi
 C.mix_usage = "mix <playlist id> · mix off. your playlists: `playlists`; public ones play too.";
 C.mix_on = function (title, n) { return "mixing " + title + " - " + n + " tracks, beat-synced, 16-bar blends. grab the crossfader whenever; `mix off` makes it fully yours."; };
 
-C.remix_usage = "remix <track id> - a public track opens as source, yours to flip. `publish` credits the original. nobody storing audio can do this.";
-C.remix_on = function (t, by) { return "remixing " + t + " by " + (by || "?") + " - the whole source, playing. take it apart; `publish` credits them automatically."; };
+C.remix_usage = "remix <track id> - a public track opens as source, yours to flip. `share` credits the original. nobody storing audio can do this.";
+C.remix_on = function (t, by) { return "remixing " + t + " by " + (by || "?") + " - the whole source, playing. take it apart; `share` credits them automatically."; };
 
 C.produce_on = function (sc, target, rounds) { return "producing: " + sc + "/100 now, aiming for " + target + ", up to " + rounds + " rounds. every move is graded; a round that makes it worse gets reverted. one `undo` takes back the whole pass."; };
-C.produce_done = function (sc, target) { return sc >= target ? "produced. " + sc + "/100 - it holds up. `publish` when you mean it." : "stopped at " + sc + "/100. the last mile is taste, and taste is yours."; };
+C.produce_done = function (sc, target) { return sc >= target ? "produced. " + sc + "/100 - it holds up. `share` when you mean it." : "stopped at " + sc + "/100. the last mile is taste, and taste is yours."; };
 C.dream_usage = "dream <what you want> - driving acid at 3am, warehouse dub with air in it, 150bpm anger. a sentence in, a track out.";
 
 C.watch_on = "just the visuals now. the keys still play - Esc or a tap brings the terminal back.";

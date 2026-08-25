@@ -1054,6 +1054,56 @@ function wavBlob(buf){
   return new Blob([out], {type: "audio/wav"});
 }
 
+/* -- a song, in a link ---------------------------------------------------- */
+/* The whole point of the format, taken literally: a song is text, text compresses,
+ * and a compressed song fits in a URL. A 4-bar loop is ~300 characters and a full
+ * five-minute arrangement ~1400 - so a track can travel with no account, no upload
+ * and no database, in a message. The payload rides in the FRAGMENT, which browsers
+ * never send to a server: nothing to store, nothing to moderate, nothing to leak.
+ *
+ * The cost is that a fragment is invisible to crawlers, so a link like this can
+ * never show a preview card. That is exactly why both mechanisms exist - `share`
+ * for a short link that previews, `link` for one that depends on nobody. */
+function b64u(bytes){
+  var s = "";
+  for(var i = 0; i < bytes.length; i += 8192)    /* apply() dies on a big array */
+    s += String.fromCharCode.apply(null, bytes.subarray(i, i + 8192));
+  return btoa(s).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+
+function unb64u(s){
+  s = s.replace(/-/g, "+").replace(/_/g, "/");
+  while(s.length % 4) s += "=";
+  var bin = atob(s), out = new Uint8Array(bin.length);
+  for(var i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+  return out;
+}
+
+/* One leading byte names the encoding, so an old link keeps working when a better
+   one arrives, and a browser without CompressionStream still produces something. */
+async function packSong(sg){
+  var json = JSON.stringify(sg);
+  if(typeof CompressionStream === "undefined")
+    return "r" + b64u(new TextEncoder().encode(json));
+  var cs = new CompressionStream("deflate-raw");
+  var buf = await new Response(new Blob([json]).stream().pipeThrough(cs)).arrayBuffer();
+  return "z" + b64u(new Uint8Array(buf));
+}
+
+async function unpackSong(s){
+  var kind = s[0], bytes = unb64u(s.slice(1));
+  var json;
+  if(kind === "z"){
+    var ds = new DecompressionStream("deflate-raw");
+    json = await new Response(new Blob([bytes]).stream().pipeThrough(ds)).text();
+  } else if(kind === "r"){
+    json = new TextDecoder().decode(bytes);
+  } else throw new Error("unknown link format");
+  var sg = JSON.parse(json);
+  if(!sg || !sg.order || !sg.sections) throw new Error("not a song");
+  return sg;
+}
+
 /* -- the keyboard as a controller ---------------------------------------- */
 /* The same table as oontz/keymap.py, minus what a browser cannot do. Returns a
    short message when a key was handled, null when it was not. Pure enough to run
@@ -1151,7 +1201,7 @@ global.oontz = {
   songDiff: songDiff, songToMidi: songToMidi, maybe: maybe, expandPat: expandPat,
   patIndex: patIndex, grooveOf: grooveOf, buildMaster: buildMaster, keepsLows: keepsLows,
   renderTracks: renderTracks,
-  xfGains: xfGains, wavBlob: wavBlob,
+  xfGains: xfGains, wavBlob: wavBlob, packSong: packSong, unpackSong: unpackSong,
   stateAt: stateAt, sectionAt: sectionAt, totalBars: totalBars, SR: SR
 };
 })(typeof window !== "undefined" ? window : globalThis);

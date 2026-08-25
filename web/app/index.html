@@ -177,6 +177,13 @@
     #rack{max-height:38vh;margin-top:4px;padding:3px 8px}
     #hint{display:none}
   }
+  /* A share button has to be a real button. navigator.share and the clipboard both
+     want a live user gesture, and the await that mints a link has already spent the
+     one that came from Enter - so the send action needs a fresh tap of its own. */
+  .chip{font:inherit;font-size:.9em;color:var(--accent);background:none;cursor:pointer;
+    border:1px solid var(--accent);border-radius:6px;padding:2px 10px;margin-left:8px;
+    min-height:28px;touch-action:manipulation}
+  .chip:hover{color:var(--bright);border-color:var(--bright)}
   #gobtn{display:none;font:inherit;color:var(--accent);background:none;
     border:1px solid var(--accent);border-radius:8px;padding:4px 12px;min-height:36px;
     touch-action:manipulation}
@@ -245,6 +252,100 @@ function block(rows){ line();
 var E = new OZ.Engine();
 if(window.OONTZ_VIZ) OONTZ_VIZ.start(E);
 var song = null, token = localStorage.getItem('oontz_token') || '';
+
+/* Nothing about sharing was observable before this: gtag carried a page view and
+   not one custom event, so whether a link was ever minted, opened or played was
+   unknowable. share_mint -> share_open -> share_play -> remix_from_share is the
+   whole funnel, readable straight off a GA report. */
+function ev(n, p){ try{ if(window.gtag) gtag('event', n, p || {}); }catch(e){} }
+
+/* Tracks this browser shared before it had an account. The API hands back a claim
+   token once, to the browser that made the song; signing in trades them for
+   ownership. Kept small - this is a convenience, not a system of record. */
+function keepClaim(tok){
+  try{
+    var a = JSON.parse(localStorage.getItem('oontz_claims') || '[]');
+    a.push(tok); localStorage.setItem('oontz_claims', JSON.stringify(a.slice(-50)));
+  }catch(e){}
+}
+async function claimAll(){
+  var a = [];
+  try{ a = JSON.parse(localStorage.getItem('oontz_claims') || '[]'); }catch(e){}
+  if(!a.length || !token) return;
+  try{
+    var r = await fetch(API+'/songs/claim',{method:'POST',
+      headers:{'content-type':'application/json','authorization':'Bearer '+token},
+      body:JSON.stringify({claims:a})});
+    var j = await r.json();
+    localStorage.removeItem('oontz_claims');
+    if(j.claimed) line('▸ '+j.claimed+' track'+(j.claimed>1?'s':'')+' you shared before signing in '+
+                       (j.claimed>1?'are':'is')+' now yours','ok');
+  }catch(e){}
+}
+
+/* One link, handed over properly. The clipboard write is attempted and REPORTED,
+   never assumed - the await that minted the link may already have spent the
+   gesture some browsers demand for it. The send chip carries its own tap. */
+function offerShare(url, title, note){
+  var el = w('<span class="ok">▸ shared.</span> <a href="'+esc(url)+'" target="_blank" rel="noopener">'+
+             esc(url)+'</a> <span class="dim cpy"></span>');
+  var say = function(t){ var n = el.querySelector('.cpy'); if(n) n.textContent = t; };
+  if(navigator.clipboard) navigator.clipboard.writeText(url)
+    .then(function(){ say('· copied'); ev('share_copy'); })
+    .catch(function(){ say('· select to copy'); });
+  else say('· select to copy');
+  if(navigator.share){
+    var b = document.createElement('button');
+    b.className = 'chip'; b.textContent = 'send it';
+    b.onclick = function(){
+      navigator.share({title: title || 'oontz', text: 'made this in oontz', url: url})
+        .then(function(){ ev('share_native'); }).catch(function(){});
+    };
+    el.appendChild(b);
+  }
+  if(note) w('<span class="dim">  '+note+'</span>');
+  return el;
+}
+
+/* The first mime this browser will actually record, most shareable first. mp4 leads
+   deliberately: webm is what Chrome prefers, and Instagram and TikTok reject webm
+   uploads, so a webm clip is a file you cannot post. */
+function pickMime(list){
+  if(!window.MediaRecorder) return null;
+  for(var i = 0; i < list.length; i++)
+    if(MediaRecorder.isTypeSupported(list[i])) return list[i];
+  return null;
+}
+var CLIP_MIMES = ['video/mp4;codecs=avc1,mp4a', 'video/mp4',
+                  'video/webm;codecs=vp9,opus', 'video/webm'];
+
+/* Centre-crop a landscape canvas to the square a feed wants. Pure, because getting
+   this subtly wrong ships a clip that is off-centre and nobody notices in review. */
+function clipRect(vw, vh){
+  var side = Math.min(vw, vh);
+  return {sx: Math.round((vw - side) / 2), sy: Math.round((vh - side) / 2), s: side};
+}
+
+/* Arriving from somebody else's link. A browser will not let a page make noise
+   without a gesture, so do not pretend: say what it is, then ask for the one tap.
+   The alternative - what the share page used to do - is a timer that "plays" into
+   a suspended context, and a visitor who concludes it is broken. */
+function armPlay(title, meta, id){
+  w('<span class="b">▸ '+esc(title||'a track')+'</span>' +
+    (meta ? ' <span class="dim">'+esc(meta)+'</span>' : ''));
+  var fired = false;
+  var go = function(){
+    if(fired) return; fired = true;
+    document.removeEventListener('pointerdown', go, true);
+    document.removeEventListener('keydown', go, true);
+    E.start(); run('play'); ev('share_play', {id: id || ''});
+    if(id) fetch(API+'/songs/'+encodeURIComponent(id)+'/play',{method:'POST'}).catch(function(){});
+  };
+  if(E.ctx && E.ctx.state === 'running') return go();
+  w('<span class="a">  ▶ tap anywhere to hear it</span>');
+  document.addEventListener('pointerdown', go, true);
+  document.addEventListener('keydown', go, true);
+}
 
 
 function mmss(s){ s = Math.max(0, Math.floor(s||0));
@@ -473,7 +574,48 @@ var CMDS = {
   decks: function(){ block(CP.decks); },
   keys: function(){ block(CP.keys); },
   ai: function(){ block(CP.ai); },
-  share: function(){ block(CP.share); },
+  /* `share` used to print an essay about sharing. It is a verb now; the essay is
+     still one word away at `share why`. */
+  share: async function(a){
+    if(a[0] === 'why') return block(CP.share);
+    if(a[0] === 'link') return CMDS.link([]);
+    if(!song) return line(CP.err_nosong,'w');
+    var d = w('<span class="dim">  minting a link…</span>');
+    try{
+      var hdr = {'content-type':'application/json'};
+      if(token) hdr.authorization = 'Bearer ' + token;
+      var r = await fetch(API+'/songs',{method:'POST', headers:hdr,
+        body:JSON.stringify({title:song.name, data:Object.assign({format:'oontz-song-1'}, song),
+                             public:true, remix_of:REMIX_OF||undefined})});
+      var j = await r.json(); d.remove();
+      if(!j.id) return line('▸ '+((j.detail && j.detail[0] && j.detail[0].msg) || j.error ||
+                                  j.detail || 'could not share'),'w');
+      if(j.claim) keepClaim(j.claim);
+      SHARED_URL = String(j.url||'').replace(/^https?:\/\//,'');
+      ev('share_mint', {kind:'server', anon: token ? 0 : 1});
+      offerShare(j.url, song.name,
+        'anyone who opens it hears it and can flip it. <span class="a">clip</span> makes a video of it.' +
+        (token ? '' : ' <span class="a">login</span> puts your name on it.'));
+      var shot = 'https://oontz.music/t/'+j.id+'?watch=1';
+      w('<span class="dim">  or as a light show: </span><a href="'+esc(shot)+
+        '" target="_blank" rel="noopener">'+esc(shot)+'</a>');
+    }catch(e){ d.remove(); line('could not reach the server','w'); }
+  },
+  /* The same song with nobody in the middle: the whole track rides in the URL's
+     fragment, so no server ever sees it and there is nothing to store or lose. */
+  link: async function(){
+    if(!song) return line(CP.err_nosong,'w');
+    try{
+      var p = await OZ.packSong(Object.assign({format:'oontz-song-1'}, song));
+      var url = 'https://oontz.sh/#s=' + p;
+      if(url.length > 8000)
+        return line('that arrangement is too big for a URL — `share` puts it on the server','w');
+      ev('share_mint', {kind:'url', chars: url.length});
+      offerShare(url, song.name, 'that link IS the song — no account, no server, works forever.');
+      if(url.length > 1500)
+        line('  (a long one. `share` gives a short link that also previews.)','dim');
+    }catch(e){ line('could not pack that song','w'); }
+  },
   free: function(){ block(CP.free); },
   go: function(){ CMDS.compose(['hardtechno','5']); },
   compose: function(a){
@@ -595,28 +737,12 @@ var CMDS = {
         w('  <a href="'+j.link+'">'+esc(j.link)+'</a>'); }
       else line('▸ could not send that: '+(j.why||'unknown'),'w');
     }catch(e){ line('auth unreachable','w'); } },
+  /* `publish` and `share` do the same thing; this one just insists on your name
+     being on it. Both hand the link over the same way. */
   publish: async function(){
-    if(!song) return line(CP.err_nosong,'w');
-    if(!token) return line('you need an account to publish. `login you@example.com`','w');
-    try{ var r=await fetch(API+'/songs',{method:'POST',
-        headers:{'content-type':'application/json','authorization':'Bearer '+token},
-        body:JSON.stringify({title:song.name, data:Object.assign({format:'oontz-song-1'}, song), public:true, remix_of:REMIX_OF||undefined})});
-      var j=await r.json();
-      if(j.id){
-        /* Both of these were printed as dim text. The only reason anyone publishes is
-           to hand the link to someone, and getting it meant selecting plain text with
-           a finger. They are links now, and the share URL goes to the clipboard on the
-           way past - the copy is best-effort because the await above can cost us the
-           gesture some browsers want for it, so it is reported, never assumed. */
-        var share = j.url || '', shot = 'https://oontz.music/t/'+j.id+'?watch=1', copied = false;
-        if(share){ try{ await navigator.clipboard.writeText(share); copied = true; }catch(e){} }
-        w('<span class="ok">▸ published.</span> '+(share ?
-          '<a href="'+esc(share)+'" target="_blank" rel="noopener">'+esc(share)+'</a>'+
-          '<span class="dim">'+(copied ? ' · copied' : ' · select to copy')+'</span>' : ''));
-        w('<span class="dim">  a light-show link (opens as visuals): </span>'+
-          '<a href="'+esc(shot)+'" target="_blank" rel="noopener">'+esc(shot)+'</a>'); }
-      else line('▸ '+(j.error||'could not publish'),'w');
-    }catch(e){ line('could not reach the server','w'); } },
+    if(!token) return line('`share` works signed out. `publish` puts your name on it — `login you@example.com`','w');
+    return CMDS.share([]);
+  },
   clear: function(){ OUT.innerHTML='<div id="slack"></div>'; },
   mute: function(a){ var t=a[0]; if(!E.tracks[t]) return line('mute <track>','w');
     E.setTrack(t,{mute:!E.tracks[t].mute}); draw(); line('▸ '+t+(E.tracks[t].mute?' muted':' on'),'dim'); },
@@ -706,6 +832,96 @@ var CMDS = {
     r.start(1000); REC = r; PS1.style.color = 'var(--hot)';
     if(!E.playing) line('  (nothing is playing yet - space or `play`)','dim');
     w('<span class="hot">● recording'+(video?' screen + audio':'')+'</span> <span class="dim">R or `rec` again to stop</span>');
+  },
+  /* A clip is the thing that actually travels. A link gets scrolled past; ten
+     seconds of the drop with the visuals on it gets watched.
+
+     The audio is rendered OFFLINE first and played back while the canvas is
+     captured, so the sound is the exact deterministic mix rather than whatever
+     survived a busy main thread. No screen-share prompt either, unlike `rec
+     screen` - captureStream needs no permission at all. */
+  clip: async function(a){
+    if(!song) return line(CP.err_nosong,'w');
+    if(CLIP) return line('already making one','w');
+    var cv = document.getElementById('viz');
+    if(!cv || !cv.captureStream)
+      return line('this browser cannot capture the canvas — try `watch` plus the screen recorder your phone already has','w');
+    var mime = pickMime(CLIP_MIMES);
+    if(!mime){ ev('clip_failed',{why:'no mime'});
+      return line('this browser cannot encode video — `share` gives a link that previews everywhere','w'); }
+    var bars = Math.max(4, Math.min(12, Math.round(10 / (240 / (song.bpm || 140)))));
+    if(a[0] && +a[0]) bars = Math.max(1, Math.min(32, +a[0]|0));
+    var d = w('<span class="dim">  rendering '+bars+' bars…</span>');
+    CLIP = true;
+    var t0 = Date.now(), out = null;
+    try{
+      var buf = await OZ.renderSlice(song, {bar: E.songbar, bars: bars, channels: 2});
+      d.remove();
+      var side = 1080, cc = document.createElement('canvas');
+      cc.width = cc.height = side;
+      var cx = cc.getContext('2d');
+      var ctx = E.start();
+      if(window.OONTZ_VIZ && OONTZ_VIZ.status().mode === 'off') OONTZ_VIZ.mode('auto');
+      var src = ctx.createBufferSource(); src.buffer = buf;
+      var dst = ctx.createMediaStreamDestination();
+      src.connect(dst); src.connect(ctx.destination);      // heard while captured
+      var stream = new MediaStream(cc.captureStream(30).getVideoTracks()
+                                     .concat(dst.stream.getAudioTracks()));
+      var burn = SHARED_URL || 'oontz.sh';
+      var raf = 0, paint = function(){
+        raf = requestAnimationFrame(paint);
+        var r = clipRect(cv.width, cv.height);
+        try{ cx.drawImage(cv, r.sx, r.sy, r.s, r.s, 0, 0, side, side); }catch(e){}
+        cx.font = '500 30px ui-monospace, Menlo, Consolas, monospace';
+        cx.textBaseline = 'alphabetic';
+        cx.shadowColor = 'rgba(0,0,0,.95)'; cx.shadowBlur = 12;
+        cx.fillStyle = '#ffffff'; cx.textAlign = 'left';
+        cx.fillText(String(song.name).slice(0, 28), 40, side - 40);
+        cx.fillStyle = '#3ff0e0'; cx.textAlign = 'right';
+        cx.fillText(burn, side - 40, side - 40);
+        cx.shadowBlur = 0;
+      };
+      paint();
+      out = await new Promise(function(res, rej){
+        var chunks = [], r;
+        try{ r = new MediaRecorder(stream, {mimeType: mime}); }catch(e){ return rej(e); }
+        r.ondataavailable = function(e){ if(e.data && e.data.size) chunks.push(e.data); };
+        r.onstop = function(){ res(new Blob(chunks, {type: r.mimeType || mime})); };
+        r.start(200);
+        src.onended = function(){ setTimeout(function(){ try{ r.stop(); }catch(e){} }, 120); };
+        src.start();
+        setTimeout(function(){ if(r.state !== 'inactive') r.stop(); },
+                   (buf.duration + 2) * 1000);          // a guard, if onended never comes
+      });
+      cancelAnimationFrame(raf);
+      stream.getTracks().forEach(function(t){ t.stop(); });
+    }catch(e){
+      if(d.parentNode) d.remove();
+      CLIP = false; ev('clip_failed',{why:String(e && e.message || e)});
+      return line('could not make a clip: '+esc(String(e && e.message || e)),'w');
+    }
+    CLIP = false;
+    var ext = mime.indexOf('mp4') >= 0 ? 'mp4' : 'webm';
+    var name = 'oontz-' + String(song.name).replace(/[^\w-]+/g,'_') + '.' + ext;
+    ev('clip_made', {ms: Date.now()-t0, bytes: out.size, mime: mime});
+    var f = null;
+    try{ f = new File([out], name, {type: out.type || mime}); }catch(e){}
+    var el = w('<span class="ok">▸ '+bars+' bars, '+Math.round(out.size/1024)+'KB.</span> ');
+    if(f && navigator.canShare && navigator.canShare({files:[f]})){
+      var b = document.createElement('button'); b.className='chip'; b.textContent='send it';
+      b.onclick = function(){ navigator.share({files:[f], text: burn})
+        .then(function(){ ev('share_native',{kind:'clip'}); }).catch(function(){}); };
+      el.appendChild(b);
+    }
+    var dl = document.createElement('button'); dl.className='chip'; dl.textContent='save it';
+    dl.onclick = function(){
+      var a2 = document.createElement('a'); a2.href = URL.createObjectURL(out); a2.download = name;
+      document.body.appendChild(a2); a2.click(); a2.remove();
+      setTimeout(function(){ URL.revokeObjectURL(a2.href); }, 30000);
+    };
+    el.appendChild(dl);
+    if(ext === 'webm')
+      w('<span class="dim">  (webm — Instagram and TikTok will not take it, but X and Discord will)</span>');
   },
   /* ask: the AI proposes command lines; an empty Enter runs them, anything else discards. */
   ask: async function(a){
@@ -1283,6 +1499,8 @@ function deckKey(k){
   return null;
 }
 var REC = null, PENDING = null, UNDO = [], EARLAST = null, UNDO_LAST = null, UNDO_AT = 0;
+var CLIP = false;              /* one clip at a time - two recorders fight over the canvas */
+var SHARED_URL = '';           /* the last link minted this session, burned into a clip */
 var REMIX_OF = null;                             /* set by `remix`, carried by `publish` */
 var PRODUCING = false;                           /* produce owns the AI while it runs; jam waits */
 async function askAI(prompt, extraState){
@@ -1553,6 +1771,7 @@ function undoOne(){
 }
 var GAL = [];
 var ALIAS = {'?':'help','ls':'help','start':'go','make':'go','song':'go','q':'stop','wav':'export','render':'export','crossfade':'xf',
+  'send':'share','post':'share','video':'clip',
   'exit':'stop','quit':'stop','cls':'clear','about':'what','dj':'decks','keymap':'keys',
   'critique':'grade','score':'grade','signin':'login','account':'login'};
 
@@ -1714,7 +1933,8 @@ function sugPick(v){ IN.value = v + ' '; sugClose(); IN.focus(); hint(); }
 var ARGS = {
   gallery: ['pat','like','top'], viz: [], theme: [], room: ['new','who','leave'],
   source: ['save','copy'], export: ['midi','stems'], diff: ['take'], jam: ['on','off','style'],
-  mix: ['off'], playlist: ['new','add','public','del'], tilt: ['off'], watch: []
+  mix: ['off'], playlist: ['new','add','public','del'], tilt: ['off'], watch: [],
+  share: ['why','link'], clip: []
 };
 function argHits(verb, partial){
   var base = ARGS[verb];
@@ -1948,11 +2168,38 @@ addEventListener('beforeunload', function(){ try{ if(song) localStorage.setItem(
   (CP.menu||[]).forEach(function(kv){
     w('  <span class="k">'+esc(kv[0])+'</span><span class="dim">'+esc(kv[1])+'</span>'); });
   line();
-  if(token) w('<span class="dim">  signed in. <span class="a">publish</span> puts a track in the gallery.</span>');
-  var deep = new URLSearchParams(location.search).get('song');
-  if(deep){ try{ var dr = await fetch(API+'/songs/'+encodeURIComponent(deep)); var dj = await dr.json();
-      if(dj && dj.data){ loadSong(dj.data, 'from the gallery'); IN.focus(); return; }
-  }catch(e){} }
+  if(token){ w('<span class="dim">  signed in. <span class="a">share</span> puts a track in the gallery.</span>');
+    claimAll(); }
+  /* A whole song carried in the fragment: no id, no server, nothing to look up. */
+  var sm = (location.hash||'').match(/[#&]s=([A-Za-z0-9_-]+)/);
+  if(sm){
+    try{
+      var sg = await OZ.unpackSong(sm[1]);
+      loadSong(sg, 'from a link');
+      ev('share_open', {kind:'url'});
+      armPlay(sg.name || 'a track', 'someone sent you this whole song in a URL');
+      IN.focus(); return;
+    }catch(e){ line('that link is damaged — ask for it again','w'); }
+  }
+  /* ?song= is the old shape and still arrives from anywhere it was pasted; #song=
+     is what the share page links to, because ?song= now redirects. */
+  var deep = new URLSearchParams(location.search).get('song') ||
+             ((location.hash||'').match(/[#&]song=([A-Za-z0-9_-]+)/)||[])[1];
+  if(deep){
+    try{
+      var dr = await fetch(API+'/songs/'+encodeURIComponent(deep));
+      var dj = await dr.json();
+      if(dj && dj.data){
+        loadSong(dj.data, 'from the gallery');
+        ev('share_open', {kind:'id', id: deep});
+        armPlay(dj.title || dj.data.name, [Math.round(dj.bpm||0)+' bpm', dj.key,
+                'by '+(dj.by||'?')].filter(Boolean).join(' · '), deep);
+        IN.focus(); return;
+      }
+      /* a dead id used to fall through in silence, which reads as a broken site */
+      line('that track is gone or private — '+esc(deep),'w');
+    }catch(e){ line('could not reach the gallery for '+esc(deep),'w'); }
+  }
   try{ var sz = localStorage.getItem('oontz_size');
     if(sz) document.documentElement.style.setProperty('--size', sz + 'px');
     if(localStorage.getItem('oontz_calm')) document.body.classList.add('calm');

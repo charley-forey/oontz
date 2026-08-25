@@ -220,10 +220,55 @@ var bg = tok("bg");
       ":1, needs " + p[1] + ":1");
   });
 
+/* -- a song fits in a link ------------------------------------------------- */
+(async function(){
+  var sg = song();
+  var packed = await OZ.packSong(sg);
+  A.ok(packed[0] === "z", "should have used CompressionStream");
+  A.deepStrictEqual(await OZ.unpackSong(packed), sg, "a song must survive the round trip");
+  A.ok(("https://oontz.sh/#s=" + packed).length < 2000,
+    "a small song must make a link people will actually paste, got " + packed.length);
+
+  /* the no-CompressionStream fallback, which is what an older browser gets */
+  var CS = globalThis.CompressionStream;
+  delete globalThis.CompressionStream;
+  var raw = await OZ.packSong(sg);
+  globalThis.CompressionStream = CS;
+  A.ok(raw[0] === "r", "fallback must mark itself");
+  A.deepStrictEqual(await OZ.unpackSong(raw), sg, "the fallback must round trip too");
+
+  /* a damaged payload must fail, not half-load: a partly-applied song is worse
+     than a refused one, because it looks like the sender wrote it that way */
+  await A.rejects(OZ.unpackSong("zGARBAGE!!"), "damaged payload must reject");
+  await A.rejects(OZ.unpackSong("q" + packed.slice(1)), "unknown format must reject");
+  await A.rejects(OZ.unpackSong("r" + Buffer.from('{"a":1}').toString("base64url")),
+    "json that is not a song must reject");
+
+  /* a big song must not blow the apply() argument limit */
+  var big = song(); big.sections.drop.tracks.kick.pat = "x.".repeat(40000);
+  A.ok((await OZ.packSong(big)).length > 0, "a large song must still encode");
+})().catch(function(e){ console.error(e); process.exit(1); });
+
+var here = require("path").dirname(require.resolve("./check.js"));
+
+/* -- the page's own script must parse -------------------------------------
+   A single stray quote in index.html takes down every browser test at once, and
+   reports as forty-odd "cannot read properties of null" lines with no mention of
+   the file, the line, or the character. Node can just tell us. */
+["index.html", "test.html"].forEach(function(f){
+  var html = fs.readFileSync(require("path").join(here, f), "utf8");
+  var blocks = html.match(/<script>[\s\S]*?<\/script>/g) || [];
+  blocks.forEach(function(b, i){
+    var body = b.replace(/^<script>/, "").replace(/<\/script>$/, "");
+    if(body.trim().length < 200) return;
+    try{ new Function(body); }
+    catch(e){ throw new Error(f + " inline script #" + i + " does not parse: " + e.message); }
+  });
+});
+
 /* -- sharing: the link chain must stay connected ---------------------------
    Every one of these was broken at once, and each stays invisible until someone
    pastes a link somewhere and sees nothing come back. */
-var here = require("path").dirname(require.resolve("./check.js"));
 var appServer = fs.readFileSync(require("path").join(here, "server.py"), "utf8");
 A.ok(appServer.indexOf("SONG_Q") >= 0, "the app server must recognise ?song=");
 A.ok(appServer.indexOf("/t/%s") >= 0 && appServer.indexOf("302") >= 0,
