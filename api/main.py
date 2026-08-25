@@ -384,8 +384,14 @@ def save_song(body: SongIn, request: Request, user=Depends(current_user)):
                       (sid, user["id"], body.title, blob, bpm, kkey, seconds, nsec,
                        int(body.public), body.remix_of, now, now))
         c.commit()
+    # A public song's shareable address is the SHARE page, not the instrument.
+    # /t/<id> is the only URL that carries a card and boots the track; ?song= is
+    # the bare app with no meta tags at all, so every link handed out from here
+    # previewed as nothing anywhere. A private song has nothing to share yet, so
+    # it keeps the working link back into the instrument.
     return {"id": sid, "title": body.title, "public": body.public,
-            "url": "%s/?song=%s" % (APP_URL, sid)}
+            "url": ("%s/t/%s" % (SITE_URL, sid)) if body.public
+                   else ("%s/?song=%s" % (APP_URL, sid))}
 
 
 @app.get("/songs")

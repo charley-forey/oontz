@@ -103,6 +103,14 @@ def main():
         st, s, _ = call("POST", "/songs", {"title": "t", "data": song}, token=tok)
         assert st == 200 and s["id"] and s["public"] is False, s
         sid = s["id"]
+        # a private song has nothing to share; the link goes back to the instrument
+        assert s["url"].endswith("/?song=" + sid), s
+        # a PUBLIC save must hand back the share page, not the bare app - /t/ is the
+        # only URL that carries a card, and this returning ?song= is why every link
+        # the UI ever gave anyone previewed as nothing
+        st, pub, _ = call("POST", "/songs", {"title": "public one", "data": song,
+                                             "public": True}, token=tok)
+        assert st == 200 and pub["url"] == "https://oontz.music/t/" + pub["id"], pub
         assert call("GET", "/songs/" + sid)[0] == 403, "private song must be 403 to strangers"
         st, g, _ = call("GET", "/songs/" + sid, token=tok)
         assert st == 200 and g["bpm"] == 140 and g["sections"] == 2 and g["seconds"] == round(48 * 240 / 140, 1), g

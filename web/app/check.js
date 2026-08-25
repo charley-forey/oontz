@@ -220,6 +220,17 @@ var bg = tok("bg");
       ":1, needs " + p[1] + ":1");
   });
 
+/* -- sharing: the link chain must stay connected ---------------------------
+   Every one of these was broken at once, and each stays invisible until someone
+   pastes a link somewhere and sees nothing come back. */
+var here = require("path").dirname(require.resolve("./check.js"));
+var appServer = fs.readFileSync(require("path").join(here, "server.py"), "utf8");
+A.ok(appServer.indexOf("SONG_Q") >= 0, "the app server must recognise ?song=");
+A.ok(appServer.indexOf("/t/%s") >= 0 && appServer.indexOf("302") >= 0,
+  "?song= must 302 to the share page - the app itself carries no social tags");
+A.ok(fs.readFileSync(require("path").join(here, "sw.js"), "utf8").indexOf('oontz-v2') >= 0,
+  "bump the sw cache when a route changes, or repeat visitors keep the old one");
+
 /* the live grid belongs in the static rack, never in the scrolling log */
 A.ok(/RACK\.innerHTML = h;/.test(html), "the grid must render into the rack");
 /* only tail() may pin the log to the bottom; draw() used to do it every 16th note */
