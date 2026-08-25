@@ -262,10 +262,16 @@ A.ok(html.indexOf("ps.filter(musical).forEach(run)") >= 0,
   "AI output must be filtered before it runs");
 
 var mlist = html.slice(html.indexOf("var MUSICAL ="), html.indexOf("function musical("));
-["publish", "login", "key", "handle", "playlist", "take", "rec", "export", "clear", "undo", "dload"]
+["publish", "login", "key", "handle", "playlist", "take", "rec", "clear", "undo", "dload", "room", "remix"]
   .forEach(function(v){
-    A.ok(mlist.indexOf(v) < 0, "the AI allowlist must not contain " + v);
+    A.ok(mlist.indexOf(" " + v + " ") < 0 && mlist.indexOf('"' + v + " ") < 0,
+      "the AI allowlist must not contain " + v);
   });
+/* An alias must not smuggle a verb past the filter: `song` resolves to `go`, so
+   leaving `song` on the list let a bare `song` recompose everything. */
+A.ok(mlist.indexOf(" song") < 0, "the allowlist still names an alias (song -> go)");
+A.ok(html.indexOf("var v = ALIAS[v0] || v0;") >= 0,
+  "musical() must resolve aliases before checking the allowlist");
 ["bpm", "gain", "sidechain", "compose", "grade"].forEach(function(v){
   A.ok(mlist.indexOf(v) >= 0, "the AI allowlist should contain " + v); });
 

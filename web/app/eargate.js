@@ -230,5 +230,41 @@ t("the voices it reaches are real circuits", function(){
   return names.length + " voices: " + names.join(" ");
 });
 
+/* ------------------------------------------------------- harmony that moves */
+
+t("the break plays a progression, not one held chord", function(){
+  var moved = 0, checked = 0;
+  GENRES.forEach(function(g){
+    var sg = CO.compose(g, 4, "classic", 7), brk = null;
+    sg.order.forEach(function(n){ if(sg.sections[n].role === "break" && !brk) brk = sg.sections[n]; });
+    if(!brk || !brk.tracks.pad) return;
+    checked++;
+    var roots = brk.tracks.pad.notes.filter(function(x){ return x !== "."; });
+    A.ok(roots.length >= 2, g + ": the pad plays " + roots.length + " chord(s)");
+    var uniq = {}; roots.forEach(function(r){ uniq[r] = 1; });
+    if(Object.keys(uniq).length > 1) moved++;
+    A.ok(T.harmony.progressions[sg.meta.progression], g + " names an unknown progression");
+  });
+  A.ok(checked >= 8, "only " + checked + " genres have a break with a pad");
+  /* static_i is a legitimate choice for the hypnotic genres, so not all move. */
+  A.ok(moved >= checked / 2, "only " + moved + " of " + checked + " breaks actually change chord");
+  return moved + " of " + checked + " breaks move";
+});
+
+t("a voicing never puts a minor third over a major chord", function(){
+  GENRES.forEach(function(g){
+    var sg = CO.compose(g, 4, "classic", 7), brk = null;
+    sg.order.forEach(function(n){ if(sg.sections[n].role === "break" && !brk) brk = sg.sections[n]; });
+    if(!brk || !brk.tracks.pad) return;
+    var prog = T.harmony.progressions[sg.meta.progression];
+    var qualities = {}; prog.forEach(function(st){ qualities[st[1]] = 1; });
+    var ivals = brk.tracks.pad.ivals || [];
+    if(Object.keys(qualities).length > 1)
+      A.ok(ivals.indexOf(3) < 0 && ivals.indexOf(4) < 0,
+        g + " voices a mixed progression with a third: [" + ivals + "]");
+  });
+  return "mixed progressions stay quality-neutral";
+});
+
 console.log(FAIL ? "  eargate FAILED (" + FAIL + ")" : "  eargate pass  ·  " + PASS + " checks");
 process.exit(FAIL ? 1 : 0);

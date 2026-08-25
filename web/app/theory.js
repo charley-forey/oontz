@@ -216,6 +216,23 @@
   "techno": "straight",
   "trance": "straight"
  },
+ "genre_progression": {
+  "acid": "i_VII",
+  "ambient": "i_VII",
+  "breakbeat": "i_iv_v",
+  "downtempo": "andalusian",
+  "dubtechno": "i_VII",
+  "electro": "i_v",
+  "garage": "i_VI_III_VII",
+  "hardtechno": "i_v",
+  "house": "i_VI_III_VII",
+  "industrial": "i_v",
+  "jungle": "i_iv_v",
+  "minimal": "static_i",
+  "psytrance": "static_i",
+  "techno": "i_VII",
+  "trance": "i_VI_III_VII"
+ },
  "genres": {
   "acid": {
    "bpm": [
@@ -764,6 +781,149 @@
     8
    ],
    "why": "The offbeat sixteenth arrives late. This is the shuffle house is built on, and straight house is broken house."
+  }
+ },
+ "harmony": {
+  "chords": {
+   "add9": [
+    0,
+    4,
+    7,
+    14
+   ],
+   "aug": [
+    0,
+    4,
+    8
+   ],
+   "dim": [
+    0,
+    3,
+    6
+   ],
+   "dom7": [
+    0,
+    4,
+    7,
+    10
+   ],
+   "maj": [
+    0,
+    4,
+    7
+   ],
+   "maj7": [
+    0,
+    4,
+    7,
+    11
+   ],
+   "min": [
+    0,
+    3,
+    7
+   ],
+   "min7": [
+    0,
+    3,
+    7,
+    10
+   ],
+   "min9": [
+    0,
+    3,
+    7,
+    10,
+    14
+   ],
+   "sus2": [
+    0,
+    2,
+    7
+   ],
+   "sus4": [
+    0,
+    5,
+    7
+   ]
+  },
+  "progressions": {
+   "andalusian": [
+    [
+     0,
+     "min"
+    ],
+    [
+     10,
+     "maj"
+    ],
+    [
+     8,
+     "maj"
+    ],
+    [
+     7,
+     "maj"
+    ]
+   ],
+   "i_VII": [
+    [
+     0,
+     "min"
+    ],
+    [
+     10,
+     "maj"
+    ]
+   ],
+   "i_VI_III_VII": [
+    [
+     0,
+     "min"
+    ],
+    [
+     8,
+     "maj"
+    ],
+    [
+     3,
+     "maj"
+    ],
+    [
+     10,
+     "maj"
+    ]
+   ],
+   "i_iv_v": [
+    [
+     0,
+     "min"
+    ],
+    [
+     5,
+     "min"
+    ],
+    [
+     7,
+     "min"
+    ]
+   ],
+   "i_v": [
+    [
+     0,
+     "min"
+    ],
+    [
+     7,
+     "min"
+    ]
+   ],
+   "static_i": [
+    [
+     0,
+     "min"
+    ]
+   ]
   }
  },
  "kits": {

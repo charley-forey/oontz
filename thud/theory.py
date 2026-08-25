@@ -363,6 +363,33 @@ def prompt_text():
     return "\n".join(lines)
 
 
+def _harmony():
+    """harmony.py's progressions and chord shapes.
+
+    Six progressions and eleven chord types have been sitting in harmony.py since
+    v3, called from nowhere outside their own file - neither engine has ever
+    played a chord progression. The break pad plays the tonic and holds it. This
+    exports the tables so the browser composer can walk one.
+    """
+    try:
+        from . import harmony
+    except Exception:
+        return {}
+    return {"progressions": {k: [list(x) for x in v] for k, v in harmony.PROGRESSIONS.items()},
+            "chords": {k: list(v) for k, v in harmony.CHORDS.items()}}
+
+
+# Which progression suits which genre. A hypnotic genre wants to stay put; a
+# breakdown-led one wants somewhere to go and back.
+GENRE_PROGRESSION = {
+    "techno": "i_VII", "hardtechno": "i_v", "acid": "i_VII",
+    "minimal": "static_i", "dubtechno": "i_VII", "industrial": "i_v",
+    "house": "i_VI_III_VII", "trance": "i_VI_III_VII", "garage": "i_VI_III_VII",
+    "breakbeat": "i_iv_v", "jungle": "i_iv_v", "downtempo": "andalusian",
+    "ambient": "i_VII", "electro": "i_v", "psytrance": "static_i",
+}
+
+
 def _kits():
     """The per-genre drum kit and bass setting, from gen.py's STYLES.
 
@@ -405,7 +432,8 @@ def _why_table():
 
 
 def as_dict():
-    return {"why": _why_table(), "kits": _kits(),
+    return {"why": _why_table(), "kits": _kits(), "harmony": _harmony(),
+            "genre_progression": GENRE_PROGRESSION,
             "genres": GENRES, "freq_roles": FREQ_ROLES, "rhythm": RHYTHM,
             "arrangement": ARRANGEMENT, "mixing": MIXING, "dj": DJ,
             "templates": TEMPLATES, "role_bars": ROLE_BARS,

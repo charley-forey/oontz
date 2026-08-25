@@ -184,6 +184,52 @@ function phrase(pat, bars, name, rand, energy){
   return out;
 }
 
+/* ------------------------------------------------------------- harmony
+   Neither engine had ever played a chord progression: the break pad played the
+   tonic and held it for the whole section. harmony.py has had six progressions
+   and eleven chord shapes since v3, called from nowhere. This walks one.
+
+   One chord per bar, as a phrase-length pattern - the same machinery the drum
+   fills use - so the pad moves and comes home. */
+function progressionOf(style, rand){
+  var H = T.harmony || {}, P = H.progressions || {};
+  var name = (T.genre_progression || {})[style] || "i_VII";
+  var prog = P[name] || P.static_i || [[0, "min"]];
+  return {name: name, steps: prog};
+}
+
+/* A note token `semi` semitones above the root, in `oct`. */
+function shift(root, scale, semi, oct){
+  var i = NAMES.indexOf(root);
+  if(i < 0) i = 0;
+  var n = (i + semi) % 12, up = Math.floor((i + semi) / 12);
+  return NAMES[n] + (oct + up);
+}
+
+/* A chord track: one chord a bar, walking the progression across `bars`. Returns
+   {pat, notes, ivals} - `ivals` is the chord shape, so the voice stops assuming
+   minor-seventh whatever the harmony is doing. */
+function chordTrack(root, prog, bars, oct){
+  var H = T.harmony || {}, shapes = H.chords || {};
+  var pat = "", notes = [];
+  /* One track carries one voicing, so a progression that mixes major and minor
+     gets the quality-neutral one - root, fifth, octave. Taking the first chord's
+     shape and using it for all of them put a minor third over every major chord
+     in the andalusian, which is the one interval that had to be right. */
+  var qualities = {};
+  prog.steps.forEach(function(st){ qualities[st[1]] = 1; });
+  var only = Object.keys(qualities);
+  var ivals = only.length === 1 ? (shapes[only[0]] || [0, 7, 12]) : [0, 7, 12];
+  for(var b = 0; b < bars; b++){
+    var step = prog.steps[b % prog.steps.length];
+    var semi = step[0];
+    pat += "x...............";
+    notes.push(shift(root, null, semi, oct));
+    for(var k = 1; k < 16; k++) notes.push(".");
+  }
+  return {pat: pat, notes: notes, ivals: ivals, chords: prog.steps.length};
+}
+
 function energyFor(role, pos){
   if(role === "drop") return Math.min(1, 0.84 + 0.16 * pos);
   if(role === "break") return Math.max(0.05, 0.2 - 0.05 * pos);
@@ -278,6 +324,7 @@ function compose(style, minutes, curveName, seed){
   var bpm = ((T.kits || {})[style] || {}).bpm || G.bpm;
   var m = motif(rand, ["static","arch","rising","zigzag"][Math.floor(rand() * 4)], 8);
 
+  var prog = progressionOf(style, rand);
   var plan = arrange(minutes, curve, bpm, G.drop);
   var seen = {}, order = [], sections = {};
 
@@ -357,8 +404,10 @@ function compose(style, minutes, curveName, seed){
                       ord.push("oh"); }
     } else if(p.role === "break"){
       silence("kick","clap","snare","perc","oh");
-      tracks.pad = {voice: "pad", pat: "x...............",
-                    notes: [degToken(root, scale, 0, 2)].concat(Array(15).fill(".")),
+      /* the pad walks the genre's progression instead of sitting on the tonic */
+      var pbars = Math.max(1, Math.min(8, p.bars));
+      var ch = chordTrack(root, prog, pbars, 2);
+      tracks.pad = {voice: "pad", pat: ch.pat, notes: ch.notes, ivals: ch.ivals,
                     gain: 0.5, sc: 0};
       ord.push("pad");
       tracks.bass.gain = 0.4; tracks.bass.fc = 220;
@@ -401,7 +450,7 @@ function compose(style, minutes, curveName, seed){
   return {name: style + "-" + curve, bpm: bpm, swing: G.swing, key: root,
           groove: (T.genre_groove || {})[style] || "straight",
           scale: scale, order: order, sections: sections,
-          meta: {style: style, curve: curve, generated: true}};
+          meta: {style: style, curve: curve, generated: true, progression: prog.name}};
 }
 
 /* ---------------------------------------------------------------- theory */
@@ -458,6 +507,6 @@ function score(crit){
 }
 
 g.OONTZ_COMPOSE = {compose: compose, critique: critique, score: score, arrange: arrange,
-                   euclid: euclid, kitFor: kitFor,
+                   euclid: euclid, kitFor: kitFor, chordTrack: chordTrack, progressionOf: progressionOf,
                    GENRES: GENRES, TEMPLATES: TEMPLATES, degToken: degToken};
 })(typeof window !== "undefined" ? window : globalThis);

@@ -1168,10 +1168,17 @@ var MUTATES = {};
 ("bpm swing gain pan filter tune sidechain mute solo compose go improve produce " +
  "dream load remix sec name").split(" ").forEach(function(v){ MUTATES[v] = 1; });
 
+/* `go` and `compose` replace the entire song, which is a thing the model may
+   legitimately propose - you see the line and press Enter. `song` is NOT here:
+   it is an alias for `go` (ALIAS, below), so leaving it in let a bare `song`
+   pass the filter and recompose everything while looking like a query. Aliases
+   are resolved before the check now, so no alias can smuggle a verb past it. */
 var MUSICAL = ("bpm swing gain pan filter tune sidechain mute solo focus compose go " +
-  "play stop grade improve freq why styles curves theory rules bands sec song").split(" ");
+  "play stop grade improve freq why styles curves theory rules bands sec name " +
+  "save load stems").split(" ");
 function musical(cmd){
-  var v = String(cmd).trim().split(/\s+/)[0].toLowerCase();
+  var v0 = String(cmd).trim().split(/\s+/)[0].toLowerCase();
+  var v = ALIAS[v0] || v0;                       // resolve first, or an alias walks straight through
   return MUSICAL.indexOf(v) >= 0 || !!(E.tracks && E.tracks[v]) || !!OZ.VOICES[v];
 }
 var TEACH = false, TOLD = {}, LESSON_AT = -1;
