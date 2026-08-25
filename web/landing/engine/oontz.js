@@ -301,13 +301,14 @@ VOICES.stab = function(e, t, o){
 };
 VOICES.pad = function(e, t, o){
   var c = e.ctx, hz = o.hz || 110, dur = o.dur || 1.2;
+  var ivals = o.ivals || [0, 7, 12];             // root+fifth+octave: works over major or minor
   var g = c.createGain(), f = c.createBiquadFilter();
   f.type = "lowpass"; f.frequency.value = o.fc || 800;
   g.gain.setValueAtTime(0.0001, t);
   g.gain.linearRampToValueAtTime(0.11, t + dur * 0.4);
   g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
   f.connect(g); g.connect(o.dest);
-  [0, 7, 12].forEach(function(semi){
+  ivals.forEach(function(semi){
     [-0.004, 0.004].forEach(function(det){
       var osc = c.createOscillator(); osc.type = "sawtooth";
       osc.frequency.value = hz * Math.pow(2, semi / 12) * (1 + det);
@@ -407,7 +408,7 @@ VOICES.chord = function(e, t, o){               /* stab's warmer cousin: minor7 
   f.type = "lowpass"; f.frequency.value = o.fc || 1500; f.Q.value = 0.8;
   envTo(g, t, 0.008, dur * 0.85, 0.12);
   f.connect(g); g.connect(o.dest);
-  [0, 3, 7, 10].forEach(function(semi){
+  (o.ivals || [0, 3, 7, 10]).forEach(function(semi){
     var osc = c.createOscillator(); osc.type = "sawtooth";
     osc.frequency.value = hz * Math.pow(2, semi / 12);
     osc.connect(f); osc.start(t); osc.stop(t + dur + 0.05);

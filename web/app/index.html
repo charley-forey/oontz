@@ -602,8 +602,19 @@ var CMDS = {
         headers:{'content-type':'application/json','authorization':'Bearer '+token},
         body:JSON.stringify({title:song.name, data:Object.assign({format:'oontz-song-1'}, song), public:true, remix_of:REMIX_OF||undefined})});
       var j=await r.json();
-      if(j.id){ w('<span class="ok">▸ published.</span> <span class="dim">'+esc(j.url||'')+'</span>');
-        if(j.id) w('<span class="dim">  a light-show link (opens as visuals): https://oontz.music/t/'+esc(j.id)+'?watch=1</span>'); }
+      if(j.id){
+        /* Both of these were printed as dim text. The only reason anyone publishes is
+           to hand the link to someone, and getting it meant selecting plain text with
+           a finger. They are links now, and the share URL goes to the clipboard on the
+           way past - the copy is best-effort because the await above can cost us the
+           gesture some browsers want for it, so it is reported, never assumed. */
+        var share = j.url || '', shot = 'https://oontz.music/t/'+j.id+'?watch=1', copied = false;
+        if(share){ try{ await navigator.clipboard.writeText(share); copied = true; }catch(e){} }
+        w('<span class="ok">▸ published.</span> '+(share ?
+          '<a href="'+esc(share)+'" target="_blank" rel="noopener">'+esc(share)+'</a>'+
+          '<span class="dim">'+(copied ? ' · copied' : ' · select to copy')+'</span>' : ''));
+        w('<span class="dim">  a light-show link (opens as visuals): </span>'+
+          '<a href="'+esc(shot)+'" target="_blank" rel="noopener">'+esc(shot)+'</a>'); }
       else line('▸ '+(j.error||'could not publish'),'w');
     }catch(e){ line('could not reach the server','w'); } },
   clear: function(){ OUT.innerHTML='<div id="slack"></div>'; },

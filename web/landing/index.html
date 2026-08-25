@@ -286,8 +286,20 @@ const CMDS = {
     if(!isFinite(v)||v<60||v>220) return line(CP.err_bpm||"bpm 60-220", 'w');
     bpm=v; if(playing){ clearInterval(timer); timer=setInterval(tick,60/bpm/4*1000); }
     line(`▸ ${bpm} BPM`, 'dim'); },
-  open(){ block(CP.open);
-    w(`  <a href="https://oontz.sh" target="_blank" rel="noopener">https://oontz.sh →</a>`);
+  open(a){ block(CP.open);
+    /* `open` is an instruction, not a description of one. It also carries whatever is
+       playing: reading about a track here and landing on an empty instrument there
+       loses the one thing you came with. */
+    const id = (a && a[0]) || (NOWPLAYING && NOWPLAYING.id) || '';
+    const url = APP + (id ? '/?song=' + encodeURIComponent(id) : '/');
+    let win = null;
+    /* NOT window.open(...,'noopener') - that is specified to return null, so a blocked
+       tab and a fine one look identical. Open, then sever the reference by hand. */
+    try{ win = window.open(url, '_blank'); if(win) win.opener = null; }catch(e){}
+    if(win) w(`  <span class="ok">▸ opened in a new tab</span>` +
+              (id ? ` <span class="dim">· carrying ${esc((NOWPLAYING && NOWPLAYING.title) || id)}</span>` : ''));
+    else w(`  <span class="dim">your browser held the tab back —</span> ` +
+           `<a href="${esc(url)}" target="_blank" rel="noopener">${esc(url)} →</a>`);
     line(); },
   tour(){
     TOURQ = [
@@ -668,7 +680,10 @@ async function strip(){
       bits.push('<span class="opt" data-cmd="tree '+esc(c.most_remixed[0].id)+'"><span class="dim">most forked</span> <span class="a">'+esc(String(c.most_remixed[0].title).slice(0,18))+'</span></span>');
   }catch(e){}
   bits.push('<span data-cmd="charts"><span class="a">charts</span></span>');
-  bits.push('<a href="https://oontz.sh" target="_blank" rel="noopener">open the real one →</a>');
+  /* same continuity: if something is playing, the link takes it along */
+  bits.push('<a href="https://oontz.sh/' +
+    (NOWPLAYING && NOWPLAYING.id ? '?song=' + encodeURIComponent(NOWPLAYING.id) : '') +
+    '" target="_blank" rel="noopener">open the real one →</a>');
   HUD.innerHTML = bits.join(' <span class="dim">·</span> ');
   HUD.classList.remove('loading');
   if(bits.length < 4 && !STRIP_TRIED){ STRIP_TRIED = true; setTimeout(strip, 6000); }  /* the API fallback may still be settling */
