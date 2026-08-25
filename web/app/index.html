@@ -48,6 +48,13 @@
   #hud{padding:5px 9px;margin-bottom:8px;font-size:.92em;min-height:1.5em;
     background:var(--plate);border:1px solid var(--line);border-radius:5px;
     backdrop-filter:blur(7px);-webkit-backdrop-filter:blur(7px)}
+  /* The map used to pick its cell count from innerWidth/14 - a guess at how wide a
+     character is. The guess ran ~40% short, so the song map stopped well before the
+     right edge and left the panel black out there. Flex makes the cells share the
+     real width: a wrong count now costs a little granularity and never any fit, and
+     the map is always exactly one line at any orientation. */
+  #hud .map{display:flex;align-items:stretch;margin-top:2px}
+  #hud .sq{flex:1 1 auto;min-width:0;text-align:center;overflow:hidden}
   /* A terminal fills from the bottom: the spacer eats the slack so the first
      lines sit just above the prompt instead of floating in a void. */
   #out{flex:1;overflow-y:auto;overflow-x:hidden;white-space:pre-wrap;word-break:break-word;
@@ -111,14 +118,48 @@
   a:hover{color:var(--bright)}
   .big{font-size:min(2.4vw,15px);line-height:1.05;letter-spacing:.5px}
   .grid{font-size:.95em;letter-spacing:1px}
-  #rack .st{cursor:pointer;touch-action:none} #rack .st:hover{outline:1px solid var(--accent);border-radius:2px}
-  #rack .trk{cursor:pointer;display:inline-block;min-width:9ch;max-width:9ch;
-    white-space:pre;overflow:hidden;text-overflow:ellipsis;vertical-align:bottom}
+  /* A row is a GRID, not a run of characters. `·` and `█` come from different
+     fallback fonts on a phone, so counting on them to share an advance width put
+     every rest half a cell left of its beat. A grid cell is a cell whatever glyph
+     lands in it - and the 16 steps share the leftover width instead of leaving it
+     black on the right. */
+  #rack>div{display:grid;grid-template-columns:9ch repeat(16,minmax(0,1fr));
+    align-items:center;line-height:1.5}
+  #rack .st{cursor:pointer;touch-action:none;text-align:center;border-radius:2px}
+  #rack .st:hover{outline:1px solid var(--accent)}
+  /* A hit paints its whole cell instead of parking one narrow glyph in the middle
+     of it. Once the row stretched to the full width the glyph stopped carrying it -
+     and a filled cell is a bigger finger target, which is the point on a phone. */
+  #rack .st.on{background:currentColor;color:transparent;text-shadow:none;
+    box-shadow:inset 0 0 0 1px rgba(0,0,0,.55)}
+  /* the downbeat of each beat, marked with a rule instead of a space: a space cost
+     a whole column and still drifted; this costs none and cannot drift. A border,
+     not a box-shadow - the filled pad above needs the shadow for its own outline. */
+  #rack .st:nth-child(4n+2){border-left:1px solid var(--line)}
+  #rack .trk{cursor:pointer;white-space:pre;overflow:hidden;text-overflow:ellipsis}
   /* `calm` for anyone who wants the words to win outright */
   body.calm #bg{opacity:.16} body.calm #viz{opacity:.2} body.calm #scan{display:none}
   body.calm #vig{background:radial-gradient(ellipse at 50% 45%,transparent 60%,rgba(0,0,0,.5) 100%)}
   body.calm{--plate:rgba(6,9,12,.86)}
+  #stage{position:relative}
+  #tight{position:absolute;top:3px;right:5px;z-index:3;font:inherit;font-size:.85em;
+    line-height:1;color:var(--dim);background:var(--plate);border:1px solid var(--line);
+    border-radius:4px;padding:3px 8px;min-height:26px;min-width:28px;cursor:pointer;
+    touch-action:manipulation}
+  #tight:hover{color:var(--accent);border-color:var(--accent)}
+  /* Collapsed: the map and the grid fold away and the terminal gets the room back.
+     The HUD's one text line always stays - you never lose where you are in the song. */
+  body.tight #rack{display:none}
+  body.tight #hud .map{display:none}
   @media (max-width:640px){#wrap{padding:10px}.k{min-width:12ch}#rack{max-height:30vh}}
+  /* A phone on its side is ~350px tall. Two fixed panels at 30vh plus a wrapped map
+     left the scrollback about four lines high, so the instrument had nowhere to talk. */
+  @media (max-height:520px) and (orientation:landscape){
+    #wrap{padding:6px 10px}
+    #hud{margin-bottom:4px;padding:3px 8px}
+    #rack{max-height:38vh;margin-top:4px;padding:3px 8px}
+    #hint{display:none}
+  }
   #gobtn{display:none;font:inherit;color:var(--accent);background:none;
     border:1px solid var(--accent);border-radius:8px;padding:4px 12px;min-height:36px;
     touch-action:manipulation}
@@ -131,7 +172,7 @@
 <div id="pal"><div id="palbox"><input id="palin" autocomplete="off" spellcheck="false"
   placeholder="what do you want to do?" aria-label="command palette"><div id="pallist"></div></div></div>
 <div id="wrap">
-  <div id="hud"></div>
+  <div id="stage"><div id="hud"></div><button id="tight" aria-label="collapse the stage">−</button></div>
   <div id="rack"></div>
   <div id="out"><div id="slack"></div></div>
   <div id="tail">↓ live</div>
@@ -236,7 +277,7 @@ function draw(){
       Math.round(song.bpm)+' BPM · '+esc(song.key+' '+song.scale)+' · bar '+
       (E.songbar+1)+'/'+total+' · '+mmss(songSeconds(song))+' · </span>'+
       (ROOM.code ? '<span class="a">room '+esc(ROOM.code)+' · '+(ROOM.others+1)+'</span> <span class="dim">· </span>' : '')+
-      '<span class="b">'+esc(at?at.name:'')+'</span><br>'+cells;
+      '<span class="b">'+esc(at?at.name:'')+'</span><div class="map">'+cells+'</div>';
   }
   var h = '';
   (E.order||[]).forEach(function(n){
@@ -251,9 +292,9 @@ function draw(){
       var on = ch !== '.' && ch !== '-';
       var maybeStep = ch === '?';
       var cur = q === i && E.playing;
-      cells += '<span class="st" data-t="'+esc(n)+'" data-i="'+q+'" style="color:var('+(on?col:'--dim')+')'+(maybeStep?';opacity:.55':'')+
+      cells += '<span class="st'+(on?' on':'')+'" data-t="'+esc(n)+'" data-i="'+q+'" style="color:var('+(on?col:'--dim')+')'+(maybeStep?';opacity:.55':'')+
         (cur?';background:var('+(on?col:'--line')+');color:#000':'')+'">'+
-        (maybeStep?'▒':(on?'█':'·'))+'</span>' + (q%4===3?' ':'');
+        (maybeStep?'▒':(on?'█':'·'))+'</span>';
     }
     h += '<div><span class="trk '+(n===foc?'a2':'dim')+'" data-t="'+esc(n)+'">'+(n===foc?'▸ ':'  ')+esc(n)+'</span>'+cells+'</div>';
   });
@@ -1645,8 +1686,15 @@ IN.addEventListener('keydown', function(e){
 IN.addEventListener('blur', function(){ sugClose(); PS1.innerHTML='<span class="w">perform</span> <span class="dim">: to type</span>'; });
 IN.addEventListener('focus', function(){ PS1.innerHTML='oontz.sh&nbsp;&gt;'; });
 var PS1 = document.getElementById('ps1');
-document.getElementById('gobtn').addEventListener('click', function(){
+/* Submit on pointerdown, not click. On a phone the soft keyboard is open and the
+   input has focus: a tap on the button blurs it first, the keyboard collapses, the
+   bar slides down out from under the finger, and the click lands on whatever moved
+   into that spot - so the arrow did nothing. preventDefault keeps focus (and the
+   keyboard) put, which is also what makes the next command typeable straight away. */
+document.getElementById('gobtn').addEventListener('pointerdown', function(e){
+  e.preventDefault();
   var v = IN.value; IN.value = ''; if(v.trim()) run(v); hint();
+  try{ IN.focus({preventScroll: true}); }catch(err){ IN.focus(); }
 });
 /* smart paste: a .oontz source dropped into the prompt just works */
 IN.addEventListener('paste', function(e){
@@ -1743,6 +1791,28 @@ HUD.addEventListener('pointerdown', function(e){
   HUD.dataset.drag = '1';
 });
 HUD.addEventListener('pointermove', function(e){ if(HUD.dataset.drag) hudSeek(e); });
+
+/* The stage folds away. A phone in landscape starts folded, because there the two
+   panels cost more than they tell you; everywhere else it starts open. The choice
+   sticks, so the instrument opens the way you left it. */
+var TIGHT = document.getElementById('tight');
+var SHORT = matchMedia('(max-height:520px) and (orientation:landscape)');
+function setTight(on){
+  document.body.classList.toggle('tight', !!on);
+  TIGHT.textContent = on ? '+' : '−';
+  TIGHT.setAttribute('aria-label', (on ? 'expand' : 'collapse') + ' the stage');
+  try{ localStorage.setItem('oontz.tight', on ? '1' : '0'); }catch(e){}
+}
+(function(){
+  var saved = null;
+  try{ saved = localStorage.getItem('oontz.tight'); }catch(e){}
+  setTight(saved === null ? SHORT.matches : saved === '1');
+})();
+TIGHT.addEventListener('pointerdown', function(e){
+  e.preventDefault(); e.stopPropagation();          /* never let the seek handler see it */
+  setTight(!document.body.classList.contains('tight'));
+  draw();
+});
 addEventListener('pointerup', function(){ delete HUD.dataset.drag; });
 
 OUT.addEventListener('scroll', function(){ TAIL.classList.toggle('on', !atBottom()); });
