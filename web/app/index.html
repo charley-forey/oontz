@@ -350,7 +350,7 @@ var CMDS = {
   go: function(){ CMDS.compose(['hardtechno','5']); },
   compose: function(a){
     var style=(a[0]||'hardtechno').toLowerCase();
-    var mins=parseFloat(a[1])||5, curve=(a[2]||'classic').toLowerCase();
+    var mins=parseFloat(a[1])||5, curve=(a[2]||'').toLowerCase();   // blank = let the seed choose
     if(!CO.GENRES[style]) return line('styles: '+Object.keys(CO.GENRES).join(' '),'w');
     loadSong(CO.compose(style, Math.max(1,Math.min(12,mins)), curve),
              CO.GENRES[style].note);

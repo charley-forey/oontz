@@ -200,11 +200,18 @@
  },
  "genre_groove": {
   "acid": "straight",
+  "ambient": "laid",
+  "breakbeat": "swung",
+  "downtempo": "laid",
   "dubtechno": "laid",
+  "electro": "straight",
+  "garage": "swung",
   "hardtechno": "pushed",
   "house": "swung",
   "industrial": "pushed",
+  "jungle": "swung",
   "minimal": "swung",
+  "psytrance": "straight",
   "techno": "straight",
   "trance": "straight"
  },
@@ -756,6 +763,713 @@
     8
    ],
    "why": "The offbeat sixteenth arrives late. This is the shuffle house is built on, and straight house is broken house."
+  }
+ },
+ "kits": {
+  "acid": {
+   "bpm": 134,
+   "feel": "swung-16",
+   "tracks": {
+    "bass": {
+     "filt": [
+      "lp",
+      340,
+      0.94
+     ],
+     "melody": [
+      "a",
+      "phrygian",
+      16
+     ],
+     "sc": 0.7
+    },
+    "clap": {
+     "pat": "....x.......x..."
+    },
+    "hat": {
+     "euclid": [
+      6,
+      16
+     ]
+    },
+    "kick": {
+     "euclid": [
+      4,
+      16
+     ]
+    }
+   }
+  },
+  "ambient": {
+   "bpm": 110,
+   "feel": "rolling",
+   "tracks": {
+    "bass": {
+     "density": 0.3,
+     "filt": [
+      "lp",
+      300,
+      0.5
+     ],
+     "melody": [
+      "a",
+      "minor",
+      16
+     ],
+     "sc": 0.4
+    },
+    "hat": {
+     "euclid": [
+      2,
+      16,
+      4
+     ],
+     "filt": [
+      "hp",
+      6000
+     ],
+     "gain": 0.4
+    },
+    "kick": {
+     "euclid": [
+      4,
+      16
+     ],
+     "gain": 0.8
+    },
+    "perc": {
+     "euclid": [
+      3,
+      16,
+      5
+     ],
+     "gain": 0.4,
+     "tune": 620
+    },
+    "stab": {
+     "density": 0.25,
+     "filt": [
+      "lp",
+      1100,
+      0.3
+     ],
+     "melody": [
+      "a",
+      "dorian",
+      32
+     ],
+     "sc": 0.35
+    }
+   }
+  },
+  "breakbeat": {
+   "bpm": 136,
+   "feel": "shuffle",
+   "tracks": {
+    "bass": {
+     "filt": [
+      "lp",
+      500,
+      0.6
+     ],
+     "melody": [
+      "a",
+      "minor",
+      16
+     ],
+     "sc": 0.6
+    },
+    "hat": {
+     "euclid": [
+      10,
+      16
+     ]
+    },
+    "kick": {
+     "euclid": [
+      5,
+      16,
+      1
+     ]
+    },
+    "perc": {
+     "euclid": [
+      6,
+      16,
+      3
+     ],
+     "tune": 400
+    },
+    "snare": {
+     "pat": "....x...x.x....."
+    }
+   }
+  },
+  "downtempo": {
+   "bpm": 95,
+   "feel": "shuffle",
+   "tracks": {
+    "bass": {
+     "density": 0.35,
+     "filt": [
+      "lp",
+      240,
+      0.4
+     ],
+     "melody": [
+      "a",
+      "minor",
+      16
+     ],
+     "sc": 0.5,
+     "voice": "sub"
+    },
+    "hat": {
+     "euclid": [
+      5,
+      16,
+      2
+     ],
+     "filt": [
+      "hp",
+      7000
+     ],
+     "gain": 0.5
+    },
+    "kick": {
+     "pat": "x......x........"
+    },
+    "oh": {
+     "gain": 0.6,
+     "pat": "........x.......",
+     "voice": "air"
+    },
+    "snare": {
+     "pat": "....x.......x..."
+    },
+    "stab": {
+     "density": 0.25,
+     "filt": [
+      "lp",
+      3200,
+      0.3
+     ],
+     "melody": [
+      "a",
+      "pentatonic",
+      16
+     ],
+     "sc": 0.3,
+     "voice": "bell"
+    }
+   }
+  },
+  "dubtechno": {
+   "bpm": 118,
+   "feel": "rolling",
+   "tracks": {
+    "hat": {
+     "euclid": [
+      4,
+      16,
+      2
+     ],
+     "filt": [
+      "hp",
+      7000
+     ],
+     "gain": 0.5
+    },
+    "kick": {
+     "euclid": [
+      4,
+      16
+     ]
+    },
+    "stab": {
+     "density": 0.3,
+     "filt": [
+      "lp",
+      900,
+      0.3
+     ],
+     "melody": [
+      "a",
+      "dorian",
+      16
+     ],
+     "sc": 0.5
+    }
+   }
+  },
+  "electro": {
+   "bpm": 130,
+   "feel": "straight",
+   "tracks": {
+    "bass": {
+     "density": 0.7,
+     "filt": [
+      "lp",
+      500,
+      0.85
+     ],
+     "melody": [
+      "a",
+      "minor",
+      16
+     ],
+     "sc": 0.6
+    },
+    "hat": {
+     "euclid": [
+      8,
+      16
+     ],
+     "filt": [
+      "hp",
+      9000
+     ],
+     "gain": 0.7
+    },
+    "kick": {
+     "pat": "x..x..x...x..x.."
+    },
+    "perc": {
+     "euclid": [
+      3,
+      16,
+      2
+     ],
+     "gain": 0.6,
+     "tune": 900
+    },
+    "snare": {
+     "pat": "....x.......x..."
+    }
+   }
+  },
+  "garage": {
+   "bpm": 133,
+   "feel": "shuffle",
+   "tracks": {
+    "bass": {
+     "density": 0.5,
+     "filt": [
+      "lp",
+      320,
+      0.5
+     ],
+     "melody": [
+      "a",
+      "minor",
+      16
+     ],
+     "sc": 0.5,
+     "voice": "sub"
+    },
+    "clap": {
+     "pat": "....x.......x..."
+    },
+    "hat": {
+     "euclid": [
+      7,
+      16,
+      1
+     ],
+     "filt": [
+      "hp",
+      8500
+     ],
+     "gain": 0.8
+    },
+    "kick": {
+     "pat": "x.....x...x....."
+    },
+    "oh": {
+     "gain": 0.5,
+     "pat": "..x.......x....."
+    },
+    "stab": {
+     "density": 0.3,
+     "filt": [
+      "lp",
+      1800,
+      0.4
+     ],
+     "melody": [
+      "a",
+      "dorian",
+      16
+     ],
+     "sc": 0.4,
+     "voice": "chord"
+    }
+   }
+  },
+  "hardtechno": {
+   "bpm": 150,
+   "feel": "straight",
+   "tracks": {
+    "bass": {
+     "filt": [
+      "lp",
+      260,
+      0.9
+     ],
+     "melody": [
+      "a",
+      "harmonicminor",
+      8
+     ],
+     "sc": 0.85
+    },
+    "clap": {
+     "accent": true,
+     "euclid": [
+      2,
+      16,
+      2
+     ]
+    },
+    "hat": {
+     "euclid": [
+      7,
+      16
+     ],
+     "filt": [
+      "hp",
+      9500
+     ]
+    },
+    "kick": {
+     "accent": true,
+     "euclid": [
+      4,
+      16
+     ]
+    },
+    "perc": {
+     "euclid": [
+      5,
+      16
+     ],
+     "tune": 500
+    }
+   }
+  },
+  "house": {
+   "bpm": 124,
+   "feel": "swung-16",
+   "tracks": {
+    "bass": {
+     "filt": [
+      "lp",
+      700,
+      0.5
+     ],
+     "melody": [
+      "a",
+      "dorian",
+      16
+     ],
+     "sc": 0.5
+    },
+    "clap": {
+     "pat": "....x.......x..."
+    },
+    "hat": {
+     "euclid": [
+      8,
+      16,
+      1
+     ],
+     "tune": 9000
+    },
+    "kick": {
+     "euclid": [
+      4,
+      16
+     ]
+    },
+    "oh": {
+     "euclid": [
+      4,
+      16,
+      2
+     ],
+     "gain": 0.7
+    }
+   }
+  },
+  "industrial": {
+   "bpm": 140,
+   "feel": "rolling",
+   "tracks": {
+    "bass": {
+     "filt": [
+      "lp",
+      300,
+      0.92
+     ],
+     "melody": [
+      "e",
+      "phrygian",
+      16
+     ],
+     "sc": 0.8
+    },
+    "hat": {
+     "euclid": [
+      9,
+      16
+     ],
+     "filt": [
+      "hp",
+      11000
+     ],
+     "tune": 11000
+    },
+    "kick": {
+     "accent": true,
+     "euclid": [
+      5,
+      16
+     ]
+    },
+    "perc": {
+     "euclid": [
+      7,
+      16
+     ],
+     "tune": 210
+    },
+    "snare": {
+     "pat": "........x......."
+    }
+   }
+  },
+  "jungle": {
+   "bpm": 168,
+   "feel": "shuffle",
+   "tracks": {
+    "bass": {
+     "density": 0.4,
+     "filt": [
+      "lp",
+      260,
+      0.6
+     ],
+     "melody": [
+      "a",
+      "minor",
+      8
+     ],
+     "sc": 0.6,
+     "voice": "wob"
+    },
+    "hat": {
+     "euclid": [
+      11,
+      16
+     ],
+     "filt": [
+      "hp",
+      9000
+     ],
+     "gain": 0.6
+    },
+    "kick": {
+     "pat": "x.........x....."
+    },
+    "snare": {
+     "pat": "....x..x..x.x..."
+    }
+   }
+  },
+  "minimal": {
+   "bpm": 122,
+   "feel": "hypnotic",
+   "tracks": {
+    "hat": {
+     "euclid": [
+      3,
+      16
+     ]
+    },
+    "kick": {
+     "euclid": [
+      4,
+      16
+     ]
+    },
+    "perc": {
+     "euclid": [
+      2,
+      16
+     ],
+     "tune": 780
+    },
+    "stab": {
+     "density": 0.35,
+     "filt": [
+      "lp",
+      1600,
+      0.5
+     ],
+     "melody": [
+      "a",
+      "pentatonic",
+      16
+     ],
+     "sc": 0.5
+    }
+   }
+  },
+  "psytrance": {
+   "bpm": 142,
+   "feel": "straight",
+   "tracks": {
+    "bass": {
+     "density": 0.95,
+     "filt": [
+      "lp",
+      480,
+      0.85
+     ],
+     "melody": [
+      "a",
+      "phrygian",
+      16
+     ],
+     "sc": 0.9,
+     "voice": "reese"
+    },
+    "hat": {
+     "euclid": [
+      8,
+      16,
+      1
+     ],
+     "filt": [
+      "hp",
+      9500
+     ],
+     "gain": 0.7
+    },
+    "kick": {
+     "euclid": [
+      4,
+      16
+     ]
+    },
+    "perc": {
+     "euclid": [
+      5,
+      16,
+      3
+     ],
+     "gain": 0.5,
+     "tune": 1200
+    }
+   }
+  },
+  "techno": {
+   "bpm": 132,
+   "feel": "swung-16",
+   "tracks": {
+    "bass": {
+     "filt": [
+      "lp",
+      420,
+      0.8
+     ],
+     "melody": [
+      "a",
+      "minor",
+      16
+     ],
+     "sc": 0.7
+    },
+    "clap": {
+     "pat": "....x.......x..."
+    },
+    "hat": {
+     "euclid": [
+      11,
+      16,
+      1
+     ],
+     "filt": [
+      "hp",
+      8500
+     ]
+    },
+    "kick": {
+     "euclid": [
+      4,
+      16
+     ]
+    },
+    "oh": {
+     "euclid": [
+      2,
+      16,
+      4
+     ],
+     "gain": 0.6
+    }
+   }
+  },
+  "trance": {
+   "bpm": 138,
+   "feel": "straight",
+   "tracks": {
+    "bass": {
+     "density": 0.9,
+     "filt": [
+      "lp",
+      1200,
+      0.3
+     ],
+     "melody": [
+      "a",
+      "minor",
+      16
+     ],
+     "sc": 0.4
+    },
+    "hat": {
+     "euclid": [
+      12,
+      16,
+      1
+     ],
+     "filt": [
+      "hp",
+      8000
+     ]
+    },
+    "kick": {
+     "euclid": [
+      4,
+      16
+     ]
+    },
+    "stab": {
+     "density": 0.25,
+     "filt": [
+      "lp",
+      3000,
+      0.2
+     ],
+     "melody": [
+      "c",
+      "major",
+      16
+     ],
+     "sc": 0.3
+    }
+   }
   }
  },
  "mixing": [

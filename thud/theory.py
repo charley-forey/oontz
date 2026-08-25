@@ -251,10 +251,21 @@ GROOVES = {
                "without being slower."},
 }
 
-# Which feel each genre is built on.
-GENRE_GROOVE = {"techno": "straight", "hardtechno": "pushed", "acid": "straight",
-                "minimal": "swung", "dubtechno": "laid", "industrial": "pushed",
-                "house": "swung", "trance": "straight"}
+# Which feel each genre is built on. All fifteen, because seven of them used to
+# fall through to "straight" - including garage, whose own note says that if it
+# sounds straight it is wrong.
+GENRE_GROOVE = {
+    "techno": "straight", "hardtechno": "pushed", "acid": "straight",
+    "minimal": "swung", "dubtechno": "laid", "industrial": "pushed",
+    "house": "swung", "trance": "straight",
+    "garage": "swung",        # the shuffle IS the genre
+    "breakbeat": "swung",     # a break is a swung break
+    "jungle": "swung",        # amen shuffle, at speed
+    "downtempo": "laid",      # 95 BPM behind the beat, or it is just slow
+    "ambient": "laid",
+    "electro": "straight",    # 808 machine-straight is the point
+    "psytrance": "straight",  # relentless grid, the movement is in the bass
+}
 
 # Arrangement rules. `check` returns None when the rule passes, else what is wrong.
 ARRANGEMENT = [
@@ -352,6 +363,36 @@ def prompt_text():
     return "\n".join(lines)
 
 
+def _kits():
+    """The per-genre drum kit and bass setting, from gen.py's STYLES.
+
+    A genre is a set of rhythms, not a name. The browser composer had literal
+    pattern strings for eight of the fifteen and silently served the techno kit to
+    the other seven - so jungle was four-on-the-floor at 168 BPM. gen.py has had
+    all sixteen packs, as Euclidean specs, the whole time. Exported so a genre is
+    defined once and both engines read the same thing.
+
+    Imported lazily: gen imports core, and core imports this module.
+    """
+    try:
+        from . import gen
+    except Exception:
+        return {}
+    out = {}
+    for name in GENRES:
+        st = gen.STYLES.get(name)
+        if not st:
+            continue
+        tracks = {}
+        for tname, spec in st.get("tracks", {}).items():
+            t = {}
+            for k, v in spec.items():
+                t[k] = list(v) if isinstance(v, tuple) else v
+            tracks[tname] = t
+        out[name] = {"bpm": st.get("bpm"), "feel": st.get("groove"), "tracks": tracks}
+    return out
+
+
 def _why_table():
     """teach.WHY - what a parameter does, in sound terms. Imported lazily because
     teach imports core and core imports this module; at export time everything is
@@ -364,7 +405,7 @@ def _why_table():
 
 
 def as_dict():
-    return {"why": _why_table(),
+    return {"why": _why_table(), "kits": _kits(),
             "genres": GENRES, "freq_roles": FREQ_ROLES, "rhythm": RHYTHM,
             "arrangement": ARRANGEMENT, "mixing": MIXING, "dj": DJ,
             "templates": TEMPLATES, "role_bars": ROLE_BARS,

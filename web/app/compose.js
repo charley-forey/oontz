@@ -32,8 +32,18 @@ Object.keys(T.genres).forEach(function(k){
 var TEMPLATES = T.templates, ROLE_BARS = T.role_bars;
 
 function rng(seed){
-  var s = seed >>> 0 || 1;
-  return function(){ s = (s * 1664525 + 1013904223) >>> 0; return s / 4294967296; };
+  var s = (seed >>> 0) || 1;
+  /* Mix the seed before the first draw. A bare LCG's first output is very nearly
+     a linear function of its seed - 1 through 6 gave 0.2364, 0.2368, 0.2372,
+     0.2376, 0.2380, 0.2384 - so every decision made early in a compose (the
+     curve, the first motif note, the first hat rotation) came out the same
+     whatever seed you passed. This is why "generate another one" gave you the
+     same track. splitmix32 finish, then the same LCG. */
+  s = (s ^ 0x9e3779b9) >>> 0;
+  s = Math.imul(s ^ (s >>> 16), 0x21f0aaad) >>> 0;
+  s = Math.imul(s ^ (s >>> 15), 0x735a2d97) >>> 0;
+  s = (s ^ (s >>> 15)) >>> 0;
+  return function(){ s = (Math.imul(s, 1664525) + 1013904223) >>> 0; return s / 4294967296; };
 }
 
 function degToken(root, scale, deg, oct){
@@ -181,28 +191,91 @@ function energyFor(role, pos){
   return Math.min(1, base + 0.2 * pos);
 }
 
-var STYLE_TRACKS = {
-  hardtechno: {kick:"X...X...X...X..X", hat:"x.x.x.x.x.x.x.x.", oh:"....x.......x...",
-               clap:"....X.......X...", perc:"..x..x..x..x..x."},
-  techno:     {kick:"x...x...x...x...", hat:"..x...x...x...x.", clap:"....x.......x...",
-               perc:"..........x....."},
-  acid:       {kick:"x...x...x...x...", hat:"..x...x...x...x.", clap:"....x.......x..."},
-  industrial: {kick:"X..xX...X..xX...", hat:"x.xxx.xxx.xxx.xx", snare:"........x.......",
-               perc:"x..x..x..x..x..x"},
-  minimal:    {kick:"x...x...x...x...", hat:"..x...x...x...x.", perc:"...........x...."},
-  dubtechno:  {kick:"x...x...x...x...", hat:"..x...x...x...x."},
-  house:      {kick:"x...x...x...x...", hat:"..x...x...x...x.", clap:"....x.......x..."},
-  trance:     {kick:"x...x...x...x...", hat:"..x...x...x...x.", oh:"..x...x...x...x."}
-};
+/* Bjorklund: spread k hits as evenly as possible over n steps. e(4,16) is
+   four-on-the-floor, e(3,8) is the tresillo, e(7,16) is a classic hat.
+   Ported from thud/gen.py so a genre's rhythms are one definition, not two. */
+function euclid(k, n, rotate){
+  n = n | 0; if(n <= 0) return "";
+  k = Math.max(0, Math.min(k | 0, n));
+  var bits, i;
+  if(k === 0){ bits = []; for(i = 0; i < n; i++) bits.push(0); }
+  else if(k === n){ bits = []; for(i = 0; i < n; i++) bits.push(1); }
+  else {
+    var counts = [], rem = [k], divisor = n - k, lvl = 0;
+    while(true){
+      counts.push(Math.floor(divisor / rem[lvl]));
+      rem.push(divisor % rem[lvl]);
+      divisor = rem[lvl];
+      lvl++;
+      if(rem[lvl] <= 1) break;
+    }
+    counts.push(divisor);
+    var build = function(l){
+      var out = [];
+      if(l === -1) out.push(0);
+      else if(l === -2) out.push(1);
+      else {
+        for(var j = 0; j < counts[l]; j++) out = out.concat(build(l - 1));
+        if(rem[l] !== 0) out = out.concat(build(l - 2));
+      }
+      return out;
+    };
+    bits = build(lvl);
+    var first = bits.indexOf(1);
+    if(first > 0) bits = bits.slice(first).concat(bits.slice(0, first));
+  }
+  var r = ((rotate | 0) % n + n) % n;
+  if(r) bits = bits.slice(n - r).concat(bits.slice(0, n - r));
+  return bits.map(function(b){ return b ? "x" : "."; }).join("");
+}
+
+/* A genre's kit, resolved to patterns. Every one of the fifteen genres has its
+   own; seven of them used to fall through to the techno kit, which is how jungle
+   ended up four-on-the-floor at 168 BPM and garage ended up straight. */
+function kitFor(style, rand){
+  var kit = (T.kits || {})[style] || (T.kits || {}).techno;
+  if(!kit) return {drums: {}, pitched: {}};
+  var drums = {}, pitched = {};
+  Object.keys(kit.tracks).forEach(function(name){
+    var spec = kit.tracks[name], t = {voice: spec.voice || name, gain: 1, sc: 0};
+    if(spec.gain != null) t.gain = spec.gain;
+    if(spec.sc != null) t.sc = spec.sc;
+    if(spec.tune != null) t.tune = spec.tune;
+    if(spec.filt){ t.filt = spec.filt[0]; t.fc = spec.filt[1];
+                   if(spec.filt[2] != null) t.res = spec.filt[2];
+                   /* A noise voice takes its brightness from `tune` - the hat's
+                      highpass IS its tune - so a kit that says hp 8500 has to
+                      land there or it does nothing at all. */
+                   if(spec.filt[0] === "hp" && spec.tune == null && !spec.melody) t.tune = spec.filt[1]; }
+    if(spec.melody){ t.scale = spec.melody[1]; t.density = spec.density;
+                     pitched[name] = t; return; }
+    var pat = spec.pat;
+    if(!pat && spec.euclid){
+      /* rotate by a seeded step so two seeds do not share a hat */
+      var rot = (spec.euclid[2] || 0) + (rand && name !== "kick" ? Math.floor(rand() * 4) : 0);
+      pat = euclid(spec.euclid[0], spec.euclid[1], rot);
+    }
+    if(!pat) return;
+    if(spec.accent) pat = pat.replace(/x/g, function(c, i){ return i % 4 === 0 ? "X" : c; });
+    t.pat = pat;
+    drums[name] = t;
+  });
+  return {drums: drums, pitched: pitched, bpm: kit.bpm};
+}
 
 function compose(style, minutes, curveName, seed){
   style = GENRES[style] ? style : "hardtechno";
   var G = GENRES[style];
   var rand = rng(seed || Math.floor(Math.random() * 1e9));
-  var curve = TEMPLATES[curveName] ? curveName : "classic";
+  /* No curve named? Pick one from the seed. `go` used to be hardtechno/classic
+     every single time, so every generated track had the same shape. arrange()
+     itself stays deterministic - the Python and JS arrangers are held to
+     identical output by qa, and a seeded jitter inside it would break that. */
+  var curve = TEMPLATES[curveName] ? curveName
+            : Object.keys(TEMPLATES)[Math.floor(rand() * Object.keys(TEMPLATES).length)];
   var root = ["a","c","d","f","g"][Math.floor(rand() * 5)];
   var scale = G.key;
-  var bpm = G.bpm;
+  var bpm = ((T.kits || {})[style] || {}).bpm || G.bpm;
   var m = motif(rand, ["static","arch","rising","zigzag"][Math.floor(rand() * 4)], 8);
 
   var plan = arrange(minutes, curve, bpm, G.drop);
@@ -215,20 +288,41 @@ function compose(style, minutes, curveName, seed){
     var energy = energyFor(p.role, pos);
     var tracks = {}, ord = [];
 
-    var base = STYLE_TRACKS[style] || STYLE_TRACKS.techno;
-    Object.keys(base).forEach(function(k){
-      tracks[k] = {voice: k, pat: base[k], gain: 1, sc: 0};
-      ord.push(k);
+    var kit = kitFor(style, rand);
+    Object.keys(kit.drums).forEach(function(k){
+      var d = kit.drums[k], t = {voice: d.voice, pat: d.pat, gain: d.gain, sc: d.sc};
+      if(d.tune != null) t.tune = d.tune;
+      if(d.filt){ t.filt = d.filt; t.fc = d.fc; if(d.res != null) t.res = d.res; }
+      tracks[k] = t; ord.push(k);
     });
 
     /* the motif, developed for this section's energy */
     var mm = m;
     if(energy < 0.4) mm = thin(m, rand, 0.6);
     else if(energy > 0.85) mm = densify(m, rand, 0.4);
-    var notes = motifTokens(mm, root, scale, 1);
-    tracks.bass = {voice: "bass", notes: notes, gain: 1, sc: 0.7, fc: 350,
-                   pat: notes.map(function(t){ return t === "." ? "." : (t.indexOf("!") > 0 ? "X" : "x"); }).join("")};
-    ord.push("bass");
+
+    /* Every pitched track the kit asks for - a bass, and for the genres that want
+       one a stab or chord - each on the same motif so the track has an identity. */
+    var pitchNames = Object.keys(kit.pitched);
+    if(!pitchNames.length) pitchNames = ["bass"];
+    /* Whatever the kit's lowest pitched voice is, it is keyed `bass` - the role
+       code below and the mixing rules both reach for that name. Aliasing it to a
+       second key instead made the same voice render twice. */
+    var hasBass = pitchNames.indexOf("bass") >= 0;
+    pitchNames.forEach(function(pn, pi){
+      var key = (!hasBass && pi === 0) ? "bass" : pn;
+      var spec = kit.pitched[pn] || {};
+      var mv = pi === 0 ? mm : thin(mm, rand, 0.55);          // the stab is sparser than the bass
+      var sc2 = spec.scale && SCALES[spec.scale] ? spec.scale : scale;
+      var notes = motifTokens(mv, root, sc2, pi === 0 ? 1 : 2);
+      var t = {voice: spec.voice || pn, notes: notes,
+               gain: spec.gain == null ? 1 : spec.gain,
+               sc: spec.sc == null ? 0.7 : spec.sc,
+               fc: spec.fc == null ? 350 : spec.fc,
+               pat: notes.map(function(x){ return x === "." ? "." : (x.indexOf("!") > 0 ? "X" : "x"); }).join("")};
+      if(spec.res != null) t.res = spec.res;
+      tracks[key] = t; ord.push(key);
+    });
 
     var auto = [];
     function silence(){ [].forEach.call(arguments, function(k){
@@ -364,5 +458,6 @@ function score(crit){
 }
 
 g.OONTZ_COMPOSE = {compose: compose, critique: critique, score: score, arrange: arrange,
+                   euclid: euclid, kitFor: kitFor,
                    GENRES: GENRES, TEMPLATES: TEMPLATES, degToken: degToken};
 })(typeof window !== "undefined" ? window : globalThis);
