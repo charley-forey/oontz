@@ -1,0 +1,154 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>landing gate</title>
+<style>
+  body{margin:0;background:#07090b;color:#c6d2dc;font:13px ui-monospace,Menlo,Consolas,monospace}
+  #out{padding:10px;white-space:pre}
+  .ok{color:#6ee79a} .fail{color:#ff6b6b}
+  iframe{position:fixed;right:0;bottom:0;width:900px;height:520px;border:1px solid #18212b}
+</style>
+</head>
+<body>
+<div id="out">running…</div>
+<iframe id="frame" src="/t/gatefake"></iframe>
+<iframe id="pl" src="/p/gatefake" style="bottom:540px"></iframe>
+<script>
+/* The share page, driven for real. Served from the landing origin so the iframes are
+ * same-origin and their windows can be read. Results go back to the runner over HTTP
+ * as they happen, exactly like web/app/test.html, so a hang names the test that hung. */
+var OUT = document.getElementById("out"), LINES = [], PASS = 0, FAIL = 0;
+var API = new URLSearchParams(location.search).get("api");
+
+function log(cls, s){ LINES.push('<div class="' + cls + '">' + s.replace(/</g, "&lt;") + "</div>"); }
+function render(){ OUT.innerHTML = LINES.join(""); }
+/* Plain text, not a JSON blob. The runner is on another port, and a beacon carrying
+   application/json is a preflighted cross-origin request - which beacons cannot do, so
+   every result was silently dropped and the gate timed out having heard nothing.
+   text/plain is a simple request: it just goes. */
+function report(obj){
+  var url = "http://127.0.0.1:" + API + "/report", body = JSON.stringify(obj);
+  try { if(navigator.sendBeacon(url, body)) return; } catch(e){}
+  try { fetch(url, {method: "POST", body: body, mode: "no-cors",
+                    headers: {"Content-Type": "text/plain"}}); } catch(e){}
+}
+async function t(name, fn){
+  try { var d = await fn(); PASS++; log("ok", "ok    " + name + (d ? "   " + d : ""));
+        report({ok: true, name: name, detail: d || ""}); }
+  catch(e){ FAIL++; log("fail", "FAIL  " + name + "   " + (e && e.message || e));
+        report({ok: false, name: name, detail: String(e && e.message || e)}); }
+  render();
+}
+function ok(c, m){ if(!c) throw new Error(m); }
+function eq(a, b, m){ if(a !== b) throw new Error(m + " (got " + a + ", want " + b + ")"); }
+var sleep = function(ms){ return new Promise(function(r){ setTimeout(r, ms); }); };
+async function until(fn, ms, what){
+  var t0 = Date.now();
+  while(Date.now() - t0 < (ms || 6000)){ if(fn()) return true; await sleep(50); }
+  throw new Error("timed out waiting for " + (what || "condition"));
+}
+
+(async function main(){
+  var F = document.getElementById("frame"), P = document.getElementById("pl"), W = null;
+
+  await t("the share page boots", async function(){
+    await until(function(){ return F.contentWindow && F.contentWindow.run; }, 12000, "the page");
+    W = F.contentWindow;
+    return "ready";
+  });
+
+  await t("every asset on /t/<id> is 200", function(){
+    /* THE regression. A relative src on this page resolves against /t/ and 404s -
+       that is how the whole share surface shipped with no copy. Scope to this origin
+       only: the page also pokes oontz.sh and railway, which are meant to fail here. */
+    var res = W.performance.getEntriesByType("resource")
+      .filter(function(e){ return e.name.indexOf(W.location.origin) === 0; });
+    ok(res.length >= 3, "only saw " + res.length + " same-origin subresources");
+    var bad = res.filter(function(e){ return e.responseStatus && e.responseStatus !== 200; });
+    ok(!bad.length, bad.map(function(e){ return e.responseStatus + " " + e.name; }).join(", "));
+    return res.length + " assets";
+  });
+
+  await t("copy.js actually ran", function(){
+    /* An independent detector for the same bug: responseStatus needs a recent browser,
+       and the page's own `const CP = window.OONTZ_COPY || {}` degrades to {} in silence
+       rather than throwing. Read the window property copy.js sets - `const CP` itself is
+       a script-scoped binding and is deliberately NOT reachable from out here. */
+    var C = W.OONTZ_COPY;
+    ok(C, "window.OONTZ_COPY is missing - copy.js did not load");
+    ok(C.help && C.help.length, "CP.help is empty");
+    ok(C.tagline, "CP.tagline is empty");
+    return Object.keys(C).length + " copy keys";
+  });
+
+  await t("the boot hook names the track and asks for a tap", async function(){
+    eq(W.OONTZ_BOOT, "play gatefake", "boot command");
+    ok(W.OONTZ_META && W.OONTZ_META.title === "gate track", "meta title missing");
+    /* the intro types itself in, so wait for it rather than racing it */
+    await until(function(){ return /gate track/.test(W.document.body.innerText); },
+                12000, "the track to be named on screen");
+    ok(/tap/i.test(W.document.body.innerText), "no tap-to-play affordance");
+    return "named";
+  });
+
+  await t("the social tags are absolute and point at a png", function(){
+    var get = function(sel){ var m = W.document.head.querySelector(sel); return m && m.content; };
+    var img = get('meta[property="og:image"]'), url = get('meta[property="og:url"]');
+    var tw = get('meta[name="twitter:image"]');
+    [["og:image", img], ["og:url", url], ["twitter:image", tw]].forEach(function(p){
+      ok(p[1], p[0] + " is missing");
+      ok(/^https?:\/\//.test(p[1]), p[0] + " must be absolute, got " + p[1]);
+    });
+    ok(/\.png$/.test(img), "og:image must be a png, got " + img);
+    ok(img.indexOf("gatefake") >= 0, "og:image is not this track's card");
+    return "absolute";
+  });
+
+  await t("the card really is a PNG", async function(){
+    var img = W.document.head.querySelector('meta[property="og:image"]').content;
+    var r = await fetch(img);
+    eq(r.status, 200, "card fetch");
+    eq((r.headers.get("content-type") || "").split(";")[0], "image/png", "content-type");
+    var b = new Uint8Array(await r.arrayBuffer());
+    ok(b[0] === 0x89 && b[1] === 0x50 && b[2] === 0x4e && b[3] === 0x47, "not PNG bytes");
+    return b.length + " bytes";
+  });
+
+  await t("one gesture plays it, end to end", async function(){
+    /* Assert on what the outside world can see, not on internals: the engine and its
+       context live in script-scoped bindings. If the tap really started the track then
+       the page fetched the song and posted a play - both land on the stub. */
+    W.dispatchEvent(new W.PointerEvent("pointerdown", {bubbles: true}));
+    var seen = [];
+    await until(async function(){
+      seen = (await (await fetch("http://127.0.0.1:" + API + "/probe")).json()).seen;
+      return seen.indexOf("/songs/gatefake/play") >= 0;
+    }, 10000, "a play to reach the api (saw " + seen.join(",") + ")");
+    var txt = W.document.body.innerText;
+    ok(!/could not reach|did not load/i.test(txt), "the page reported a failure: " + txt.slice(-160));
+    ok(/140 BPM|gate track/i.test(txt), "the transport banner never printed");
+    return "fetched + played";
+  });
+
+  await t("a shared playlist gets a card too", async function(){
+    await until(function(){ return P.contentWindow && P.contentWindow.run; }, 12000, "the playlist page");
+    var Q = P.contentWindow;
+    var img = Q.document.head.querySelector('meta[property="og:image"]').content;
+    ok(/^https?:\/\//.test(img), "playlist og:image must be absolute, got " + img);
+    ok(/\.png$/.test(img), "playlist og:image must be a png, got " + img);
+    ok(Q.OONTZ_COPY && Q.OONTZ_COPY.help, "copy.js did not load on /p/");
+    var res = Q.performance.getEntriesByType("resource")
+      .filter(function(e){ return e.name.indexOf(Q.location.origin) === 0; })
+      .filter(function(e){ return e.responseStatus && e.responseStatus !== 200; });
+    ok(!res.length, res.map(function(e){ return e.responseStatus + " " + e.name; }).join(", "));
+    return "ok";
+  });
+
+  log(FAIL ? "fail" : "ok", (FAIL ? "FAILED " : "passed ") + PASS + "/" + (PASS + FAIL));
+  render();
+  report({done: true});
+})();
+</script>
+</body>
+</html>

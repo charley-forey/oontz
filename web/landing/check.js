@@ -15,6 +15,14 @@ files.forEach(function(f){
 
 var html = fs.readFileSync(path.join(here, "index.html"), "utf8");
 A.ok(/(?:const|var) API = "https?:\/\/[^"]+"/.test(html), "server.py reads the API base from index.html's `API = \"...\"` line");
+/* Every asset, not just the engine. This page is served at /t/<id> and /p/<id> as
+   well as /, so a relative src resolves against /t/ and 404s. That is not
+   hypothetical: `src="copy.js"` shipped and every share page loaded with no copy,
+   while the single assertion below happily passed because it only ever looked at
+   one file. Check them all, and the class cannot come back. */
+var rel = (html.match(/(?:src|href)="(?!https?:|\/\/|\/|#|data:|mailto:)[^"]*/g) || [])
+  .filter(function(m){ return m.indexOf("${") < 0; });   /* JS template literals, not markup */
+A.ok(!rel.length, "relative asset path(s) in landing/index.html, which 404 at /t/<id>: " + rel.join(", "));
 A.ok(html.indexOf('src="/engine/oontz.js"') >= 0, "index.html must load /engine/oontz.js by absolute path (it is served at /t/<id> too)");
 A.ok(html.indexOf("sugPick") >= 0 && html.indexOf("oontz_music_hist") >= 0 && html.indexOf("gobtn") >= 0,
   "the landing prompt has the dropdown, history, and the run chip");

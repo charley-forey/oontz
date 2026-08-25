@@ -435,6 +435,95 @@ async function until(fn, ms, what){
     cv.captureStream = real;
   });
 
+  await t("tapping a suggestion runs it, and never hands the keyboard to the pads", async function(){
+    var IN = W.document.getElementById("in");
+    IN.focus();
+    var before = W.E.tracks.kick ? W.E.tracks.kick.pat : null;
+
+    /* a verb that needs no argument: run it and empty the box */
+    var n0 = W.document.getElementById("out").textContent.length;
+    W.sugPick("grade");
+    await sleep(150);
+    eq(IN.value, "", "the box must be cleared after running");
+    ok(W.document.getElementById("out").textContent.length > n0, "the command did not run");
+    eq(W.document.activeElement, IN, "focus left the input - the pads would take the keyboard");
+
+    /* a verb that is nothing without its argument: fill and wait */
+    W.sugPick("remix");
+    await sleep(150);
+    eq(IN.value, "remix ", "an argument verb must fill, not run");
+    eq(W.document.activeElement, IN, "focus left the input");
+
+    /* the actual complaint: after picking, a letter must type, not drum */
+    IN.value = "";
+    W.document.dispatchEvent(new W.KeyboardEvent("keydown", {key: "q", bubbles: true}));
+    await sleep(80);
+    var after = W.E.tracks.kick ? W.E.tracks.kick.pat : null;
+    eq(after, before, "a keystroke after a suggestion toggled a pad");
+    return "runs, fills, keeps focus";
+  });
+
+  await t("every visual mode paints all four edges", function(){
+    /* The bug this locks down: modes used Math.min(W,H) as a radius, which inscribes
+       the art in a centred square and throws away 44% of the width of a 16:9 screen.
+       The old test only proved the CANVAS was viewport-sized, which it always was -
+       the black bars were one layer down, in what the modes chose to paint. Draw each
+       one into a deliberately wide canvas and demand ink near all four edges. */
+    var V = W.OONTZ_VIZ, cv = W.document.createElement("canvas");
+    cv.width = 960; cv.height = 360;                    /* 8:3 - wider than any phone */
+    var cx = cv.getContext("2d", {willReadFrequently: true});
+    var wave = new Float32Array(2048);
+    for(var i = 0; i < wave.length; i++) wave[i] = Math.sin(i / 9) * 0.7;
+    var spec = new Uint8Array(1024);
+    for(i = 0; i < spec.length; i++) spec[i] = 200 - (i >> 3);
+
+    var frame = function(pass){
+      return {t: 3.1, W: cv.width, H: cv.height, bpm: 140, beat: 4, beatIndex: 4, beatPhase: 0.3,
+              barPhase: 0.25, section: "drop", role: "drop", within: 2, bars: 8, left: 6, next: "break",
+              energy: 0.9, bands: {sub: .8, bass: .8, mid: .6, high: .5}, wave: wave, spectrum: spec,
+              playing: true, kick: true, intensity: 1, pulse: 1, flash: 0.6, rush: 0.5, pass: pass || 0};
+    };
+    var th = V.THEMES.acid;
+    var edges = function(){
+      var band = 8, hits = {top: 0, bottom: 0, left: 0, right: 0};
+      var px = function(x, y, w, h){
+        var d = cx.getImageData(x, y, w, h).data, n = 0;
+        for(var i = 0; i < d.length; i += 4) if(d[i] + d[i+1] + d[i+2] > 40) n++;
+        return n;
+      };
+      hits.top = px(0, 0, cv.width, band);
+      hits.bottom = px(0, cv.height - band, cv.width, band);
+      hits.left = px(0, 0, band, cv.height);
+      hits.right = px(cv.width - band, 0, band, cv.height);
+      return hits;
+    };
+
+    var names = Object.keys(V.MODES), bad = [];
+    names.forEach(function(name){
+      cx.setTransform(1, 0, 0, 1, 0, 0);
+      cx.globalCompositeOperation = "source-over";
+      cx.fillStyle = "#000"; cx.fillRect(0, 0, cv.width, cv.height);
+      cx.globalCompositeOperation = "lighter";
+      for(var n = 0; n < 90; n++) V.MODES[name](cx, frame(0), th);   /* let trails accumulate */
+      cx.setTransform(1, 0, 0, 1, 0, 0);
+      var e = edges();
+      var dead = Object.keys(e).filter(function(k){ return e[k] === 0; });
+      if(dead.length) bad.push(name + " misses " + dead.join("+"));
+    });
+    ok(!bad.length, bad.join(" · "));
+    ok(names.length >= 14, "expected the full mode set, saw " + names.length);
+    return names.length + " modes reach every edge";
+  });
+
+  await t("glow is wired to something", function(){
+    var V = W.OONTZ_VIZ;
+    Object.keys(V.THEMES).forEach(function(n){
+      ok(typeof V.THEMES[n].glow === "number", n + " has no glow");
+    });
+    V.set ? V.set("glow", 0.5) : null;
+    ok(V.parseParam("glow", "0.5"), "glow must be a settable parameter, not decoration");
+  });
+
   /* ---- Phase 3: arrangement, library, undo, stems ---------------------- */
   await t("sec edits the arrangement", async function(){
     await W.CMDS.compose(["techno", "1"]); W.E.stop();

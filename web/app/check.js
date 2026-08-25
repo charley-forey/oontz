@@ -220,6 +220,47 @@ var bg = tok("bg");
       ":1, needs " + p[1] + ":1");
   });
 
+/* -- play() must never be a no-op while silent -----------------------------
+   The bug this locks down: play() used to `return` on `this.playing` BEFORE calling
+   start(), so a context born suspended (which is what a deep link does - it plays
+   before any gesture) latched the engine as "playing" and permanently silent. Every
+   later `go` hit that first line and did nothing. */
+var fake = {state: "suspended", currentTime: 0, resumes: 0,
+            resume: function(){ this.resumes++; return Promise.resolve(); },
+            addEventListener: function(){}};
+var pe = new OZ.Engine();
+pe.loadSong(song());
+pe._tick = function(){};                       /* no voices; we only care about the clock */
+pe.start = function(){ this.ctx = fake; this.resume(); return fake; };
+
+A.strictEqual(pe.play(), "suspended", "play() must report the state, not claim success");
+A.ok(pe.playing, "playing is intent, and is set even while silent");
+A.strictEqual(fake.resumes, 1, "play() must try to revive a suspended context");
+pe.play();
+A.strictEqual(fake.resumes, 2, "a second play() on a dead context must retry, not early-return");
+fake.state = "running";
+A.strictEqual(pe.play(), "running", "play() reports running once the context is live");
+var t1 = pe._timer;
+A.ok(t1, "play() armed the scheduler");
+pe.play();
+A.strictEqual(pe._timer, t1, "play() on a live clock must not start a second scheduler");
+pe.stop();
+A.ok(!pe.playing && !pe._timer, "stop clears both intent and the timer");
+
+/* iOS says "interrupted", not "suspended" - the old check knew only one of them */
+var re = new OZ.Engine();
+["suspended", "interrupted"].forEach(function(st){
+  fake.state = st; fake.resumes = 0; re.ctx = fake; re.resume();
+  A.strictEqual(fake.resumes, 1, "resume() must revive a context in state " + st);
+});
+fake.state = "running"; fake.resumes = 0; re.resume();
+A.strictEqual(fake.resumes, 0, "resume() must leave a running context alone");
+/* resume() rejects when there has been no gesture; that must not escape */
+re.ctx = {state: "suspended", resume: function(){ return Promise.reject(new Error("no gesture")); }};
+re.resume();
+A.ok(typeof OZ.armAudio === "function", "armAudio must be exported for both pages");
+A.strictEqual(OZ.armAudio(function(){ return []; }), undefined, "armAudio is a no-op under node");
+
 /* -- a song fits in a link ------------------------------------------------- */
 (async function(){
   var sg = song();

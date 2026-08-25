@@ -28,7 +28,7 @@ var THEMES = {
 };
 var BUILTIN = {};                                  /* customs never overwrite these */
 Object.keys(THEMES).forEach(function(k){ BUILTIN[k] = 1; });
-var PARAMS = {intensity: [0, 2], decay: [0, 1], symmetry: [1, 8]};
+var PARAMS = {intensity: [0, 2], decay: [0, 1], symmetry: [1, 8], glow: [0, 1]};
 var ENERGY = {drop: 1, build: 0.6, break: 0.15, intro: 0.2, outro: 0.2};
 
 /* -- pure ------------------------------------------------------------------ */
@@ -87,7 +87,7 @@ MODES.spectrum = function(c, f, th){
   for(var i = 0; i < n; i++){
     var lo = Math.floor(Math.pow(i / n, 2) * 400), hi = Math.floor(Math.pow((i + 1) / n, 2) * 400) + 1, s = 0;
     for(var k = lo; k < hi; k++) s += sp[k]; s /= (hi - lo) * 255;
-    var h = s * s * mid * 0.9 * f.intensity * (1 + f.pulse * 0.2);
+    var h = (0.22 + s * 0.95) * mid * 1.15 * f.intensity * (1 + f.pulse * 0.2);
     c.fillStyle = rgba(mix(th.colors, i / n + f.t * 0.05), 0.3 + s * 0.6);
     c.fillRect(f.W / 2 + i * w, mid - h, w - 2, h * 2);
     c.fillRect(f.W / 2 - (i + 1) * w, mid - h, w - 2, h * 2);
@@ -96,13 +96,13 @@ MODES.spectrum = function(c, f, th){
 
 MODES.scope = function(c, f, th){
   var wv = f.wave; if(!wv) return;
-  var n = wv.length, mid = f.H / 2, amp = f.H * 0.3 * f.intensity, i;
+  var n = wv.length, mid = f.H / 2, amp = f.H * 0.46 * f.intensity, i;
   c.lineWidth = 2; c.strokeStyle = rgba(mix(th.colors, f.beatPhase * 0.5 + f.t * 0.02), 0.8);
   c.beginPath();
   for(i = 0; i < n; i += 2){ var x = i / n * f.W, y = mid + wv[i] * amp; i ? c.lineTo(x, y) : c.moveTo(x, y); }
   c.stroke();
   /* a Lissajous of the signal against itself a few ms later: a mono goniometer */
-  var R = Math.min(f.W, f.H) * (0.6 + f.bands.bass) * f.intensity, d = 48;
+  var R = Math.hypot(f.W, f.H) * 0.5 * (0.6 + f.bands.bass) * f.intensity, d = 48;
   c.lineWidth = 1.5; c.strokeStyle = rgba(mix(th.colors, 0.5 + f.beatPhase * 0.3), 0.6);
   c.beginPath();
   for(i = 0; i + d < n; i += 2){ var x2 = f.W / 2 + wv[i] * R, y2 = mid + wv[i + d] * R; i ? c.lineTo(x2, y2) : c.moveTo(x2, y2); }
@@ -133,7 +133,10 @@ MODES.particles = function(c, f, th){
   var i, p;
   if(f.pass === 0){
     if(f.kick) for(i = 0; i < 40 * f.intensity; i++){ var a = Math.random() * Math.PI * 2, v = (2 + Math.random() * 6) * (1 + f.energy);
-      P.push({x: f.W / 2, y: f.H / 2, vx: Math.cos(a) * v, vy: Math.sin(a) * v, life: 1, c: Math.random()}); }
+    /* stretch the spread to the frame: a circle of velocities cannot cross a 16:9
+       screen sideways before its particles expire */
+    var sx = f.W / Math.min(f.W, f.H), sy = f.H / Math.min(f.W, f.H);
+    P.push({x: f.W / 2, y: f.H / 2, vx: Math.cos(a) * v * sx, vy: Math.sin(a) * v * sy, life: 1, c: Math.random()}); }
     var drift = f.bands.high * 3 * f.intensity;
     for(i = P.length - 1; i >= 0; i--){ p = P[i];
       p.vx += (Math.random() - 0.5) * drift; p.vy += (Math.random() - 0.5) * drift - 0.02;
@@ -153,7 +156,7 @@ MODES.feedback = function(c, f, th){
     var z = 1.015 + f.pulse * 0.03; c.scale(z, z);
     c.drawImage(c.canvas, -f.W / 2, -f.H / 2, f.W, f.H); c.restore();
   }
-  var sides = 3 + (f.beatIndex % 4), R = Math.min(f.W, f.H) * (0.08 + f.bands.bass * 0.25 + f.pulse * 0.1) * f.intensity;
+  var sides = 3 + (f.beatIndex % 4), R = Math.hypot(f.W, f.H) * 0.5 * (0.12 + f.bands.bass * 0.3 + f.pulse * 0.12) * f.intensity;
   c.beginPath();
   for(var i = 0; i <= sides; i++){ var a = i / sides * Math.PI * 2 + f.t * 0.5 + f.beatPhase;
     var x = f.W / 2 + Math.cos(a) * R, y = f.H / 2 + Math.sin(a) * R; i ? c.lineTo(x, y) : c.moveTo(x, y); }
@@ -178,7 +181,7 @@ MODES.stars = function(c, f, th){                  /* rushing at you as fast as 
 };
 
 MODES.kaleido = function(c, f, th){                /* a breathing mandala; symmetry does the folding */
-  var R = Math.min(f.W, f.H) * (0.14 + f.bands.bass*0.3 + f.pulse*0.08) * f.intensity;
+  var R = Math.hypot(f.W, f.H) * 0.5 * (0.45 + f.bands.bass*0.45 + f.pulse*0.12) * f.intensity;
   var petals = 5 + (f.beatIndex % 4);
   c.beginPath();
   for(var i = 0; i <= 72; i++){
@@ -198,7 +201,7 @@ MODES.kaleido = function(c, f, th){                /* a breathing mandala; symme
 };
 
 MODES.terrain = function(c, f, th){          /* a wireframe landscape the bass builds */
-  var rows = 12, cols = 28, horizon = f.H * 0.42;
+  var rows = 12, cols = 28, horizon = f.H * 0.06;   /* was .42: a permanent black band */
   if(f.pass !== 0) return;                    /* symmetry would just blur it */
   for(var r = 0; r < rows; r++){
     var z = r / rows, zz = (z + (f.beat * 0.12) % (1 / rows)) % 1;
@@ -218,7 +221,129 @@ MODES.terrain = function(c, f, th){          /* a wireframe landscape the bass b
 };
 
 /* viz auto: the section picks the mode. We composed the song; the canvas reads the score. */
-var AUTO = {intro: "scope", build: "feedback", drop: "tunnel", "break": "particles",
+/* ---- six that fill the screen by construction -------------------------------
+   Every mode above had to be talked out of drawing a centred circle. These are
+   built on the frame itself - each one's geometry is derived from W and H, so
+   there is no aspect ratio at which they leave a band. */
+
+var PLASMA = null;
+MODES.plasma = function(c, f, th){                 /* interference, the whole frame lit */
+  if(f.pass !== 0) return;
+  var step = 26, t = f.t * 0.7, amp = 0.6 + f.bands.bass * 1.6 + f.pulse;
+  for(var y = 0; y < f.H + step; y += step){
+    for(var x = 0; x < f.W + step; x += step){
+      var u = x / f.W, v = y / f.H;
+      var n = Math.sin(u * 7 + t) + Math.sin(v * 6 - t * 0.8)
+            + Math.sin((u + v) * 5 + t * 1.3) + Math.sin(Math.hypot(u - 0.5, v - 0.5) * 14 - t * 2);
+      var a = (n / 4 + 0.5) * amp;
+      if(a <= 0.02) continue;
+      c.fillStyle = rgba(mix(th.colors, (n / 4 + 0.5 + f.t * 0.05) % 1), Math.min(0.85, a) * 0.5 * f.intensity);
+      c.fillRect(x - step / 2, y - step / 2, step, step);
+    }
+  }
+};
+
+var RAIN = [];
+MODES.rain = function(c, f, th){                   /* glyph rain - the terminal, falling */
+  if(f.pass !== 0) return;
+  var cols = Math.max(8, Math.round(f.W / 26));
+  while(RAIN.length < cols) RAIN.push({y: Math.random() * f.H, v: 1 + Math.random() * 3, c: Math.random()});
+  RAIN.length = cols;
+  c.font = "700 20px ui-monospace, Menlo, Consolas, monospace";
+  c.textAlign = "center";
+  for(var i = 0; i < cols; i++){
+    var d = RAIN[i], x = (i + 0.5) * (f.W / cols);
+    d.y += d.v * (1 + f.energy * 2 + f.pulse * 6) * f.intensity;
+    if(d.y > f.H + 40){ d.y = -20; d.v = 1 + Math.random() * 3; d.c = Math.random(); }
+    for(var k = 0; k < 6; k++){
+      var yy = d.y - k * 22;
+      if(yy < -20 || yy > f.H + 20) continue;
+      c.fillStyle = rgba(mix(th.colors, (d.c + k * 0.05) % 1), (1 - k / 6) * 0.85 * f.intensity);
+      c.fillText("01xX.#*"[(i + k + (f.beatIndex|0)) % 7], x, yy);
+    }
+  }
+  c.textAlign = "start";
+};
+
+MODES.grid = function(c, f, th){                   /* a horizon that fills top AND bottom */
+  var rows = 16, t = f.t * 0.6, lift = 0.5 + f.bands.bass * 0.12;
+  c.lineWidth = 1 + f.pulse * 2;
+  for(var r = 0; r < rows; r++){
+    var p = ((r / rows) + t % (1 / rows)) % 1;
+    var yy = Math.pow(p, 2.2), y1 = f.H * lift + yy * f.H, y0 = f.H * lift - yy * f.H;
+    c.strokeStyle = rgba(mix(th.colors, p), (1 - p) * 0.6 * f.intensity);
+    c.beginPath(); c.moveTo(0, y1); c.lineTo(f.W, y1);
+    c.moveTo(0, y0); c.lineTo(f.W, y0); c.stroke();
+  }
+  var cols = 24;
+  for(var i = 0; i <= cols; i++){
+    var xf = (i / cols - 0.5) * 2;
+    c.strokeStyle = rgba(mix(th.colors, Math.abs(xf)), 0.28 * f.intensity);
+    c.beginPath(); c.moveTo(f.W / 2 + xf * f.W * 0.5, 0);
+    c.lineTo(f.W / 2 + xf * f.W * 2.2, f.H); c.stroke();
+    c.beginPath(); c.moveTo(f.W / 2 + xf * f.W * 0.5, f.H);
+    c.lineTo(f.W / 2 + xf * f.W * 2.2, 0); c.stroke();
+  }
+};
+
+var SHARDS = [];
+MODES.shatter = function(c, f, th){                /* the drop, thrown outward past the corners */
+  if(f.pass !== 0) return;
+  if(f.kick || f.flash > 0.5){
+    var n = 14 + Math.round(18 * f.energy);
+    for(var i = 0; i < n; i++){
+      var a = Math.random() * Math.PI * 2, sp = (6 + Math.random() * 22) * (1 + f.energy);
+      SHARDS.push({x: f.W / 2, y: f.H / 2, vx: Math.cos(a) * sp * (f.W / Math.min(f.W, f.H)),
+                   vy: Math.sin(a) * sp * (f.H / Math.min(f.W, f.H)),
+                   r: Math.random() * Math.PI, life: 1, c: Math.random()});
+    }
+  }
+  for(var j = SHARDS.length - 1; j >= 0; j--){
+    var p = SHARDS[j];
+    p.x += p.vx; p.y += p.vy; p.r += 0.04; p.life -= 0.012;
+    if(p.life <= 0){ SHARDS[j] = SHARDS[SHARDS.length - 1]; SHARDS.pop(); continue; }
+    var sz = 6 + (1 - p.life) * 26 * f.intensity;
+    c.save(); c.translate(p.x, p.y); c.rotate(p.r);
+    c.fillStyle = rgba(mix(th.colors, p.c), p.life * 0.8);
+    c.fillRect(-sz / 2, -sz / 6, sz, sz / 3);
+    c.restore();
+  }
+  if(SHARDS.length > 400) SHARDS.splice(0, SHARDS.length - 400);
+};
+
+MODES.ribbons = function(c, f, th){                /* bands drawn edge to edge, always */
+  var wv = f.wave, bands = 6;
+  c.lineWidth = 2 + f.bands.bass * 6;
+  for(var b = 0; b < bands; b++){
+    var off = (b / bands - 0.5) * f.H * 0.9, ph = f.t * (0.6 + b * 0.15);
+    c.strokeStyle = rgba(mix(th.colors, b / bands), (0.5 - b * 0.05) * f.intensity);
+    c.beginPath();
+    for(var x = 0; x <= f.W; x += 12){
+      var u = x / f.W;
+      var y = f.H / 2 + off
+            + Math.sin(u * 6 + ph) * f.H * 0.16 * (1 + f.bands.mid * 2)
+            + (wv ? wv[Math.floor(u * (wv.length - 1))] * f.H * 0.16 * f.intensity : 0);
+      x ? c.lineTo(x, y) : c.moveTo(x, y);
+    }
+    c.stroke();
+  }
+};
+
+MODES.moire = function(c, f, th){                  /* two grids beating against each other */
+  var a = f.t * 0.2, b2 = -f.t * 0.27 + f.bands.high * 0.4;
+  var reach = Math.hypot(f.W, f.H);
+  c.lineWidth = 1;
+  [[a, 0], [b2, 1]].forEach(function(pair){
+    var ang = pair[0], idx = pair[1], step = 16 + idx * 5 + f.bands.bass * 10;
+    c.strokeStyle = rgba(mix(th.colors, idx * 0.5 + f.t * 0.02), 0.3 * f.intensity);
+    c.save(); c.translate(f.W / 2, f.H / 2); c.rotate(ang);
+    c.beginPath();
+    for(var d = -reach; d <= reach; d += step){ c.moveTo(-reach, d); c.lineTo(reach, d); }
+    c.stroke(); c.restore();
+  });
+};
+
+var AUTO = {intro: "tunnel", build: "feedback", drop: "tunnel", "break": "particles",
             verse: "terrain", outro: "spectrum"};
 function autoFor(role){ return AUTO[role] || "tunnel"; }
 
@@ -309,12 +434,24 @@ function tick(now){
   cx.globalCompositeOperation = "source-over"; cx.globalAlpha = 1;
   cx.fillStyle = rgba(hex(th.bg), S.decay); cx.fillRect(0, 0, W, H);
   cx.globalCompositeOperation = "lighter";
+  /* Every theme has declared a `glow` since the day themes landed and nothing has
+     ever read it. It is what separates `mono` from `blacklight` at a glance. */
+  cx.shadowBlur = (th.glow || 0) * 26 * S.intensity;
+  cx.shadowColor = rgba(hex(th.colors[0]), 0.75);
   for(var k = 0; k < S.symmetry; k++){
     f.pass = k; cx.save();
-    if(k){ cx.translate(W / 2, H / 2); cx.rotate(k * Math.PI * 2 / S.symmetry); if(k % 2) cx.scale(1, -1); cx.translate(-W / 2, -H / 2); }
+    if(k){
+      /* Scale by diagonal/shortest side before rotating. Without it a rotated pass
+         maps the wide canvas into a rect that no longer reaches the left and right
+         edges - which is why the DEFAULT theme (symmetry 4) letterboxed everything. */
+      var cov = Math.hypot(W, H) / Math.max(1, Math.min(W, H));
+      cx.translate(W / 2, H / 2); cx.rotate(k * Math.PI * 2 / S.symmetry);
+      cx.scale(cov, cov); if(k % 2) cx.scale(1, -1); cx.translate(-W / 2, -H / 2);
+    }
     draw(cx, f, th); cx.restore();
   }
   cx.globalCompositeOperation = "source-over";
+  cx.shadowBlur = 0;
 }
 
 function run(){ if(cv && !raf && S.mode !== "off" && !document.hidden) raf = requestAnimationFrame(tick); }

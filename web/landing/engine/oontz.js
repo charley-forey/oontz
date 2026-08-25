@@ -93,9 +93,18 @@ function keepsLows(name){
 }
 
 Engine.prototype.start = function(){
-  if(this.ctx) { if(this.ctx.state === "suspended") this.ctx.resume(); return this.ctx; }
+  if(this.ctx){ this.resume(); return this.ctx; }
   var C = global.AudioContext || global.webkitAudioContext;
   var c = this.ctx = new C();
+  var self = this;
+  /* iOS suspends the context for a phone call and never hands it back on its own.
+     When the system does, re-arm - otherwise the page is silent until a reload,
+     which is what "it just stopped working" means in every report of this. */
+  if(c.addEventListener) c.addEventListener("statechange", function(){
+    if(!self.playing) return;
+    if(c.state !== "running") self.resume();
+    else if(!self._timer) self.play();
+  });
   this.analyser = c.createAnalyser();
   this.analyser.fftSize = 2048; this.analyser.smoothingTimeConstant = 0.75;
   /* master -> filter -> delay line -> out -> comp -> analyser. The filter is the
@@ -713,13 +722,58 @@ Engine.prototype.setBpm = function(v){
   this.bpm = Math.max(60, Math.min(220, v));
 };
 
+/* One place that revives a dead context. "suspended" is the desktop word; iOS also
+   uses "interrupted", which the old one-line check in start() did not know, so an
+   interrupted context was never even asked to resume. resume() REJECTS when there
+   has been no user gesture yet - unhandled, that rejection escaped into whatever
+   handler called play(). Swallowed here, once, and never rethrown. */
+Engine.prototype.resume = function(){
+  var c = this.ctx, self = this;
+  if(!c) return Promise.resolve("closed");
+  if(c.state === "running") return Promise.resolve("running");
+  return Promise.resolve(c.resume()).then(function(){
+    if(self.playing) self.play();       /* the clock was frozen; re-arm on the live one */
+    return c.state;
+  }, function(){ return c.state; });    /* no gesture yet: stay armed, do not throw */
+};
+
+/* `playing` is INTENT, not proof. This used to `return` before start(), so a context
+   born suspended - which is what a deep link does, calling play() before any gesture -
+   left the engine marked playing and permanently silent: every later play() returned
+   on the first line. That is why `go` ran and nothing started, and why `stop` then
+   `go` fixed it. Returns the context state: "running" means it is audible, anything
+   else means armed and waiting for a tap. Callers must not claim more than that. */
 Engine.prototype.play = function(){
-  if(this.playing) return; var c = this.start();
-  this.playing = true; this.step = 0; this._next = c.currentTime + 0.05;
+  var c = this.start();                              /* always - start() revives it */
+  this.playing = true;
+  if(this._timer && c.state === "running") return c.state;   /* already on a live clock */
+  clearInterval(this._timer);
+  this.step = 0; this._next = c.currentTime + 0.05;
   var self = this;
   this._timer = setInterval(function(){ self._sched(); }, 25);
   this._sched();
+  return c.state;
 };
+
+/* ONE standing gesture handler for a page. A browser can suspend a context at any
+   moment - autoplay policy, a tab switch, an iOS call - so the resume has to stand,
+   not fire once: the old armPlay removed itself after a single tap, which gave a page
+   exactly one chance to ever produce sound. Capture phase, so nothing downstream can
+   swallow the event first. `get` is a function because the contexts do not exist yet
+   when this is installed. */
+function armAudio(get){
+  if(typeof global.addEventListener !== "function") return;      /* node */
+  var go = function(){
+    [].concat(get() || []).forEach(function(c){
+      if(c && c.state && c.state !== "running" && c.resume)
+        Promise.resolve(c.resume()).catch(function(){});
+    });
+  };
+  ["pointerdown", "keydown", "touchend"].forEach(function(n){
+    global.addEventListener(n, go, true);
+  });
+  return go;
+}
 
 /* -- decks ----------------------------------------------------------------- */
 
@@ -1202,6 +1256,7 @@ global.oontz = {
   patIndex: patIndex, grooveOf: grooveOf, buildMaster: buildMaster, keepsLows: keepsLows,
   renderTracks: renderTracks,
   xfGains: xfGains, wavBlob: wavBlob, packSong: packSong, unpackSong: unpackSong,
+  armAudio: armAudio,
   stateAt: stateAt, sectionAt: sectionAt, totalBars: totalBars, SR: SR
 };
 })(typeof window !== "undefined" ? window : globalThis);

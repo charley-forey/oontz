@@ -12,8 +12,8 @@
 </script>
 
 <meta charset="utf-8">
-<link rel="manifest" href="manifest.webmanifest">
-<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="icon" href="/icon.svg" type="image/svg+xml">
 <meta name="theme-color" content="#07090b">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>oontz — techno from a command line</title>
@@ -125,7 +125,10 @@
   <div id="bar"><span id="ps1">oontz&nbsp;&gt;</span><input id="in" autocomplete="off" enterkeyhint="go"
     autocapitalize="off" spellcheck="false" aria-label="terminal input"><button id="gobtn" aria-label="run">▶</button></div>
 </div>
-<script src="copy.js"></script>
+<!-- Absolute, all of them. This page is ALSO served at /t/<id> and /p/<id>,
+     where a relative src resolves to /t/copy.js and 404s - which is exactly
+     what shipped: every share page loaded with no copy at all. -->
+<script src="/copy.js"></script>
 <script src="/engine/oontz.js"></script>
 <script src="/engine/viz.js"></script>
 <script>
@@ -465,27 +468,40 @@ function stopTrack(){ if(E) E.stop(); EQ = []; if(EQt){ clearTimeout(EQt); EQt =
 async function playTrack(id, fromQueue){
   stop(); if(!fromQueue) EQ = [];
   if(EQt){ clearTimeout(EQt); EQt = 0; }
+  /* Build the context NOW, while the tap that got us here is still on the stack.
+     Everything below is behind an await, and a promise continuation no longer counts
+     as a user gesture - so a context created down there is born suspended and the
+     track never makes a sound, which is exactly what a shared link did. */
+  if(!E){ E = new oontz.Engine();
+    if(window.OONTZ_VIZ) OONTZ_VIZ.start(E);
+  }
+  E.start();
   const d = w('<span class="dim">  fetching the source…</span>');
   try{
     const r = await fetch(API + '/songs/' + encodeURIComponent(id));
+    if(!r.ok){ d.remove(); return line('▸ that track is gone or private', 'w'); }
     const j = await r.json(); d.remove();
-    if(!r.ok || !j.data) return line('▸ ' + esc(j.detail||'not found'), 'w');
-    if(!E){ E = new oontz.Engine();
-      if(window.OONTZ_VIZ) OONTZ_VIZ.start(E);
-    }
+    if(!j.data) return line('▸ ' + esc(j.detail||'not found'), 'w');
     if(window.OONTZ_VIZ) OONTZ_VIZ.mode('auto');   /* the canvas follows the transport */
-    E.loadSong(j.data); E.play();
+    E.loadSong(j.data);
+    const live = E.play() === 'running';
     NOWPLAYING = {id: id, title: j.title || id}; STRIP_TRIED = true; strip();
     w(`<span class="ok">▸ ${esc(j.title)}</span> <span class="dim">· ${Math.round(j.bpm||0)} BPM · ${esc(j.key||'?')}`+
       ` · by ${esc(j.by||'?')} · \`stop\` ends it</span>`);
     if(j.remix_of) w(`  <span class="dim">↻ a remix of <span class="b">${esc(j.remix_of.title)}</span> by ${esc(j.remix_of.handle||'?')} · play ${esc(j.remix_of.id)}</span>`);
     if(j.remixes) w(`  <span class="dim">↻ remixed ${j.remixes} time${j.remixes>1?'s':''} by other people</span>`);
-    w(`  <span class="dim">${CP.play_note}</span> <a href="https://oontz.sh/?song=${encodeURIComponent(id)}" target="_blank" rel="noopener">oontz.sh/?song=${esc(id)}</a>`);
+    w(`  <span class="dim">${CP.play_note||''}</span> <a href="https://oontz.sh/#song=${encodeURIComponent(id)}" target="_blank" rel="noopener">oontz.sh/#song=${esc(id)}</a>`);
+    if(!live) line('▶ tap anywhere to hear it','a');
     if(EQ.length && EQi + 1 < EQ.length){
       const next = EQ[++EQi];
       EQt = setTimeout(function(){ playTrack(next.id, true); }, Math.max(5, j.seconds||120) * 1000);
     }
-  }catch(e){ d.remove(); line('could not reach the api','w'); }
+  }catch(e){
+    d.remove();
+    /* This said "could not reach the api" for everything, including the engine
+       script failing to load - which sends you looking in the wrong place. */
+    line(window.oontz ? 'could not reach the api' : 'the engine did not load — reload the page','w');
+  }
 }
 var API = "https://api.oontz.sh";
 /* If the custom domain's edge is having a day, fall back to the address that
@@ -577,7 +593,15 @@ function sugRender(){
     esc(usageFor(v))+'</span></div>').join('');
   SUG.classList.add('on');
 }
-function sugPick(v){ IN.value = v + ' '; sugClose(); IN.focus(); }
+/* Same as oontz.sh: a tap runs it. Focus is taken before the list closes, and the
+   close waits a frame so the click cannot retarget to whatever is underneath. */
+function sugPick(v){
+  IN.focus();
+  if(LARGS[v]){ IN.value = v + ' '; requestAnimationFrame(function(){ sugClose(); suggest(); }); return; }
+  IN.value = '';
+  requestAnimationFrame(sugClose);
+  run(v);
+}
 function lev(a, b){
   const m = a.length, n = b.length, row = [];
   for(let j = 0; j <= n; j++) row[j] = j;
@@ -630,8 +654,13 @@ SUG.addEventListener('pointerdown', e => {
 });
 IN.addEventListener('input', suggest);
 IN.addEventListener('blur', sugClose);
-document.getElementById('gobtn').addEventListener('click', function(){
+/* pointerdown, not click: with the soft keyboard up, a tap blurs the input first,
+   the keyboard collapses, the bar slides out from under the finger and the click
+   lands on whatever moved into that spot. oontz.sh learned this already. */
+document.getElementById('gobtn').addEventListener('pointerdown', function(e){
+  e.preventDefault();
   const v = IN.value; IN.value = ''; if(v.trim()) run(v);
+  try{ IN.focus({preventScroll: true}); }catch(err){ IN.focus(); }
 });
 /* paste a share link, get the command */
 IN.addEventListener('paste', function(e){
@@ -680,6 +709,8 @@ function tfetch(url){ const c = new AbortController(); setTimeout(function(){ c.
   return fetch(url, {signal: c.signal}); }
 /* the same eight events the instrument fires, so the funnel is one report */
 function ev(n, p){ try{ if(window.gtag) gtag('event', n, p || {}); }catch(e){} }
+/* Both contexts on this page: the engine's, and the toy synth's separate one. */
+oontz.armAudio(function(){ return [E && E.ctx, AC]; });
 let NOWPLAYING = null;                        /* {id,title} while a track plays here */
 async function strip(){
   await API_READY;                              /* never race the fallback probe */

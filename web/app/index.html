@@ -45,8 +45,11 @@
   #scan{position:fixed;inset:0;z-index:2;pointer-events:none;
     background:repeating-linear-gradient(180deg,rgba(0,0,0,0) 0 2px,rgba(0,0,0,.22) 2px 4px);
     mix-blend-mode:multiply}
+  /* A light corner falloff, not a spotlight. At 72% over an ellipse this was the
+     single biggest reason the art looked boxed in: on a wide screen the ellipse
+     darkens exactly the left and right edges. */
   #vig{position:fixed;inset:0;z-index:2;pointer-events:none;
-    background:radial-gradient(ellipse at 50% 45%,transparent 45%,rgba(0,0,0,.72) 100%)}
+    background:radial-gradient(ellipse at 50% 50%,transparent 70%,rgba(0,0,0,.34) 100%)}
   #wrap{position:relative;z-index:4;height:100%;display:flex;flex-direction:column;
     max-width:1180px;margin:0 auto;padding:14px 18px;text-shadow:var(--halo)}
   #hud{padding:5px 9px;margin-bottom:8px;font-size:.92em;min-height:1.5em;
@@ -156,7 +159,7 @@
   #rack .trk{cursor:pointer;white-space:pre;overflow:hidden;text-overflow:ellipsis}
   /* `calm` for anyone who wants the words to win outright */
   body.calm #bg{opacity:.16} body.calm #viz{opacity:.2} body.calm #scan{display:none}
-  body.calm #vig{background:radial-gradient(ellipse at 50% 45%,transparent 60%,rgba(0,0,0,.5) 100%)}
+  body.calm #vig{background:radial-gradient(ellipse at 50% 50%,transparent 55%,rgba(0,0,0,.6) 100%)}
   body.calm{--plate:rgba(6,9,12,.86)}
   #stage{position:relative}
   #tight{position:absolute;top:3px;right:5px;z-index:3;font:inherit;font-size:.85em;
@@ -307,6 +310,18 @@ function offerShare(url, title, note){
   return el;
 }
 
+/* Hand a file to the browser. Five places grew their own copy of this, and the one
+   that did NOT - `source save` - printed a link and waited for a click, which on a
+   phone quietly does nothing. Clicking it ourselves is what every other export
+   already does; the revoke keeps a big WAV from pinning memory for the session. */
+function saveBlob(blob, name){
+  var a = document.createElement('a');
+  a.href = URL.createObjectURL(blob); a.download = name;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(function(){ URL.revokeObjectURL(a.href); }, 30000);
+  return name;
+}
+
 /* The first mime this browser will actually record, most shareable first. mp4 leads
    deliberately: webm is what Chrome prefers, and Instagram and TikTok reject webm
    uploads, so a webm clip is a file you cannot post. */
@@ -325,6 +340,12 @@ function clipRect(vw, vh){
   var side = Math.min(vw, vh);
   return {sx: Math.round((vw - side) / 2), sy: Math.round((vh - side) / 2), s: side};
 }
+
+/* The standing resume. A browser can suspend the context at any moment - autoplay
+   policy, a tab switch, an iOS call - and until now the only thing that ever resumed
+   it was armPlay, which removed itself after one tap. So a page had exactly one
+   chance to make sound in its whole life. This one never removes itself. */
+OZ.armAudio(function(){ return [E && E.ctx]; });
 
 /* Arriving from somebody else's link. A browser will not let a page make noise
    without a gesture, so do not pretend: say what it is, then ask for the one tap.
@@ -507,7 +528,7 @@ function frame(){ requestAnimationFrame(frame); if(reduce) return;
   flash *= .9; pulse *= .85;
   cx.fillStyle='rgba(7,9,11,.17)'; cx.fillRect(0,0,W,H);
   if(flash > .01){ cx.fillStyle='rgba(255,79,163,'+(flash*.45)+')'; cx.fillRect(0,0,W,H); }
-  var cxx=W/2, cyy=H/2, R=Math.min(W,H)*.44;
+  var cxx=W/2, cyy=H/2, R=Math.hypot(W,H)*.42;   /* was min(W,H)*.44: a centred blob */
   var bass=0, air=0;
   if(spec){ for(var b=1;b<12;b++) bass+=spec[b]; bass/=11*255;
             for(var a2=300;a2<520;a2++) air+=spec[a2]; air/=220*255; }
@@ -518,7 +539,7 @@ function frame(){ requestAnimationFrame(frame); if(reduce) return;
     for(var a=0;a<=72;a++){
       var th=a/72*Math.PI*2;
       var wob=1+Math.sin(th*(3+r)+tt*2.2)*(.10+air*.5+en*.08);
-      var x=cxx+Math.cos(th)*rad*wob, y=cyy+Math.sin(th)*rad*wob*.44;
+      var x=cxx+Math.cos(th)*rad*wob, y=cyy+Math.sin(th)*rad*wob*.66;
       a?cx.lineTo(x,y):cx.moveTo(x,y);
     }
     cx.closePath();
@@ -542,7 +563,9 @@ var LOGO = ["  ▄▄▄   ▄▄▄  ▄▄▄▄▄ ▄▄▄▄▄ ▄▄▄�
 
 function loadSong(sg, why){
   REMIX_OF = null;                               /* a fresh song owes nobody, until `remix` says so */
-  song = sg; E.loadSong(sg); E.play();
+  /* play() reports the context state now. Printing the banner regardless of it is
+     what made `go` look like it had worked while nothing reached the speakers. */
+  song = sg; E.loadSong(sg); var live = E.play() === 'running';
   if(window.OONTZ_VIZ) OONTZ_VIZ.song(sg);
   var crit = CO.critique(sg), sc = CO.score(crit);
   line();
@@ -553,6 +576,7 @@ function loadSong(sg, why){
   w('<span class="'+(sc>75?'ok':(sc>45?'w':'hot'))+'">  theory says '+sc+'/100</span>'+
     '<span class="dim">   type <span class="a">grade</span> for the full verdict</span>');
   if(why) w('<span class="dim">  '+esc(why)+'</span>');
+  if(!live) w('<span class="a">  ▶ tap anywhere to hear it</span>');
   line();
   draw();
 }
@@ -825,9 +849,7 @@ var CMDS = {
       try{ E.analyser.disconnect(dst); }catch(e){} stream.getTracks().forEach(function(t){ t.stop(); });
       var ext = (r.mimeType||'').indexOf('mp4') >= 0 ? 'mp4' : 'webm';
       var name = 'oontz-' + (song ? song.name : 'session').replace(/[^\w-]+/g,'_') + '.' + ext;
-      var el = document.createElement('a'); el.href = URL.createObjectURL(new Blob(chunks, {type: r.mimeType}));
-      el.download = name; document.body.appendChild(el); el.click(); el.remove();
-      setTimeout(function(){ URL.revokeObjectURL(el.href); }, 30000);
+      saveBlob(new Blob(chunks, {type: r.mimeType}), name);
       w('<span class="ok">■ saved '+esc(name)+'</span> <span class="dim">exactly what you heard</span>'); };
     r.start(1000); REC = r; PS1.style.color = 'var(--hot)';
     if(!E.playing) line('  (nothing is playing yet - space or `play`)','dim');
@@ -914,11 +936,7 @@ var CMDS = {
       el.appendChild(b);
     }
     var dl = document.createElement('button'); dl.className='chip'; dl.textContent='save it';
-    dl.onclick = function(){
-      var a2 = document.createElement('a'); a2.href = URL.createObjectURL(out); a2.download = name;
-      document.body.appendChild(a2); a2.click(); a2.remove();
-      setTimeout(function(){ URL.revokeObjectURL(a2.href); }, 30000);
-    };
+    dl.onclick = function(){ saveBlob(out, name); };
     el.appendChild(dl);
     if(ext === 'webm')
       w('<span class="dim">  (webm — Instagram and TikTok will not take it, but X and Discord will)</span>');
@@ -1134,9 +1152,9 @@ var CMDS = {
     var doc = Object.assign({format: 'oontz-song-1'}, song);
     var text = JSON.stringify(doc), kb = (text.length/1024).toFixed(1);
     if((a[0]||'') === 'save'){
-      var url = URL.createObjectURL(new Blob([JSON.stringify(doc, null, 1)], {type:'application/json'}));
       var fn = (song.name||'song').replace(/[^a-zA-Z0-9_-]+/g,'_')+'.oontz';
-      return w('  <a href="'+url+'" download="'+esc(fn)+'">'+esc(fn)+'</a> <span class="dim">— '+kb+'KB. the whole song, not a recording of it.</span>');
+      saveBlob(new Blob([JSON.stringify(doc, null, 1)], {type:'application/json'}), fn);
+      return line('▸ saved '+fn+' · '+kb+'KB. the whole song, not a recording of it.','ok');
     }
     if((a[0]||'') === 'copy'){
       try{ await navigator.clipboard.writeText(text); return line('▸ '+kb+'KB on the clipboard — the complete song. paste it anywhere text goes.','ok'); }
@@ -1428,9 +1446,7 @@ var CMDS = {
     if(!song) return line(CP.err_nosong,'w'); E.start();
     var pr = w('<span class="dim">  rendering '+esc(song.name)+' offline…</span>');
     try{ var rr = await OZ.renderSong(song); var name = 'oontz-'+song.name.replace(/[^\w-]+/g,'_')+'.wav';
-      var el = document.createElement('a'); el.href = URL.createObjectURL(OZ.wavBlob(rr.buf)); el.download = name;
-      document.body.appendChild(el); el.click(); el.remove();
-      setTimeout(function(){ URL.revokeObjectURL(el.href); }, 30000);
+      saveBlob(OZ.wavBlob(rr.buf), name);
       pr.innerHTML = '<span class="ok">  saved '+esc(name)+'</span> <span class="dim">'+mmss(rr.seconds)+' · 16-bit · the same render the decks use</span>';
     }catch(e){ pr.innerHTML = '<span class="w">  render failed: '+esc(e.message||e)+'</span>'; } }
 };
@@ -1929,7 +1945,30 @@ function sugRender(){
   }).join('');
   SUG.classList.add('on');
 }
-function sugPick(v){ IN.value = v + ' '; sugClose(); IN.focus(); hint(); }
+/* Verbs whose whole job is the argument. Running these bare only prints a usage
+   line, so a tap fills the box and leaves the dropdown to offer the argument next. */
+var NEEDS_ARG = ('bpm gain pan filter tune mute solo sidechain swing focus name save ' +
+  'forget load remix diff open dload eq xf sec style dream ask key handle login take mix'
+  ).split(' ');
+function needsArg(v){
+  return NEEDS_ARG.indexOf(v) >= 0 || argHits(v, '').length > 0;
+}
+
+/* Tapping a suggestion RUNS it, which is the only thing a tap can sensibly mean.
+   Two things it must not do, both of which it used to:
+     - leave the text sitting in the box, so the tap looked like it did nothing;
+     - lose focus. The drum pads are gated on `document.activeElement === IN`, so a
+       tap that dropped focus turned every following letter into a kick. Focus is
+       taken FIRST, while the row is still under the finger, and the list is closed
+       on the next frame - closing it here retargets the click to the log beneath,
+       which is how a tap could even run some other command printed down there. */
+function sugPick(v){
+  IN.focus();
+  if(needsArg(v)){ IN.value = v + ' '; hint(); requestAnimationFrame(function(){ sugClose(); suggest(); }); return; }
+  IN.value = ''; hint();
+  requestAnimationFrame(sugClose);
+  run(v);
+}
 var ARGS = {
   gallery: ['pat','like','top'], viz: [], theme: [], room: ['new','who','leave'],
   source: ['save','copy'], export: ['midi','stems'], diff: ['take'], jam: ['on','off','style'],

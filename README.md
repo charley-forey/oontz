@@ -738,7 +738,7 @@ audio, mux the two.** The video is the messy live capture; the audio is perfect.
 
 ---
 
-## ✅ Testing: the four gates
+## ✅ Testing: the gates
 
 Nothing merges unless all of these pass. Run from the repo root.
 
@@ -747,7 +747,8 @@ Nothing merges unless all of these pass. Run from the repo root.
 | `python -m oontz test` | the desktop engine end to end | ~9 s |
 | `python -m oontz.qa --quick` | 13 checks incl. golden renders and "composers agree" | ~30 s |
 | `node web/app/check.js` | the browser's *pure* half: song model, keys, FFT, theory, XSS guards | instant |
-| `python scripts/browsergate.py` | the browser's *real* half — drives `index.html` in headless Edge, 29 tests | ~4 min |
+| `python scripts/browsergate.py` | the browser's *real* half — drives `index.html` in headless Edge | ~4 min |
+| `python scripts/landinggate.py` | oontz.music: runs the real `server.py` at `/t/<id>`, every asset 200, the card, one-tap audio | ~20 s |
 | `python api/check.py` | when `api/` changed | instant |
 
 ### What the QA suite actually checks
