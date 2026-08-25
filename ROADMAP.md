@@ -148,32 +148,41 @@ reports SUCCESS and the live file contains the change.
 
 ## Next, web-first (the order the loop should take them)
 
-Open findings from the 2026-08-24 audits that are written down rather than fixed:
+Done 2026-08-24/25 (cycles on the `enhance` branch): every genre has its own
+Euclidean kit and groove, the seeded rng no longer correlates with its seed, the
+break walks a chord progression, `sec` edits the arrangement, `undo` covers your
+edits, a local library, `export stems`, and `eargate.js` guards all of it.
 
-- [ ] **Publishing the same title overwrites the earlier song** — `api/main.py`
-      upserts on `(user_id, title)`, and `compose` names songs by style, so two
-      `hardtechno` tracks collide and any share link already pasted starts playing
-      different music. Key on the song id the client holds.
+- [ ] **The nine missing voice circuits** — `downlifter` is aliased to `riser`, so a
+      fall renders as a rise, which is simply wrong. `tom`, `metal`, `rim`, `ride`,
+      `crash` all collapse onto `perc`, a 90ms bandpassed click, so four different
+      names are the same sound. `drums.py` has each in about nine lines.
+- [ ] **Publishing the same title overwrites the earlier song** — the API upserts on
+      `(user_id, title)`. `name` now exists so a user *can* avoid it, but the API
+      should key on the song id the client holds.
 - [ ] **Magic links die to email link-scanners** — `/auth/verify` is a GET that
-      deletes the row on first hit, so Outlook/Gmail prefetch burns it and the real
-      click says "expired". Let a link work twice inside its 15 minutes.
-- [ ] **An expired session is never cleared** — after 90 days boot still says
-      "signed in" and every account command fails. Drop the token on a 401.
-- [ ] **`playlist` subcommands crash on a missing argument** — `playlist public`
-      with no id reads `.songs` off a listing response.
-- [ ] **The landing page sends `limit` where the API takes `limit_n`** — silently
-      ignored, so the public playlist list is always 40.
-- [ ] **`renderSong` blocks the main thread** — ~22k voice calls and 10^5 nodes are
-      built synchronously before rendering starts, so the tab freezes for seconds on
-      `dload`/`export` and the progress percentage can never paint.
+      deletes the row on first hit, so a prefetch burns it. Let it work twice inside
+      its 15 minutes.
+- [ ] **An expired session is never cleared** — boot still says "signed in" after 90
+      days. Drop the token on a 401.
+- [ ] **`playlist` subcommands crash on a missing argument** (`account.js:96/103`).
+- [ ] **`renderSong` blocks the main thread** — ~22k voice calls built synchronously,
+      so the tab freezes on `dload`/`export` and the progress percentage never paints.
 - [ ] **Reference matching** — analyse a WAV you own and show where yours differs.
-      `ear.js` already has the FFT and the band grid.
-- [ ] **`improve` should reach past levels** — it moves gain, pan and sidechain.
-      Per-track filters and swapping a voice are what a person reaches for when two
-      elements are simply the same sound twice.
+      `ear.js` already has the FFT and the band grid; the Rekordbox library on this
+      machine is the corpus.
 - [ ] **Grade more than the loudest section** — a break with a pad masks differently.
 - [ ] **Micro-timing on the desktop** — `theory.GROOVES` drives the browser engine;
-      `core.hits()` still applies a single swing percentage.
+      `core.hits()` still applies a single swing percentage. This also blocks any
+      Pyodide migration from being a pure win.
+
+### Known: newly-registered-domain filtering
+
+`oontz.sh` and `oontz.music` are blocked by some corporate and guest networks under
+the "newly-registered-domain" category — a full day was spent chasing this as a
+Railway edge fault before reading the 503's body, which said so plainly. The
+category typically ages out in 30-90 days. Check from outside such a network
+(`https://r.jina.ai/https://oontz.sh/` works) before concluding anything is broken.
 
 ## One theory (was: the two composers can drift)
 
