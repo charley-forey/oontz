@@ -36,7 +36,7 @@ def mmss(seconds):
     return "%d:%02d" % divmod(int(seconds or 0), 60)
 
 
-API_FALLBACK = "https://api-production-bd3d8.up.railway.app"
+API_FALLBACK = "https://api-production-68c09.up.railway.app"
 
 def fetch(path):
     """The custom API domain can be edge-dead; fall back to the railway.app host

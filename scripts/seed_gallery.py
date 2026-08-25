@@ -67,7 +67,7 @@ def compose_doc(style, minutes, curve, seed):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--api", default="https://api-production-bd3d8.up.railway.app")
+    ap.add_argument("--api", default="https://api-production-68c09.up.railway.app")
     ap.add_argument("--dry", action="store_true", help="compose and grade, publish nothing")
     ap.add_argument("--token", help="use this session token instead of self-auth")
     args = ap.parse_args()

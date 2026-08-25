@@ -286,6 +286,83 @@ async function until(fn, ms, what){
     ok(W.E.tracks[name].pat !== before, "clicking a step changed nothing");
   });
 
+  /* ---- Phase 3: arrangement, library, undo, stems ---------------------- */
+  await t("sec edits the arrangement", async function(){
+    await W.CMDS.compose(["techno", "1"]); W.E.stop();
+    var n0 = W.song.order.length, bars0 = W.oontz.totalBars(W.song);
+    W.run("sec add drop 16");
+    eq(W.song.order.length, n0 + 1, "sec add did not add a section");
+    ok(W.oontz.totalBars(W.song) > bars0, "bars did not grow");
+    var added = W.song.order.filter(function(x){ return W.song.sections[x].role === "drop"; }).pop();
+    W.run("sec len " + added + " 32");
+    eq(W.song.sections[added].bars, 32, "sec len did not resize");
+    W.run("sec move " + added + " 1");
+    eq(W.song.order[0], added, "sec move did not reorder");
+    W.run("sec del " + added);
+    eq(W.song.order.length, n0, "sec del did not remove");
+    return n0 + " sections, add/len/move/del all took";
+  });
+
+  await t("sec keeps sections phrase-aligned", function(){
+    W.run("sec add build 13");                    // not a multiple of 8
+    var b = W.song.order.filter(function(x){ return W.song.sections[x].role === "build"; }).pop();
+    eq(W.song.sections[b].bars % 8, 0, "sec add accepted " + W.song.sections[b].bars + " bars");
+    W.run("sec del " + b);
+  });
+
+  await t("undo covers a typed edit, not just the AI", function(){
+    var before = W.song.sections[W.song.order[0]].tracks.kick.pat;
+    W.run("kick x.x.x.x.x.x.x.x.");
+    var after = W.E.tracks.kick.pat;
+    ok(after !== before, "the edit did not apply");
+    W.run("undo");
+    eq(W.song.sections[W.song.order[0]].tracks.kick.pat, before, "undo did not restore the typed edit");
+  });
+
+  await t("undo covers a mixer verb", function(){
+    var g0 = W.E.tracks.hat ? (W.E.tracks.hat.gain == null ? 1 : W.E.tracks.hat.gain) : null;
+    if(g0 === null) return "no hat in this song";
+    W.run("gain hat 0.33");
+    W.run("undo");
+    near(W.E.tracks.hat.gain == null ? 1 : W.E.tracks.hat.gain, g0, 1e-9, "undo did not restore gain");
+  });
+
+  await t("the local library saves and loads by name", function(){
+    W.run("name gate-test");
+    W.run("save gate-test");
+    var bars = W.oontz.totalBars(W.song);
+    W.run("compose acid 1");
+    W.run("load gate-test");
+    eq(W.song.name, "gate-test", "load did not restore the saved song");
+    eq(W.oontz.totalBars(W.song), bars, "the restored song has a different length");
+    W.run("forget gate-test");
+    return "saved, switched away, loaded back";
+  });
+
+  await t("export stems renders one channel per track", async function(){
+    /* the loudest section, where everything is playing - an intro is mostly
+       silence by design, and silent stems are correct there */
+    var loud = W.OONTZ_EAR.loudestSection(W.song);
+    var bar = W.OONTZ_EAR.barOfSection(W.song, loud.name);
+    var per = await W.oontz.renderTracks(W.song, {bar: bar});
+    /* The count depends on the section; what must hold is that every audible
+       track gets exactly one channel and none of them come back silent. */
+    var st = W.oontz.stateAt(W.song, bar);
+    var audible = st.order.filter(function(n){
+      var t = st.tracks[n];
+      return t && t.pat && !t.mute && t.pat.replace(/[.\-]/g, "").length; });
+    ok(per.names.length >= 2, "only " + per.names.length + " stems in " + loud.name);
+    eq(per.names.length, Math.min(32, audible.length), "stems do not match the audible tracks");
+    eq(per.buf.numberOfChannels, per.names.length, "channels do not match track count");
+    var quiet = per.names.filter(function(n, i){
+      var d = per.buf.getChannelData(i), peak = 0;
+      for(var k = 0; k < d.length; k++){ var a2 = d[k] < 0 ? -d[k] : d[k]; if(a2 > peak) peak = a2; }
+      return peak < 1e-4;
+    });
+    ok(!quiet.length, "these stems are silent: " + quiet.join(", "));
+    return per.names.length + " stems of " + loud.name + ": " + per.names.join(", ");
+  });
+
   await t("why answers from the theory", function(){
     var before = W.document.getElementById("out").textContent.length;
     W.run("why sidechain");

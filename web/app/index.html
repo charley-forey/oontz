@@ -150,7 +150,7 @@
 var API = "https://api.oontz.sh";
 /* If the custom domain's edge is having a day, fall back to the address that
    always works. Four seconds, once, at boot - then every call rides the winner. */
-var API_FALLBACK = 'https://api-production-bd3d8.up.railway.app';
+var API_FALLBACK = 'https://api-production-68c09.up.railway.app';
 (function(){ var c = new AbortController(); setTimeout(function(){ c.abort(); }, 4000);
   fetch(API + '/health', {signal: c.signal}).catch(function(){ API = API_FALLBACK; }); })();
 
@@ -392,7 +392,7 @@ var CMDS = {
   improve: async function(a){
     if(!song) return line(CP.err_nosong,'w');
     var rounds = Math.max(1, Math.min(12, parseInt(a[0],10) || 6));
-    snapshot(); line();
+    snapshot('improve'); line();
     w('<span class="b">improving '+esc(song.name)+'</span> <span class="dim">render → measure → fix the worst → again</span>');
     var last = -1, stall = 0, first = null, i;
     for(i = 1; i <= rounds; i++){
@@ -593,8 +593,108 @@ var CMDS = {
       w('<span class="dim">  Enter runs these '+j.commands.length+' · type anything else to discard · `undo` takes them back</span>'); line();
     }catch(e){ d.remove(); line('the AI is unreachable right now','w'); }
   },
-  undo: function(){ if(!UNDO.length) return line('nothing to undo','w');
-    song = UNDO.pop(); E.loadSong(song); draw(); line('▸ undone','dim'); },
+  /* -------------------------------------------------------- the arrangement
+     You could compose a song and edit any track inside it, but you could not
+     change its shape - no add, remove, reorder or resize existed anywhere, so a
+     generated arrangement was final. These mirror the desktop's `sec` verbs.
+     Bars stay multiples of 8 because the grader, the dancers and the DJ all
+     count in eights. */
+  sec: function(a){
+    if(!song) return line(CP.err_nosong,'w');
+    var sub = (a[0]||'list').toLowerCase(), at = OZ.sectionAt(song, E.songbar);
+    var here = at ? at.name : song.order[0];
+    function bars8(v, dflt){ var n = parseInt(v,10); if(!isFinite(n)) n = dflt;
+      return Math.max(8, Math.min(64, Math.round(n/8)*8)); }
+    function total(){ return OZ.totalBars(song); }
+    function after(){ E.loadSong(song); draw();
+      return line('▸ ' + song.order.length + ' sections, ' + total() + ' bars · ' + mmss(songSeconds(song)),'dim'); }
+
+    if(sub === 'list'){
+      line();
+      song.order.forEach(function(n,i){ var s2 = song.sections[n];
+        w('  <span class="'+(n===here?'a2':'dim')+'">'+(n===here?'▸':' ')+' '+String(i+1).padStart(2)+
+          '  '+esc(n.padEnd(10))+'</span><span class="dim">'+String(s2.bars).padStart(3)+
+          ' bars  '+esc((s2.role||'').padEnd(7))+' energy '+(s2.energy||0).toFixed(2)+'</span>'); });
+      line(); return w('<span class="dim">  sec add drop 16 · sec len 32 · sec del break2 · sec move drop2 1 · sec role build</span>');
+    }
+    snapshot('sec ' + sub);
+    if(sub === 'add'){
+      var role = (a[1]||'drop').toLowerCase(), n = bars8(a[2], 16);
+      var base = song.sections[here];
+      var name = role, k = 2; while(song.sections[name]) name = role + (k++);
+      var copy = JSON.parse(JSON.stringify(base));
+      copy.name = name; copy.role = role; copy.bars = n;
+      copy.energy = ({intro:0.15, build:0.55, drop:0.95, break:0.2, verse:0.5, outro:0.2})[role];
+      if(copy.energy == null) copy.energy = 0.5;
+      copy.automation = [];
+      song.sections[name] = copy;
+      song.order.splice(song.order.indexOf(here)+1, 0, name);   // next to where you are
+      line('▸ added ' + name + ', ' + n + ' bars, after ' + here,'dim');
+      return after();
+    }
+    if(sub === 'del' || sub === 'rm'){
+      var n2 = a[1] || here;
+      if(!song.sections[n2]) return line('no section called ' + n2,'w');
+      if(song.order.length <= 2) return line('a song needs more than one section','w');
+      song.order = song.order.filter(function(x){ return x !== n2; });
+      if(!song.order.some(function(x){ return x === n2; })) delete song.sections[n2];
+      E.songbar = 0;
+      line('▸ removed ' + n2,'dim');
+      return after();
+    }
+    if(sub === 'len'){
+      var name3 = a.length > 2 ? a[1] : here, n3 = bars8(a[a.length-1], 16);
+      if(!song.sections[name3]) return line('no section called ' + name3,'w');
+      song.sections[name3].bars = n3;
+      line('▸ ' + name3 + ' is ' + n3 + ' bars','dim');
+      return after();
+    }
+    if(sub === 'move'){
+      var name4 = a[1], to = parseInt(a[2],10);
+      if(!song.sections[name4]) return line('no section called ' + name4,'w');
+      if(!isFinite(to)) return line('sec move <name> <position>','w');
+      to = Math.max(1, Math.min(song.order.length, to)) - 1;
+      var from = song.order.indexOf(name4);
+      song.order.splice(from, 1); song.order.splice(to, 0, name4);
+      line('▸ ' + name4 + ' is now section ' + (to+1),'dim');
+      return after();
+    }
+    if(sub === 'copy'){
+      var src = a[1] || here;
+      if(!song.sections[src]) return line('no section called ' + src,'w');
+      var nm = src.replace(/\d+$/,''), k2 = 2, dst = nm + k2;
+      while(song.sections[dst]) dst = nm + (++k2);
+      song.sections[dst] = JSON.parse(JSON.stringify(song.sections[src]));
+      song.sections[dst].name = dst;
+      song.order.splice(song.order.indexOf(src)+1, 0, dst);
+      line('▸ copied ' + src + ' to ' + dst,'dim');
+      return after();
+    }
+    if(sub === 'role'){
+      var name5 = a.length > 2 ? a[1] : here, r = (a[a.length-1]||'').toLowerCase();
+      if(!song.sections[name5]) return line('no section called ' + name5,'w');
+      var e = ({intro:0.15, build:0.55, drop:0.95, break:0.2, verse:0.5, outro:0.2})[r];
+      if(e == null) return line('role is one of: intro build drop break verse outro','w');
+      song.sections[name5].role = r; song.sections[name5].energy = e;
+      line('▸ ' + name5 + ' is a ' + r + ' now','dim');
+      return after();
+    }
+    UNDO.pop();                                   // nothing happened, do not leave an undo step
+    return line('sec list|add|del|len|move|copy|role','w');
+  },
+  name: function(a){
+    if(!song) return line(CP.err_nosong,'w');
+    var t = a.join(' ').trim();
+    if(!t) return line('name <title>   (it is "' + esc(song.name) + '")','w');
+    snapshot('rename');
+    song.name = t.slice(0, 60);
+    draw(); line('▸ called "' + esc(song.name) + '" now','dim');
+  },
+  undo: function(a){
+    var n = Math.max(1, Math.min(20, parseInt(a && a[0], 10) || 1)), last = null, did = 0;
+    for(var i = 0; i < n; i++){ var l = undoOne(); if(l === null) break; last = l; did++; }
+    if(!did) return line('nothing to undo','w');
+    line('▸ undid ' + (did > 1 ? did + ' changes, back past ' : '') + last, 'dim'); },
   /* jam: the AI is a bandmate, not an oracle. Every N bars it makes one small
      move, out loud, and `undo` vetoes it. */
   jam: function(a){
@@ -620,7 +720,7 @@ var CMDS = {
     var target = Math.min(100, parseInt(a[0],10) || 90), rounds = Math.min(12, parseInt(a[1],10) || 6);
     var sc = CO.score(CO.critique(song));
     if(sc >= target) return line('▸ already at '+sc+'/100 — raise the bar: produce '+(Math.min(100,sc+5)),'ok');
-    PRODUCING = true; snapshot();
+    PRODUCING = true; snapshot('produce');
     var passStart = UNDO.length;                  /* one undo returns here */
     line('▸ '+CP.produce_on(sc, target, rounds),'ok');
     var worse = 0;
@@ -689,14 +789,61 @@ var CMDS = {
     }
     line('▸ '+esc(song.name)+' is '+kb+'KB of JSON: '+(song.order||[]).length+' sections, every note, every knob. '+CP.source_hint,'dim');
   },
+  /* ------------------------------------------------------- a local library
+     There was exactly one slot - `oontz_song`, overwritten on unload - so a
+     second idea destroyed the first unless you had signed in. This keeps as many
+     as fit, in this browser, with no account. `take` is still the server one. */
+  save: function(a){
+    if(!song) return line(CP.err_nosong,'w');
+    var nm = a.join(' ').trim() || song.name;
+    if(!nm) return line('save <name>','w');
+    var lib = readLib();
+    lib[nm] = {saved: Date.now(), bars: OZ.totalBars(song), bpm: song.bpm,
+               style: (song.meta||{}).style, data: song};
+    if(!writeLib(lib)) return line('no room left in this browser — `songs`, then `forget <name>`','w');
+    song.name = nm; draw();
+    line('▸ saved "'+esc(nm)+'" · '+Object.keys(lib).length+' here','dim');
+  },
+  songs: function(){
+    var lib = readLib(), names = Object.keys(lib).sort(function(x,y){ return lib[y].saved - lib[x].saved; });
+    if(!names.length) return line('nothing saved yet — `save <name>` keeps one here','dim');
+    line();
+    names.forEach(function(n){ var e = lib[n];
+      w('  <span class="k">'+esc(n)+'</span><span class="dim">'+
+        String(e.bpm||'?').padStart(4)+' BPM  '+String(e.bars||'?').padStart(4)+' bars  '+
+        esc(String(e.style||'').padEnd(11))+' '+ago(e.saved)+'</span>'); });
+    line(); return w('<span class="dim">  <span class="a">load '+esc(names[0])+'</span> · <span class="a">forget '+esc(names[0])+'</span></span>');
+  },
+  forget: function(a){
+    var key = a.join(' ').trim(), lib = readLib();
+    if(!lib[key]) return line('nothing saved as "'+esc(key)+'"','w');
+    delete lib[key]; writeLib(lib);
+    line('▸ forgot "'+esc(key)+'"','dim');
+  },
+  name: function(a){
+    if(!song) return line(CP.err_nosong,'w');
+    var t = a.join(' ').trim();
+    if(!t) return line('name <title>   (it is "'+esc(song.name)+'" just now)','w');
+    snapshot('rename'); song.name = t.slice(0, 60); draw();
+    line('▸ called "'+esc(song.name)+'" now','dim');
+  },
   load: function(a){
     var raw = a.join(' ').trim();
-    if(!raw) return line(CP.load_usage,'w');
+    if(!raw) return CMDS.songs([]);
+    /* A brace is pasted JSON; anything else is a name in the local library. */
+    if(raw.charAt(0) !== '{'){
+      var lib = readLib();
+      var hit = lib[raw] || lib[Object.keys(lib).filter(function(k){
+        return k.toLowerCase().indexOf(raw.toLowerCase()) === 0; })[0]];
+      if(!hit) return line('nothing saved as "'+esc(raw)+'" — `songs` lists them','w');
+      snapshot('load');
+      return loadSong(hit.data, 'loaded "'+esc(hit.data.name)+'"');
+    }
     var sg; try{ sg = JSON.parse(raw); }catch(e){ return line('that is not JSON. `source copy` on a song makes some.','w'); }
     if(sg.format && sg.format !== 'thud-song-1')
       return line('unknown format '+esc(String(sg.format))+' — this player speaks thud-song-1','w');
     if(!sg.order || !sg.sections) return line('JSON, but not a song: it needs order and sections','w');
-    snapshot(); loadSong(sg, 'loaded from source');
+    snapshot('load'); loadSong(sg, 'loaded from source');
   },
   diff: async function(a){
     if(!song) return line(CP.err_nosong,'w');
@@ -883,6 +1030,33 @@ var CMDS = {
     if(v > 1 && v <= 100) v = v/50 - 1;                      // xf 0..100 also works
     E.crossfade(Math.max(-1, Math.min(1, v))); draw(); },
   export: async function(a){
+    /* Stems: renderTracks already puts every track on its own channel for the
+       ear to measure, so this is that render, split into one WAV each. */
+    if((a && a[0]) === 'stems'){
+      if(!song) return line(CP.err_nosong,'w');
+      E.start();
+      var at = OZ.sectionAt(song, E.songbar);
+      var bar = EAR.barOfSection(song, at ? at.name : song.order[0]);
+      var pr = w('<span class="dim">  rendering every track on its own…</span>');
+      try{
+        var per = await OZ.renderTracks(song, {bar: bar});
+        if(!per.names.length){ pr.remove(); return line('nothing is playing in this section','w'); }
+        var C = window.OfflineAudioContext || window.webkitOfflineAudioContext;
+        var one = new C(1, per.buf.length, per.buf.sampleRate);
+        per.names.forEach(function(n, i){
+          var b = one.createBuffer(1, per.buf.length, per.buf.sampleRate);
+          b.getChannelData(0).set(per.buf.getChannelData(i));
+          var el = document.createElement('a');
+          el.href = URL.createObjectURL(OZ.wavBlob(b));
+          el.download = 'oontz-'+String(song.name).replace(/[^\w-]+/g,'_')+'-'+n+'.wav';
+          document.body.appendChild(el); el.click(); el.remove();
+          setTimeout(function(){ URL.revokeObjectURL(el.href); }, 30000);
+        });
+        pr.innerHTML = '<span class="ok">  '+per.names.length+' stems saved</span> <span class="dim">'+
+          esc(per.names.join(', '))+' — one bar of '+esc(at?at.name:'')+'</span>';
+      }catch(e){ pr.innerHTML = '<span class="w">  stems failed: '+esc(e.message||e)+'</span>'; }
+      return;
+    }
     if((a && a[0]) === 'midi'){
       if(!song) return line(CP.err_nosong,'w');
       var bytes = OZ.songToMidi(song);
@@ -969,7 +1143,7 @@ function deckKey(k){
   if(k==='<' || k==='>') return '→ '+d.seekMark(k==='>'?1:-1);
   return null;
 }
-var REC = null, PENDING = null, UNDO = [], EARLAST = null;
+var REC = null, PENDING = null, UNDO = [], EARLAST = null, UNDO_LAST = null, UNDO_AT = 0;
 var REMIX_OF = null;                             /* set by `remix`, carried by `publish` */
 var PRODUCING = false;                           /* produce owns the AI while it runs; jam waits */
 async function askAI(prompt, extraState){
@@ -989,6 +1163,11 @@ async function askAI(prompt, extraState){
    `publish`, `login`, `key`, `playlist del` or `rec`, and the server prompt already
    claims the client refuses - this is what makes that true. Anything not on the
    list is shown struck through and skipped. */
+/* Commands that change the song, and therefore take an undo snapshot. */
+var MUTATES = {};
+("bpm swing gain pan filter tune sidechain mute solo compose go improve produce " +
+ "dream load remix sec name").split(" ").forEach(function(v){ MUTATES[v] = 1; });
+
 var MUSICAL = ("bpm swing gain pan filter tune sidechain mute solo focus compose go " +
   "play stop grade improve freq why styles curves theory rules bands sec song").split(" ");
 function musical(cmd){
@@ -1186,7 +1365,46 @@ setInterval(async function(){
   }catch(e){}
   JAM.busy = false;
 }, 700);
-function snapshot(){ if(song){ UNDO.push(JSON.parse(JSON.stringify(song))); if(UNDO.length > 20) UNDO.shift(); } }
+/* Undo used to cover only the AI's moves: `improve`, `produce`, `dream`, an
+   accepted `ask`, and a rack click. Every typed pattern, every pad, and every
+   mixer verb changed the song without recording anything - so pressing undo after
+   typing `gain hat 0.4` silently reverted to whatever the AI last did, which is
+   worse than not having undo at all.
+
+   `label` is what you are undoing, so it can say so. A gesture that fires many
+   times - dragging across the rack, holding a pad - coalesces into one entry;
+   past a second of quiet, the next change starts a new one. */
+/* The local library is one storage key, so a quota failure is one failure. */
+function readLib(){
+  try { return JSON.parse(localStorage.getItem('oontz_lib') || '{}'); } catch(e){ return {}; }
+}
+function writeLib(lib){
+  try { localStorage.setItem('oontz_lib', JSON.stringify(lib)); return true; }
+  catch(e){ return false; }
+}
+function ago(t){
+  var s = Math.max(0, (Date.now() - (t||0)) / 1000);
+  if(s < 90) return 'just now';
+  if(s < 5400) return Math.round(s/60) + ' min ago';
+  if(s < 172800) return Math.round(s/3600) + ' h ago';
+  return Math.round(s/86400) + ' d ago';
+}
+
+function snapshot(label){
+  if(!song) return;
+  var now = Date.now();
+  if(label && label === UNDO_LAST && now - UNDO_AT < 900){ UNDO_AT = now; return; }
+  UNDO_LAST = label || null; UNDO_AT = now;
+  UNDO.push({song: JSON.parse(JSON.stringify(song)), label: label || "that"});
+  if(UNDO.length > 40) UNDO.shift();
+}
+function undoOne(){
+  if(!UNDO.length) return null;
+  var e = UNDO.pop();
+  UNDO_LAST = null;
+  song = e.song; E.loadSong(song); draw();
+  return e.label;
+}
 var GAL = [];
 var ALIAS = {'?':'help','ls':'help','start':'go','make':'go','song':'go','q':'stop','wav':'export','render':'export','crossfade':'xf',
   'exit':'stop','quit':'stop','cls':'clear','about':'what','dj':'decks','keymap':'keys',
@@ -1200,6 +1418,9 @@ function run(raw){
   if(E.tracks && !E.tracks[v] && OZ.VOICES[v] && args.length){
     E.start(); E.setTrack(v, {voice: v, pat: "", gain: 1});   // name a voice and you have a track
   }
+  /* Anything that edits the song records it first, so undo means the last thing
+     YOU did rather than the last thing the AI did. */
+  if(MUTATES[v] || (E.tracks && E.tracks[v] && args.length)) snapshot(v);
   if(E.tracks && E.tracks[v]){
     if(args.length === 2 && /^\*\d+$/.test(args[1])) args = [OZ.expandPat(args)];  // x... *4
     var pat=args[0]||'';
@@ -1346,7 +1567,7 @@ function sugRender(){
 function sugPick(v){ IN.value = v + ' '; sugClose(); IN.focus(); hint(); }
 var ARGS = {
   gallery: ['pat','like','top'], viz: [], theme: [], room: ['new','who','leave'],
-  source: ['save','copy'], export: ['midi'], diff: ['take'], jam: ['on','off','style'],
+  source: ['save','copy'], export: ['midi','stems'], diff: ['take'], jam: ['on','off','style'],
   mix: ['off'], playlist: ['new','add','public','del'], tilt: ['off'], watch: []
 };
 function argHits(verb, partial){
@@ -1393,7 +1614,7 @@ IN.addEventListener('keydown', function(e){
       try{ localStorage.setItem('oontz_hist', JSON.stringify(HIST)); }catch(err){} }
     HI = HIST.length; DRAFT = '';
     if(PENDING){ var ps=PENDING; PENDING=null;
-      if(!v.trim()){ snapshot(); ps.filter(musical).forEach(run); hint(); return; }
+      if(!v.trim()){ snapshot('the ai'); ps.filter(musical).forEach(run); hint(); return; }
       line('  discarded','dim'); }
     run(v); hint(); }
   else if(e.key==='Tab'){                       // complete, then cycle
@@ -1453,6 +1674,7 @@ addEventListener('keydown', function(e){
   var m = MODE==='deck' ? deckKey(e.key) : E.key(e.key, true);
   if(m===null) return;
   e.preventDefault();
+  if(MUTATES[e.key] || OZ.PADS.indexOf(e.key) >= 0 || "zx".indexOf(e.key) >= 0) snapshot("a key");
   if(e.repeat && lastMsg && lastMsg.d.parentNode) lastMsg.d.innerHTML='<span class="dim">  '+esc(m)+'</span>';
   else lastMsg = {d: w('<span class="dim">  '+esc(m)+'</span>')};   // a held key updates one line, not a wall
   draw();
@@ -1463,7 +1685,7 @@ addEventListener('keyup', function(e){ if(document.activeElement!==IN){ var m=E.
 RACK.addEventListener('click', function(e){
   if(PAINT.moved) return;                        /* a sweep already did the work */
   var st = e.target.closest('.st');
-  if(st){ e.stopPropagation(); snapshot();
+  if(st){ e.stopPropagation(); snapshot('a step');
     line('▸ ' + E.toggleStep(st.dataset.t, +st.dataset.i), 'dim'); draw(); return; }
   var tk = e.target.closest('.trk');
   if(tk){ e.stopPropagation(); E.focus = tk.dataset.t; draw(); } });
@@ -1489,7 +1711,7 @@ RACK.addEventListener('pointermove', function(e){
   var key = st.dataset.t + ':' + st.dataset.i;
   if(PAINT.seen[key]) return;
   PAINT.seen[key] = 1;
-  if(!PAINT.moved){ PAINT.moved = true; snapshot();
+  if(!PAINT.moved){ PAINT.moved = true; snapshot('painting');
     var first = Object.keys(PAINT.seen)[0];
     E.setStep(st.dataset.t, +st.dataset.i, PAINT.brush); draw(); return; }
   E.setStep(st.dataset.t, +st.dataset.i, PAINT.brush); draw();
