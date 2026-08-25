@@ -33,8 +33,12 @@
   html,body{height:100%}
   body{margin:0;background:var(--bg);color:var(--fg);overflow:hidden;
     font:var(--size)/1.55 var(--mono)}
-  #bg{position:fixed;inset:0;z-index:0;opacity:.55}
-  #viz{position:fixed;inset:0;z-index:1}
+  /* width/height 100% matter: a canvas is a REPLACED element, so inset:0 alone
+     leaves it at its intrinsic 300x150 instead of stretching. With them, CSS keeps
+     both canvases exactly viewport-sized through every keyboard and fullscreen
+     change on its own, and JS only has to follow with the backing store. */
+  #bg{position:fixed;inset:0;width:100%;height:100%;z-index:0;opacity:.55}
+  #viz{position:fixed;inset:0;width:100%;height:100%;z-index:1}
   /* Scanlines and vignette are FILM ON THE PICTURE, not on the words: they sit
      under #wrap. They used to be above it, multiplying 30% black through every
      glyph and dropping 80% black over the HUD and the prompt. */
@@ -382,9 +386,14 @@ function draw(){
 
 /* ------------------------------------------------------- psychedelic bg */
 var cv=document.getElementById('bg'), cx=cv.getContext('2d'), W=0,H=0,tt=0;
-function size(){ W=cv.width=innerWidth*devicePixelRatio; H=cv.height=innerHeight*devicePixelRatio;
-  cv.style.width=innerWidth+'px'; cv.style.height=innerHeight+'px'; }
+/* Same rule as viz.js: measure the element, not the window. inset:0 keeps this
+   canvas viewport-sized through every keyboard and fullscreen transition on its own;
+   reading innerHeight once and pinning it in px is what left a black strip under the
+   picture in watch mode. */
+function size(){ var w=cv.clientWidth||innerWidth, h=cv.clientHeight||innerHeight;
+  W=cv.width=Math.floor(w*devicePixelRatio); H=cv.height=Math.floor(h*devicePixelRatio); }
 size(); addEventListener('resize', function(){ size(); draw(); });
+try{ if(window.ResizeObserver) new ResizeObserver(function(){ size(); draw(); }).observe(cv); }catch(e){}
 var reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
 var flash = 0, pulse = 0;                       // a drop lights the room; a kick pushes it
 var ROLE_HUE = {drop: 330, break: 175, build: 40, intro: 210, outro: 210, verse: 130};

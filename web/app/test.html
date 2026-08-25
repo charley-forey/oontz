@@ -327,6 +327,39 @@ async function until(fn, ms, what){
     return arr.length + " arriving, 3 wraps";
   });
 
+  await t("watch mode gives the picture back its colour", async function(){
+    var D = W.document, cs = function(id){ return W.getComputedStyle(D.getElementById(id)); };
+    var bg0 = +cs("bg").opacity;
+    ok(+cs("scan").opacity > 0.9 && +cs("vig").opacity > 0.9,
+       "the film should be on while there are words to protect");
+
+    W.OONTZ_VIZ.watch(true);          /* fullscreen may be refused in an iframe; watch copes */
+    await sleep(950);                 /* the fade is .8s */
+    ok(+cs("scan").opacity < 0.1, "scanlines still dimming the picture in watch mode");
+    ok(+cs("vig").opacity < 0.1, "the vignette still dimming the picture in watch mode");
+    ok(+cs("bg").opacity > 0.9, "the background never reached full colour in watch mode");
+
+    W.OONTZ_VIZ.watch(false);
+    await sleep(950);
+    ok(+cs("scan").opacity > 0.9 && +cs("vig").opacity > 0.9, "the film did not come back");
+    ok(Math.abs(+cs("bg").opacity - bg0) < 0.05, "the background did not return to its resting level");
+    return "film off, bg " + bg0 + " -> 1";
+  });
+
+  await t("both canvases stay viewport-sized when the viewport moves", function(){
+    /* A canvas is a REPLACED element: inset:0 alone leaves it at its intrinsic
+       300x150. That is what left a black box under the picture on a phone, where
+       the keyboard collapsing changes the viewport right after `watch` starts. */
+    var D = W.document, bg = D.getElementById("bg"), vz = D.getElementById("viz");
+    ok(Math.abs(bg.clientHeight - W.innerHeight) < 2,
+       "#bg is " + bg.clientHeight + " tall in a " + W.innerHeight + " viewport");
+    ok(Math.abs(vz.clientHeight - W.innerHeight) < 2,
+       "#viz is " + vz.clientHeight + " tall in a " + W.innerHeight + " viewport");
+    ok(Math.abs(bg.clientWidth - W.innerWidth) < 2, "#bg is not viewport-wide");
+    ok(Math.abs(vz.clientWidth - W.innerWidth) < 2, "#viz is not viewport-wide");
+    return bg.clientWidth + "x" + bg.clientHeight;
+  });
+
   /* ---- Phase 3: arrangement, library, undo, stems ---------------------- */
   await t("sec edits the arrangement", async function(){
     await W.CMDS.compose(["techno", "1"]); W.E.stop();

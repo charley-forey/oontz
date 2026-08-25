@@ -251,9 +251,16 @@ var S = {mode: "tunnel", theme: "acid", intensity: 1, decay: 0.15, symmetry: 4};
 var eng = null, cv = null, cx = null, W = 0, H = 0, raf = 0, reduce = false;
 var last = 0, lastStep = -1, lastSection = null, pulse = 0, flash = 0, prevBeat = -1;
 
+/* Measure the ELEMENT, never the window. The canvas is position:fixed;inset:0, so
+   CSS already keeps it exactly viewport-sized through a keyboard opening, fullscreen
+   engaging and a URL bar sliding - all of it, with no JS and no timing. Pinning
+   style.width/height to innerHeight instead threw that away and froze the canvas at
+   whatever the viewport happened to be at that instant: type `watch` on a phone with
+   the keyboard up and the canvas kept the keyboard-shrunk height, leaving a black box
+   along the bottom once the keyboard went away. Only the backing store needs pixels. */
 function size(){ var d = Math.min(devicePixelRatio || 1, 1.5);
-  W = cv.width = Math.floor(innerWidth * d); H = cv.height = Math.floor(innerHeight * d);
-  cv.style.width = innerWidth + "px"; cv.style.height = innerHeight + "px"; }
+  var w = cv.clientWidth || innerWidth, h = cv.clientHeight || innerHeight;
+  W = cv.width = Math.floor(w * d); H = cv.height = Math.floor(h * d); }
 
 function frameFor(E, now){
   var f = {t: now, W: W, H: H, bpm: E.bpm, beat: 0, beatIndex: 0, beatPhase: 0, barPhase: 0, section: "", role: "",
@@ -390,8 +397,18 @@ var wcss = null;
 function watch(on){
   if(typeof document === "undefined") return;
   if(!wcss){ wcss = document.createElement("style");
+    /* The scanlines, the vignette and the half-lit background are FILM FOR THE
+       WORDS - they exist so glyphs stay readable over moving art. Watch mode has
+       no words, so all three were charging their whole cost (72% black in the
+       corners, 22% multiplied through every other row, and #bg at .55) and buying
+       nothing. The picture gets its full colour back for as long as nobody is
+       reading. `calm` dims further for the same reason, and is lifted for the
+       same reason. Motion stays off for anyone who asked for that. */
     wcss.textContent = ".watching #wrap,.watching #touch{opacity:0;pointer-events:none;transition:opacity .8s}" +
-                       ".watching{cursor:none}";
+                       ".watching{cursor:none}" +
+                       ".watching #scan,.watching #vig{opacity:0;transition:opacity .8s}" +
+                       "@media (prefers-reduced-motion: no-preference){" +
+                         "body.watching #bg,body.watching #viz{opacity:1;transition:opacity .8s}}";
     document.head.appendChild(wcss); }
   document.body.classList.toggle("watching", !!on);
   if(on){
@@ -402,7 +419,14 @@ function watch(on){
     try{ window.scrollTo(0, 0); }catch(e){}
     if(S.mode === "off") VIZ.mode("auto");
     wake(true);
-    try{ document.documentElement.requestFullscreen && document.documentElement.requestFullscreen(); }catch(e){}
+    /* requestFullscreen REJECTS A PROMISE when it is refused - inside an iframe, or
+       without a gesture the browser trusts - and a sync try/catch never sees that, so
+       a refusal surfaced as an unhandled rejection. Fullscreen is a nicety here: the
+       class above already hides the interface, so a refusal costs nothing but has to
+       be swallowed where it actually lands. */
+    try{ var fs = document.documentElement.requestFullscreen &&
+                  document.documentElement.requestFullscreen();
+         if(fs && fs.catch) fs.catch(function(){}); }catch(e){}
     /* Re-size after fullscreen engages and again after the keyboard finishes
        collapsing - the two settle at different times on different phones. */
     [250, 700, 1400].forEach(function(ms){
@@ -420,7 +444,8 @@ function watch(on){
       document.addEventListener("pointerdown", exit, true);
     }, 250);
   } else {
-    try{ if(document.fullscreenElement) document.exitFullscreen(); }catch(e){}
+    try{ if(document.fullscreenElement){ var xf = document.exitFullscreen();
+           if(xf && xf.catch) xf.catch(function(){}); } }catch(e){}
     setTimeout(function(){ try{ dispatchEvent(new Event("resize")); }catch(e){} }, 300);
   }
 }
@@ -449,6 +474,8 @@ var VIZ = {
     if(reduce) S.mode = "off";
     try{ apply(JSON.parse(localStorage.getItem("oontz_viz"))); }catch(e){}
     size(); addEventListener("resize", size);
+    /* the box can change for reasons no event names - observe it directly */
+    try{ if(window.ResizeObserver) new ResizeObserver(size).observe(cv); }catch(e){}
     document.addEventListener("visibilitychange", function(){ if(document.hidden) halt(); else run(); });
     run();
   },
