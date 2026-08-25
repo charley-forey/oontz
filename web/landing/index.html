@@ -50,8 +50,13 @@
     margin:0;background:var(--bg);color:var(--fg);font:14px/1.5 var(--mono);
     overflow:hidden;
   }
-  #bg{position:fixed;inset:0;z-index:0;opacity:.5}
-  #viz{position:fixed;inset:0;z-index:0}
+  /* width/height 100% are load-bearing. A canvas is a REPLACED element, so inset:0
+     alone leaves it at its INTRINSIC size - and size() measures the element, so the
+     backing store fed itself: 1.5x per ResizeObserver tick, all the way to 58339px
+     wide, at which point the canvas draws nothing at all. The instrument got this
+     line and this page did not. */
+  #bg{position:fixed;inset:0;width:100%;height:100%;z-index:0;opacity:.5}
+  #viz{position:fixed;inset:0;width:100%;height:100%;z-index:1}
   #scan{position:fixed;inset:0;z-index:3;pointer-events:none;
     background:repeating-linear-gradient(180deg,rgba(0,0,0,0) 0 2px,rgba(0,0,0,.28) 2px 4px);
     mix-blend-mode:multiply}
@@ -59,7 +64,12 @@
     background:radial-gradient(ellipse at 50% 45%,transparent 38%,rgba(0,0,0,.8) 100%)}
   #wrap{position:relative;z-index:4;height:100%;display:flex;flex-direction:column;
     max-width:1100px;margin:0 auto;padding:16px 20px}
-  #out{flex:1;overflow-y:auto;white-space:pre-wrap;word-break:break-word;
+  /* overscroll-behavior:contain is not optional. Without it, reaching either end of
+     the log chains the scroll to the document - which on a phone drags the browser
+     chrome and pull-to-refresh into it, and reads as the scroll fighting you. The
+     instrument has had this since it shipped; this page never got it. */
+  #out{flex:1;overflow-y:auto;overflow-x:hidden;white-space:pre-wrap;word-break:break-word;
+    overscroll-behavior:contain;-webkit-overflow-scrolling:touch;
     scrollbar-width:thin;scrollbar-color:var(--line) transparent}
   #out::-webkit-scrollbar{width:8px}
   #out::-webkit-scrollbar-thumb{background:var(--line);border-radius:5px}
@@ -301,22 +311,42 @@ const CMDS = {
     w(`<span class="a">▸ playing.</span> <span class="dim">now change it: <span class="a">kick x...x..x.x...x</span> · <span class="a">hat ..x.x.x...x.x.x.</span> · <span class="a">bpm 150</span></span>`);
     start(); },
   stop(){ stop(); stopTrack(); line("▸ stopped.", 'dim'); },
+  source(){ showSource();
+    if(E && E.song) w('<span class="dim">  that is the entire song. not a recording of it — the recipe. ' +
+                      'change a character and you have changed the music.</span>');
+    return nudge(); },
   bpm(a){ const v=parseFloat(a[0]);
     if(!isFinite(v)||v<60||v>220) return line(CP.err_bpm||"bpm 60-220", 'w');
+    if(E && E.song){                      /* a shared track is the thing being changed */
+      const was = Math.round(E.bpm);
+      E.bpm = v; E.song.bpm = v; EDITED = true;
+      line(`▸ ${was} → ${v} BPM. you just edited someone else's track.`, 'ok');
+      return nudge();
+    }
     bpm=v; if(playing){ clearInterval(timer); timer=setInterval(tick,60/bpm/4*1000); }
     line(`▸ ${bpm} BPM`, 'dim'); },
-  open(a){ block(CP.open);
-    /* `open` is an instruction, not a description of one. It also carries whatever is
-       playing: reading about a track here and landing on an empty instrument there
-       loses the one thing you came with. */
+  async open(a){
+    if(!(E && E.song)) block(CP.open);
+    /* `open` is an instruction, not a description of one. It carries whatever is
+       playing - and if this visitor CHANGED it, it carries their version, not the
+       original. Losing somebody's first edit at the door is the one unforgivable
+       thing this page could do. An edited song travels whole, in the fragment. */
     const id = (a && a[0]) || (NOWPLAYING && NOWPLAYING.id) || '';
-    const url = APP + (id ? '/?song=' + encodeURIComponent(id) : '/');
+    let url = APP + (id ? '/#song=' + encodeURIComponent(id) : '/');
+    if(EDITED && E && E.song){
+      try{
+        const packed = await oontz.packSong(Object.assign({format:'oontz-song-1'}, E.song));
+        if(('/#s=' + packed).length < 8000) url = APP + '/#s=' + packed;
+      }catch(e){}
+    }
     let win = null;
     /* NOT window.open(...,'noopener') - that is specified to return null, so a blocked
        tab and a fine one look identical. Open, then sever the reference by hand. */
     try{ win = window.open(url, '_blank'); if(win) win.opener = null; }catch(e){}
     if(win) w(`  <span class="ok">▸ opened in a new tab</span>` +
-              (id ? ` <span class="dim">· carrying ${esc((NOWPLAYING && NOWPLAYING.title) || id)}</span>` : ''));
+              (EDITED ? ` <span class="dim">· carrying <span class="b">your</span> version of ` +
+                        esc((NOWPLAYING && NOWPLAYING.title) || id) + `</span>`
+                      : (id ? ` <span class="dim">· carrying ${esc((NOWPLAYING && NOWPLAYING.title) || id)}</span>` : '')));
     else w(`  <span class="dim">your browser held the tab back —</span> ` +
            `<a href="${esc(url)}" target="_blank" rel="noopener">${esc(url)} →</a>`);
     line(); },
@@ -461,6 +491,43 @@ const CMDS = {
    playTrack stops the toy, and `stop` stops both. A playlist is a queue: the next
    track starts when this one has run its stated length. */
 let E = null, EQ = [], EQi = 0, EQt = 0;
+let EDITED = false;                           /* this visitor has changed the track */
+let STEP = 0;                                 /* how far along the guided walk they are */
+
+/* The source of whatever is loaded, as the patterns themselves. This is the whole
+   argument in one screen: the thing you are hearing IS this text, and it is short
+   enough to read. Saying "a song is source code" persuades nobody; showing them
+   sixteen characters that they can then edit is a different matter. */
+function showSource(){
+  if(!E || !E.song) return line('nothing loaded — `play <id>`','w');
+  const st = oontz.stateAt(E.song, E.songbar || 0);
+  if(!st) return;
+  line();
+  w('<span class="dim">  the whole track, as text:</span>');
+  (st.order || Object.keys(st.tracks)).slice(0, 8).forEach(function(n){
+    const tr = st.tracks[n]; if(!tr) return;
+    const pat = tr.pat || (tr.notes ? tr.notes.join(' ') : '');
+    if(!pat) return;
+    w('    <span class="a">' + esc(n.padEnd(6)) + '</span><span class="b">' + esc(pat) + '</span>');
+  });
+  line();
+}
+
+/* One next step at a time, in the order that teaches the idea. A fifteen-item menu
+   is a directory; this is a walk. Each step is a real command with an audible
+   result, and the last one hands them the instrument carrying their own edit. */
+const WALK = [
+  ['source',                 'see it. the track you are hearing, written out'],
+  ['bpm 160',                'change it. one number, and it is a different track'],
+  ['kick x...x...x...x..x',  'change the drums. x is a hit, . is a rest'],
+  ['open',                   'keep it. your version, in the real instrument']
+];
+function nudge(){
+  if(STEP >= WALK.length) return;
+  const step = WALK[STEP++];
+  w('  <span class="dim">next:</span> <span data-cmd="' + esc(step[0]) + '"><span class="k">' +
+    esc(step[0]) + '</span></span> <span class="dim">— ' + esc(step[1]) + '</span>');
+}
 function stopTrack(){ if(E) E.stop(); EQ = []; if(EQt){ clearTimeout(EQt); EQt = 0; }
   if(window.OONTZ_VIZ){ OONTZ_VIZ.mode('off');     /* the show ends with the music */
     if(document.body.classList.contains('watching')) OONTZ_VIZ.watch(false); }
@@ -490,8 +557,10 @@ async function playTrack(id, fromQueue){
       ` · by ${esc(j.by||'?')} · \`stop\` ends it</span>`);
     if(j.remix_of) w(`  <span class="dim">↻ a remix of <span class="b">${esc(j.remix_of.title)}</span> by ${esc(j.remix_of.handle||'?')} · play ${esc(j.remix_of.id)}</span>`);
     if(j.remixes) w(`  <span class="dim">↻ remixed ${j.remixes} time${j.remixes>1?'s':''} by other people</span>`);
-    w(`  <span class="dim">${CP.play_note||''}</span> <a href="https://oontz.sh/#song=${encodeURIComponent(id)}" target="_blank" rel="noopener">oontz.sh/#song=${esc(id)}</a>`);
-    if(!live) line('▶ tap anywhere to hear it','a');
+    /* On a share the guided walk says all of this, better and one step at a time. */
+    if(!window.OONTZ_BOOT)
+      w(`  <span class="dim">${CP.play_note||''}</span> <a href="https://oontz.sh/#song=${encodeURIComponent(id)}" target="_blank" rel="noopener">oontz.sh/#song=${esc(id)}</a>`);
+    if(!live && !window.OONTZ_BOOT) line('▶ tap anywhere to hear it','a');
     if(EQ.length && EQi + 1 < EQ.length){
       const next = EQ[++EQi];
       EQt = setTimeout(function(){ playTrack(next.id, true); }, Math.max(5, j.seconds||120) * 1000);
@@ -556,6 +625,18 @@ function run(raw){
   const s=raw.trim(); if(!s) return;
   w(`<span class="a">oontz &gt;</span> ${esc(s)}`);
   const [v0,...args]=s.split(/\s+/); const v=ALIAS[v0.toLowerCase()]||v0.toLowerCase();
+  /* A drum name means the LOADED track when there is one. Somebody sent this person
+     a song; letting them change it here - and hear it change - is the entire pitch
+     of the format, delivered before they have to go anywhere or sign up. */
+  if(E && E.song && (v in P || (E.tracks && E.tracks[v]))){
+    const pat = args[0] || '';
+    if(!/^[xXoO.\-]+$/.test(pat))
+      return line("a pattern is x for a hit and . for a rest — try  " + v + " x...x...x...x...", 'w');
+    E.setTrack(v, {pat: pat});
+    EDITED = true;
+    line(`▸ ${v} ${pat}`, 'ok');
+    return nudge();
+  }
   if(v in P){ const pat=args[0]||'';
     if(!/^[xXoO.\-]+$/.test(pat)) return line("a pattern is made of x . and - — try  kick x...x...x...x...", 'w');
     P[v]=pat; line(`▸ ${v} ${pat}`, 'dim'); if(!playing) start(); return; }
@@ -757,12 +838,18 @@ addEventListener('click', e=>{
  line();
  (CP.boot||[]).forEach(function(t){ w(`<span class="dim">  ${esc(t)}</span>`); });
  line();
- (CP.groups||[]).forEach(function(g){
-   w(`  <span class="dim" style="letter-spacing:2px">${esc(g.h)}</span>`);
-   g.items.forEach(function(kv){
-     w(`    <span class="k">${esc(kv[0])}</span><span class="dim">${esc(kv[1])}</span>`); });
- });
- line();IN.focus();
+ /* On a share, the menu is noise. Somebody sent this person a SONG; a fifteen-item
+    directory of a site they have never heard of is not what they came for, and it
+    pushed the track itself to the bottom of the page. `help` still has all of it. */
+ if(!window.OONTZ_BOOT){
+   (CP.groups||[]).forEach(function(g){
+     w(`  <span class="dim" style="letter-spacing:2px">${esc(g.h)}</span>`);
+     g.items.forEach(function(kv){
+       w(`    <span class="k">${esc(kv[0])}</span><span class="dim">${esc(kv[1])}</span>`); });
+   });
+   line();
+ }
+ IN.focus();
  strip();
  try{ if(!localStorage.getItem('oontz_seen')){ localStorage.setItem('oontz_seen','1');
    w(`  <span class="a">first time?</span> <span class="dim">${esc(CP.first_visit)}</span>`); line(); } }catch(e){}
@@ -773,13 +860,48 @@ addEventListener('click', e=>{
       browser will resume without a gesture - so it announced a track and then sat
       there in silence. Both paths ask now, and both say what you are about to hear. */
    const m = window.OONTZ_META || {};
-   if(m.title) w(`<span class="b">▸ ${esc(m.title)}</span> <span class="dim">${esc(m.sub||'')}</span>`);
-   line(window.OONTZ_WATCH ? '▸ tap anywhere for the light show' : '▸ tap anywhere to hear it','a');
+   /* Bring the canvas up NOW, not on the first note. A share page that opens as a
+      black rectangle looks broken; the Engine constructor makes no AudioContext, so
+      this costs nothing and cannot trip the autoplay policy. */
+   try{
+     if(!E){ E = new oontz.Engine(); if(window.OONTZ_VIZ) OONTZ_VIZ.start(E); }
+     if(window.OONTZ_VIZ){ OONTZ_VIZ.theme('ultraviolet'); OONTZ_VIZ.mode('tunnel'); }
+   }catch(e){}
+   line();
+   if(m.title){
+     w(`<span class="a2">▸ ${esc(m.title)}</span>`);
+     w(`  <span class="dim">${esc(m.sub||'')}</span>`);
+   }
+   /* Social proof, from data the API already returns. A stranger has no reason to
+      trust this page; "312 plays, 7 people flipped it" is the cheapest reason there
+      is, and the lineage line quietly teaches what remixing means here. */
+   const statLine = m.id ? w('<span class="dim">  …</span>') : null;
+   if(m.id) fetch(API+'/songs/'+encodeURIComponent(m.id)).then(r=>r.json()).then(function(j){
+     const bits = [];
+     if(j.plays) bits.push(j.plays + ' play' + (j.plays === 1 ? '' : 's'));
+     if(j.remixes) bits.push('↻ ' + j.remixes + ' flip' + (j.remixes === 1 ? '' : 's'));
+     if(j.remix_of) bits.push('a flip of "' + j.remix_of.title + '" by ' + (j.remix_of.handle || 'someone'));
+     statLine.innerHTML = bits.length
+       ? '  <span class="dim">' + esc(bits.join(' · ')) + '</span>' : '';
+   }).catch(function(){ if(statLine) statLine.innerHTML = ''; });
+   line();
+   line(window.OONTZ_WATCH ? '▶ tap anywhere for the light show' : '▶ tap anywhere to hear it','a');
    const go = function(){ removeEventListener('pointerdown', go); removeEventListener('keydown', go);
      run(window.OONTZ_BOOT);
+     IN.focus();                    /* or the first thing they type goes nowhere */
      ev('share_play', {id: m.id || ''});
      if(m.id) fetch(API+'/songs/'+encodeURIComponent(m.id)+'/play',{method:'POST'}).catch(function(){});
-     if(window.OONTZ_WATCH) setTimeout(function(){ if(window.OONTZ_VIZ) OONTZ_VIZ.watch(true); }, 800); };
+     if(window.OONTZ_WATCH) setTimeout(function(){ if(window.OONTZ_VIZ) OONTZ_VIZ.watch(true); }, 800);
+     /* The walk starts once they can hear something. Explaining the idea to somebody
+        sitting in silence is the version of this page that did not work. */
+     else setTimeout(function(){
+       line();
+       w('<span class="dim">  every track here is TEXT — a few KB you can read and change.</span>');
+       w('<span class="dim">  this one included. try it:</span>');
+       nudge();
+       IN.focus();
+     }, 1400);
+   };
    addEventListener('pointerdown', go); addEventListener('keydown', go);
    ev('share_open', {id: m.id || '', watch: window.OONTZ_WATCH ? 1 : 0});
  }})();

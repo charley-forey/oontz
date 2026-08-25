@@ -13,7 +13,9 @@
 <body>
 <div id="out">running…</div>
 <iframe id="frame" src="/t/gatefake"></iframe>
-<iframe id="pl" src="/p/gatefake" style="bottom:540px"></iframe>
+<!-- loaded on demand: two full-viewport canvases animating at once starves a
+     software-rendered headless browser and the gate times out -->
+<iframe id="pl" style="bottom:540px"></iframe>
 <script>
 /* The share page, driven for real. Served from the landing origin so the iframes are
  * same-origin and their windows can be read. Results go back to the runner over HTTP
@@ -131,8 +133,78 @@ async function until(fn, ms, what){
     return "fetched + played";
   });
 
+  await t("the canvases stay a sane size", function(){
+    /* A canvas is a replaced element: without width/height 100% it keeps its
+       INTRINSIC size, and a size() that measures the element then feeds itself -
+       1.5x per resize tick, to tens of thousands of pixels, drawing nothing. */
+    ["bg", "viz"].forEach(function(id){
+      var c = W.document.getElementById(id);
+      ok(c, "#" + id + " is missing");
+      ok(Math.abs(c.clientWidth - W.innerWidth) < 2,
+         "#" + id + " is " + c.clientWidth + "px wide in a " + W.innerWidth + "px viewport");
+      ok(c.width > 0 && c.width <= W.innerWidth * 4,
+         "#" + id + " backing store ran away: " + c.width + "x" + c.height);
+    });
+    return "bg + viz sized";
+  });
+
+  await t("a stranger sees the TRACK first, not a site menu", function(){
+    /* The share page used to render the whole homepage directory and put the track
+       - the only reason anyone is here - on the last line. */
+    var txt = W.document.body.innerText;
+    ok(/gate track/.test(txt), "the track is not named");
+    ok(!/UNDERSTAND|LISTEN/.test(txt), "the generic site menu is still on a share page");
+    var trackAt = txt.indexOf("gate track"), tapAt = txt.search(/tap anywhere/i);
+    ok(trackAt >= 0 && tapAt > trackAt, "the play prompt should follow the track name");
+    return "track first";
+  });
+
+  await t("the walk teaches one command at a time, and the edits take", async function(){
+    /* wait for the TRACK to be loaded, not just for the walk prompt: the prompt is on
+       a timer and the fetch is not, so the two are not the same event */
+    await until(function(){ return /BPM/.test(W.document.body.innerText); },
+                10000, "the track to finish loading");
+    await until(function(){ return /next:/.test(W.document.body.innerText); },
+                8000, "the guided next step");
+    var n0 = W.document.body.innerText.length;
+
+    /* step 1: the whole argument - the song IS this text */
+    W.run("source");
+    await sleep(250);
+    var txt = W.document.body.innerText.slice(n0);
+    ok(/kick/.test(txt) && /[xX.]{8,}/.test(txt), "source did not print the patterns");
+
+    /* step 2: change the drums, and step 3: change the tempo */
+    W.run("kick x.x.x.x.x.x.x.x.");
+    await sleep(200);
+    W.run("bpm 175");
+    await sleep(200);
+    var t2 = W.document.body.innerText.slice(n0);
+    ok(/175 BPM/.test(t2), "bpm did not report on the loaded track: " + t2.slice(-120));
+    ok(/edited someone/.test(t2), "the edit was not framed as editing their track");
+    return "source + drums + bpm";
+  });
+
+  await t("open carries THEIR version, not the original", async function(){
+    /* Losing a first-time visitor's first edit at the door would be the one
+       unforgivable thing this page could do. Decoding the link it hands out proves
+       the edits really reached the engine, without reaching into it. */
+    var opened = [], real = W.open;
+    W.open = function(u){ opened.push(u); return {opener: null}; };
+    W.run("open");
+    await until(function(){ return opened.length > 0; }, 6000, "a tab to be opened");
+    W.open = real;
+    ok(/#s=/.test(opened[0]), "an edited track must travel whole, got " + opened[0].slice(0, 80));
+    var back = await W.oontz.unpackSong(opened[0].split("#s=")[1]);
+    eq(Math.round(back.bpm), 175, "the carried song is not the edited one");
+    var kick = back.sections[back.order[0]].tracks.kick.pat;
+    eq(kick, "x.x.x.x.x.x.x.x.", "the carried song lost the drum edit");
+    return "carried the edit";
+  });
+
   await t("a shared playlist gets a card too", async function(){
-    await until(function(){ return P.contentWindow && P.contentWindow.run; }, 12000, "the playlist page");
+    P.src = "/p/gatefake";
+    await until(function(){ return P.contentWindow && P.contentWindow.run; }, 15000, "the playlist page");
     var Q = P.contentWindow;
     var img = Q.document.head.querySelector('meta[property="og:image"]').content;
     ok(/^https?:\/\//.test(img), "playlist og:image must be absolute, got " + img);
