@@ -135,7 +135,20 @@
   /* the downbeat of each beat, marked with a rule instead of a space: a space cost
      a whole column and still drifted; this costs none and cannot drift. A border,
      not a box-shadow - the filled pad above needs the shadow for its own outline. */
-  #rack .st:nth-child(4n+2){border-left:1px solid var(--line)}
+  #rack>div>*:nth-child(4n+2){border-left:1px solid var(--line)}
+  /* Where a track's own pattern restarts. A 5-step hat against a 16-step kick is the
+     whole point of polymeter and the grid could not show it: the wrap was invisible,
+     so the one thing that makes the two patterns interesting was the one thing you
+     could not see. Louder than a beat rule, because it is rarer and it explains more. */
+  #rack .wrap{border-left:1px dashed var(--accent2)}
+  /* The next section, in the bars before it lands. An outline in the track's own
+     colour is a step arriving; a faded pad is one about to go. --tc carries the lane
+     colour down so the cell can draw in it without another inline style. */
+  #rack .arr{box-shadow:inset 0 0 0 1px var(--tc)}
+  #rack .lea{opacity:.4}
+  #rack>div.ghost{opacity:.65}
+  #rack>div.ghost .trk{color:var(--accent2)}
+  #rack .gst{text-align:center;border-radius:2px}
   #rack .trk{cursor:pointer;white-space:pre;overflow:hidden;text-overflow:ellipsis}
   /* `calm` for anyone who wants the words to win outright */
   body.calm #bg{opacity:.16} body.calm #viz{opacity:.2} body.calm #scan{display:none}
@@ -273,30 +286,95 @@ function draw(){
           (here?';background:var('+col+');color:#000':'')+'">'+gl+'</span>'; }
       barAt += s.bars;
     });
+    /* name the next section while it is still close enough to play towards */
+    var soon = '';
+    if(at){
+      var lf = at.sec.bars - at.within;
+      if(lf <= 4){
+        var np = OZ.sectionAt(song, E.songbar + lf);
+        if(np && np.name !== at.name)
+          soon = ' <span class="w">→ '+esc(np.name)+' in '+lf+'</span>';
+      }
+    }
     HUD.innerHTML = '<span class="a2">'+esc(song.name)+'</span> <span class="dim">'+
       Math.round(song.bpm)+' BPM · '+esc(song.key+' '+song.scale)+' · bar '+
       (E.songbar+1)+'/'+total+' · '+mmss(songSeconds(song))+' · </span>'+
       (ROOM.code ? '<span class="a">room '+esc(ROOM.code)+' · '+(ROOM.others+1)+'</span> <span class="dim">· </span>' : '')+
-      '<span class="b">'+esc(at?at.name:'')+'</span><div class="map">'+cells+'</div>';
+      '<span class="b">'+esc(at?at.name:'')+'</span>'+soon+'<div class="map">'+cells+'</div>';
   }
-  var h = '';
-  (E.order||[]).forEach(function(n){
-    var tr = E.tracks[n]; if(!tr || !tr.pat) return;
-    if(!tr.pat.replace(/[.\-]/g,'')) return;
-    var col = {kick:'--hot', hat:'--accent', oh:'--accent', clap:'--accent2',
-               snare:'--warn', perc:'--ok', bass:'--warn', rumble:'--dim',
-               pad:'--accent', riser:'--a2'}[n] || '--fg';
+  /* WHAT IS COMING. state_at() is pure, so the next section can be asked for its
+     patterns before it arrives - the one thing no other instrument can draw, because
+     no other one knows its own future. Only inside the last few bars though: shown
+     always it is wallpaper, shown at the boundary it is a warning you can play to. */
+  var LOOKAHEAD = 4, nx = null, nxIn = 0;
+  if(song && at){
+    var left = at.sec.bars - at.within;                  /* bars until the next section */
+    if(left <= LOOKAHEAD){
+      var ns = OZ.stateAt(song, E.songbar + left);       /* ONE call, shared by every lane */
+      if(ns && ns.section !== at.name){ nx = ns; nxIn = left; }
+    }
+  }
+  /* Is this track being moved right now, and which way? The rack's axis is steps
+     inside a bar; automation's axis is bars inside a section. A curve drawn across
+     the steps would be a lie, so the lane says only what is true on its own axis:
+     that this track is moving, and where to. */
+  function autoNow(sec, name, within){
+    var a = sec.automation || [];
+    for(var k = 0; k < a.length; k++){
+      var x = a[k], t = String(x[0]);
+      if(t.indexOf(name + '.') !== 0) continue;
+      var start = Math.max(0, Math.min(x[3]|0, sec.bars - 1));
+      var len = Math.max(1, Math.min(x[4] ? (x[4]|0) : (sec.bars - start), sec.bars - start));
+      if(within >= start && within < start + len) return (+x[2] >= +x[1]) ? '▲' : '▼';
+    }
+    return '';
+  }
+  var COL = {kick:'--hot', hat:'--accent', oh:'--accent', clap:'--accent2',
+             snare:'--warn', perc:'--ok', bass:'--warn', rumble:'--dim',
+             pad:'--accent', riser:'--a2'};
+  function lane(n, tr, ghost){
+    var col = COL[n] || '--fg';
+    var nt = nx && nx.tracks ? nx.tracks[n] : null;
     var cells = '';
     for(var q=0;q<16;q++){
-      var ch = tr.pat[OZ.patIndex(tr.pat, E.songbar, q)] || '.';
+      var ch = ghost ? '.' : (tr.pat[OZ.patIndex(tr.pat, E.songbar, q)] || '.');
       var on = ch !== '.' && ch !== '-';
       var maybeStep = ch === '?';
-      var cur = q === i && E.playing;
-      cells += '<span class="st'+(on?' on':'')+'" data-t="'+esc(n)+'" data-i="'+q+'" style="color:var('+(on?col:'--dim')+')'+(maybeStep?';opacity:.55':'')+
+      var cur = !ghost && q === i && E.playing;
+      /* the incoming pattern, read at the bar it actually starts on */
+      var nOn = false;
+      if(nt && nt.pat){
+        var nch = nt.pat[OZ.patIndex(nt.pat, E.songbar + nxIn, q)] || '.';
+        nOn = nch !== '.' && nch !== '-';
+      }
+      /* a track's own pattern restarting mid-bar: polymeter, finally visible */
+      var wrap = !ghost && q > 0 && OZ.patIndex(tr.pat, E.songbar, q) === 0;
+      cells += '<span class="'+(ghost?'gst':'st')+(on?' on':'')+(wrap?' wrap':'')+
+        (nx && nOn && !on ? ' arr' : '')+(nx && nt && on && !nOn ? ' lea' : '')+'"'+
+        (ghost?'':' data-t="'+esc(n)+'" data-i="'+q+'"')+
+        ' style="color:var('+(on?col:'--dim')+')'+(maybeStep?';opacity:.55':'')+
         (cur?';background:var('+(on?col:'--line')+');color:#000':'')+'">'+
         (maybeStep?'▒':(on?'█':'·'))+'</span>';
     }
-    h += '<div><span class="trk '+(n===foc?'a2':'dim')+'" data-t="'+esc(n)+'">'+(n===foc?'▸ ':'  ')+esc(n)+'</span>'+cells+'</div>';
+    var mark = ghost ? '' : autoNow(at ? at.sec : {}, n, at ? at.within : 0);
+    return '<div'+(ghost?' class="ghost"':'')+' style="--tc:var('+col+')">'+
+      '<span class="trk '+(ghost?'dim':(n===foc?'a2':'dim'))+'"'+(ghost?'':' data-t="'+esc(n)+'"')+'>'+
+      (ghost?'+ ':(n===foc?'▸ ':'  '))+esc(n)+(mark?' '+mark:'')+'</span>'+cells+'</div>';
+  }
+  var h = '', shown = {};
+  (E.order||[]).forEach(function(n){
+    var tr = E.tracks[n]; if(!tr || !tr.pat) return;
+    if(!tr.pat.replace(/[.\-]/g,'')) return;
+    shown[n] = 1;
+    h += lane(n, tr, false);
+  });
+  /* A voice the next section brings that is not playing yet gets its own ghost lane -
+     this is the drop's bassline appearing before the drop does. */
+  if(nx) (nx.order||[]).forEach(function(n){
+    if(shown[n]) return;
+    var nt = nx.tracks[n];
+    if(!nt || !nt.pat || !nt.pat.replace(/[.\-]/g,'')) return;
+    h += lane(n, nt, true);
   });
   RACK.innerHTML = h;
   RACK.classList.toggle('on', !!h);        // no rack until there is something in it
@@ -1743,7 +1821,9 @@ RACK.addEventListener('click', function(e){
   if(st){ e.stopPropagation(); snapshot('a step');
     line('▸ ' + E.toggleStep(st.dataset.t, +st.dataset.i), 'dim'); draw(); return; }
   var tk = e.target.closest('.trk');
-  if(tk){ e.stopPropagation(); E.focus = tk.dataset.t; draw(); } });
+  /* a ghost lane's label names a track that is not playing yet, so it carries no
+     data-t - without this it focused `undefined` and the pads edited nothing */
+  if(tk && tk.dataset.t){ e.stopPropagation(); E.focus = tk.dataset.t; draw(); } });
 
 /* Hold and sweep across cells to paint hits like a real step sequencer. The
    first cell's toggle decides the brush (drawing or erasing); every cell the

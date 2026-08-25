@@ -286,6 +286,47 @@ async function until(fn, ms, what){
     ok(W.E.tracks[name].pat !== before, "clicking a step changed nothing");
   });
 
+  await t("the rack shows the next section before it lands", function(){
+    /* build has no bass and a 5-step hat; the drop brings a bass and busies the kick.
+       Two bars out, the grid must already say so - that is the whole point of it. */
+    var mk = function(b, r, tr){ return {bars: b, role: r, energy: .7, tracks: tr,
+                                         order: Object.keys(tr)}; };
+    var build = {kick: {voice: "kick", pat: "x...x...x...x...", gain: 1},
+                 hat:  {voice: "hat",  pat: "..x.x", gain: .8}};
+    var drop  = {kick: {voice: "kick", pat: "x..xx...x...x...", gain: 1},
+                 hat:  {voice: "hat",  pat: "..x.x", gain: .8},
+                 bass: {voice: "bass", pat: "x.x.x.x.x.x.x.x.", gain: .9}};
+    W.loadSong({format: "oontz-song-1", name: "look", bpm: 140, key: "a", scale: "minor",
+                order: ["build", "drop"],
+                sections: {build: mk(16, "build", build), drop: mk(16, "drop", drop)}},
+               "lookahead test");
+    W.E.stop();
+
+    W.E.jump(2); W.draw();                       /* far from the boundary: nothing yet */
+    ok(!W.document.querySelector("#rack .arr"), "lookahead showed 14 bars early");
+    ok(!W.document.querySelector("#rack .ghost"), "a ghost lane showed 14 bars early");
+
+    W.E.jump(14); W.draw();                      /* two bars out: it must be there */
+    var arr = W.document.querySelectorAll("#rack .arr");
+    ok(arr.length > 0, "no arriving step marked two bars before the drop");
+    var ghost = W.document.querySelector("#rack .ghost");
+    ok(ghost, "the drop's bass got no ghost lane");
+    ok(/bass/.test(ghost.textContent), "the ghost lane is not the bass");
+    ok(!ghost.querySelector("[data-t]"), "a ghost lane must not be editable");
+
+    /* the 5-step hat wraps inside the bar - the one thing the grid could never show */
+    var rows = W.document.querySelectorAll("#rack > div");
+    var hatRow = null;
+    for(var r = 0; r < rows.length; r++)
+      if(/hat/.test(rows[r].textContent)) hatRow = rows[r];
+    ok(hatRow, "no hat lane");
+    ok(hatRow.querySelectorAll(".wrap").length === 3, "a 5-step pattern wraps 3 times in 16");
+
+    W.E.jump(16); W.draw();                      /* inside the drop: the bass is real now */
+    ok(!W.document.querySelector("#rack .ghost"), "the ghost outlived its section");
+    return arr.length + " arriving, 3 wraps";
+  });
+
   /* ---- Phase 3: arrangement, library, undo, stems ---------------------- */
   await t("sec edits the arrangement", async function(){
     await W.CMDS.compose(["techno", "1"]); W.E.stop();
