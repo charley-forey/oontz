@@ -16,7 +16,7 @@ SMOOTH = 0.02                                    # seconds to reach a new settin
 def _fx(name):
     """Fetch an effect, importing fx on first use.
 
-    Relying on someone else having imported thud.fx made the mixer silently
+    Relying on someone else having imported oontz.fx made the mixer silently
     no-op - EQ kills did nothing and reported success. It loads its own now.
     """
     fn = FX.get(name)

@@ -1,4 +1,4 @@
-/* oontz browser engine — the WebAudio port of the thud voice bank and sequencer.
+/* oontz browser engine — the WebAudio port of the oontz voice bank and sequencer.
  *
  * This file is the foundation for oontz.sh, not throwaway landing-page code. The
  * Python engine's design ports directly: voices are pure functions of their
@@ -1055,7 +1055,7 @@ function wavBlob(buf){
 }
 
 /* -- the keyboard as a controller ---------------------------------------- */
-/* The same table as thud/keymap.py, minus what a browser cannot do. Returns a
+/* The same table as oontz/keymap.py, minus what a browser cannot do. Returns a
    short message when a key was handled, null when it was not. Pure enough to run
    in node with no AudioContext: only the sweep and the rate effects need one. */
 

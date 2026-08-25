@@ -1,6 +1,6 @@
 """FROZEN. The seams between core and every agent module.
 
-Change these only through the orchestrator, versioned. Everything else in thud
+Change these only through the orchestrator, versioned. Everything else in oontz
 is allowed to churn; this file is what lets ten agents work at once without a
 merge queue.
 
@@ -59,12 +59,12 @@ Views and display state
 
 Import order
     load_modules() runs while core is still initialising, so a module imported
-    this way must NOT import thud.ui at module level - ui imports names from core
+    this way must NOT import oontz.ui at module level - ui imports names from core
     that do not exist yet at that point. Import it lazily inside a function.
 
-A COMMANDS function returns thud command strings, never mutated state. That is
+A COMMANDS function returns oontz command strings, never mutated state. That is
 what keeps generative and AI code honest: everything they do is expressible as
-something you could have typed, so it lands in the undo stack and the .thud file
+something you could have typed, so it lands in the undo stack and the .oontz file
 like any other edit.
 """
 from dataclasses import dataclass, field
@@ -109,7 +109,7 @@ class Snapshot:
     bar: int = 0
     step: int = -1                 # -1 when stopped
     playing: bool = False
-    name: str = "untitled.thud"
+    name: str = "untitled.oontz"
     tracks: tuple = ()             # tuple[TrackView, ...]
     focus: int = 0                 # index into tracks
     mode: str = "play"             # play | cmd

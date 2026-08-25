@@ -38,7 +38,7 @@ RESEND_KEY = os.environ.get("RESEND_API_KEY", "")
 MAIL_FROM = os.environ.get("OONTZ_MAIL_FROM", "oontz <hello@oontz.sh>")
 ANTHROPIC_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
 
-# thud/theory.py exported: the same rules the desktop AI and the grader use.
+# oontz/theory.py exported: the same rules the desktop AI and the grader use.
 THEORY = {}
 try:
     with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "theory.json"),
@@ -674,7 +674,7 @@ def gallery(sort: str = "new", limit_n: int = 40, request: Request = None):
 
 
 # -------------------------------------------------------------------- takes
-# A take is the .thud command log of a session: text, a few KB, re-rendered by
+# A take is the .oontz command log of a session: text, a few KB, re-rendered by
 # the deterministic engine wherever it is played. Never audio.
 
 def _nid():

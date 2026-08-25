@@ -51,7 +51,7 @@ def read_key():
 
 def header(s, w):
     rec = c(196, " ⏺ REC %02d:%02d " % (s.rec_secs // 60, s.rec_secs % 60)) if s.recording else ""
-    bits = [c(51, " THUD "), c(250, "%g BPM" % s.bpm), c(250, "bar %d" % s.bar),
+    bits = [c(51, " OONTZ "), c(250, "%g BPM" % s.bpm), c(250, "bar %d" % s.bar),
             c(244, "swing %g%%" % s.swing), rec, c(244, s.name)]
     line = c(238, "┌─") + c(238, "─").join(b for b in bits if b)
     return fit(line + " " + c(238, "─" * w), w)
@@ -167,7 +167,7 @@ HELP = [
 
 
 def help_page(w, h):
-    out = ["", "  " + c(51, "THUD — every key"), ""]
+    out = ["", "  " + c(51, "OONTZ — every key"), ""]
     for title, rows in HELP:
         out.append("  " + c(226, title))
         for k, v in rows:

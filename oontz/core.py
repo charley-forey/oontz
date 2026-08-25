@@ -82,7 +82,7 @@ class State:
         self.pos = 0
         self.bars = 0
         self.drops = 0
-        self.name = "untitled.thud"
+        self.name = "untitled.oontz"
         self.log = {}
         self.rms = {}
         self.bands = {}          # track -> per-band energy, measured not guessed
@@ -591,7 +591,7 @@ class Recorder:
         if self._th:
             self._th.join(timeout=2)
         base = self.path[:-4]
-        save(base + ".thud")
+        save(base + ".oontz")
         ST.name = os.path.basename(self.path)
         return "%s  %.1fs" % (self.path, self.frames / SR)
 
@@ -1004,15 +1004,17 @@ def _songs(a):
     """The starter songbook. Templates to learn from and build on."""
     import glob
     out = []
-    for f in sorted(glob.glob("songs/*.thud")):
+    for f in sorted(glob.glob("songs/*.oontz")):
         first = open(f, encoding="utf-8").readline().lstrip("# ").strip()
-        out.append("%-14s %s" % (os.path.basename(f)[:-5], first))
+        out.append("%-14s %s" % (os.path.splitext(os.path.basename(f))[0], first))
     return "  ·  ".join(out) if out else "no songs/ directory"
 
 
 def _open(a):
     n = a[0] if a else ""
-    p = n if n.endswith(".thud") else "songs/%s.thud" % n
+    p = n if n.endswith((".oontz", ".thud")) else "songs/%s.oontz" % n
+    if not os.path.exists(p) and not n.endswith(".thud"):
+        p = "songs/%s.thud" % n if os.path.exists("songs/%s.thud" % n) else p   # pre-rename songbooks
     if not os.path.exists(p):
         return "no song %r — try `songs`" % n
     ST.tracks = {t: new_track(t) for t in TRACK_ORDER}
@@ -1065,8 +1067,8 @@ CMDS = {
     "fxlist":    (lambda a: "  ".join(sorted(FX)), None, "list every registered effect"),
     "songs":     (_songs, "ls", "list the starter songbook"),
     "open":      (_open, "o", "load a song by name"),
-    "save":      (lambda a: save(outpath(a[0], ".thud")), "s", "write .thud"),
-    "load":      (lambda a: load(a[0]), "l", "read .thud"),
+    "save":      (lambda a: save(outpath(a[0], ".oontz")), "s", "write .oontz"),
+    "load":      (lambda a: load(a[0]), "l", "read .oontz"),
     "render":    (_render, "rn", "offline wav"),
     "ab":        (_ab, None, "A/B compare slots"),
     "undo":      (lambda a: ST.undo_one(), "u", "step back"),
@@ -1077,7 +1079,7 @@ CMDS = {
 NO_LOG = {"play", "stop", "rec", "save", "load", "render", "undo", "redo",
           "ab", "songs", "open", "view", "voices", "fxlist",
           "song", "sec", "goto", "loopsec", "mode", "autorec"}
-# How a command is keyed in the session log, which is what a .thud file is. One entry
+# How a command is keyed in the session log, which is what a .oontz file is. One entry
 # per thing that can be independently set, so a later edit replaces the earlier one.
 KEYED = {"gain", "pan", "tune", "filter", "sidechain", "humanize", "mute", "solo", "voice"}
 KEYED2 = {"fx", "track"}                                 # keyed by two arguments
@@ -1176,7 +1178,7 @@ def outpath(p, ext):
 def save(path):
     ST.name = os.path.basename(path)
     with open(path, "w", encoding="utf-8") as f:
-        f.write("# thud session\n")
+        f.write("# oontz session\n")
         f.write("bpm %g\nswing %g\n" % (ST.bpm, ST.swing))
         for k, v in ST.log.items():
             if (k[0] if isinstance(k, tuple) else k) not in ("bpm", "swing"):
@@ -1204,7 +1206,7 @@ NAMES = ["c", "c#", "d", "d#", "e", "f", "f#", "g", "g#", "a", "a#", "b"]
 
 
 def generate(verb, args):
-    """Writes the *result* as a plain command, so .thud files stay literal."""
+    """Writes the *result* as a plain command, so .oontz files stay literal."""
     r = random.Random()
     if verb == "variation":
         name = args[0] if args else ST.order[ST.focus]

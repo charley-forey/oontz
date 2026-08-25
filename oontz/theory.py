@@ -444,9 +444,9 @@ def as_dict():
 def export_files():
     """The generated files, keyed by path from the repo root. This module is the
     only source; the browser composer and the API read these, never their own copy.
-    `python -m thud theory export` writes them and the selftest fails if they are stale."""
+    `python -m oontz theory export` writes them and the selftest fails if they are stale."""
     data = json.dumps(as_dict(), indent=1, sort_keys=True)
-    head = "/* generated from thud/theory.py by `python -m thud theory export` - do not edit */\n"
+    head = "/* generated from oontz/theory.py by `python -m oontz theory export` - do not edit */\n"
     return {
         "web/app/theory.js": head + '(typeof window !== "undefined" ? window : globalThis)'
                              '.OONTZ_THEORY = ' + data + ";\n",

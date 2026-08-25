@@ -13,7 +13,7 @@ def main():
         print(theory.export())
         return
     for a in args:
-        if a.endswith(".thud"):
+        if a.endswith((".oontz", ".thud")):     # .thud: the pre-rename extension
             core.load(a)
     core.refresh()
     ui.run()

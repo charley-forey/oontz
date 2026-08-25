@@ -171,7 +171,7 @@ def _pattern_rows():
 def help_page(snapshot, w, h, page=0):
     """The full `?` overlay. Paginates and says so if it doesn't fit in h lines."""
     from .term import c, fit
-    body = ["", "  " + c(51, "THUD — every key"), ""]
+    body = ["", "  " + c(51, "OONTZ — every key"), ""]
     for title, rows in (("PLAY", _key_rows()), ("COMMANDS", _cmd_rows()),
                         ("PATTERNS", _pattern_rows())):
         body.append("  " + c(226, title))
@@ -248,7 +248,7 @@ WHY = {
                   "evenly as 5 can go into 16."),
     "polymeter": ("Polymeter is two patterns of different lengths looping at the same time - a "
                   "5-step bassline against a 16-step kick, say. They only realign every 80 "
-                  "steps, so the same two patterns keep sounding like new combinations. thud "
+                  "steps, so the same two patterns keep sounding like new combinations. oontz "
                   "gives you this for free: just make a track's pattern a different length."),
     "headroom": ("Headroom is the gap between how loud you're playing and 0dB, where things "
                  "clip. Keep a few dB of it - mix a bit under full scale - so accents and "
@@ -267,13 +267,13 @@ WHY = {
                "at 420Hz, fairly resonant."),
     "mute": "Mute silences a track completely without losing its pattern - flip it back on any time. Good for building a track up piece by piece.",
     "solo": "Solo silences every other track so you hear just this one. Good for checking a sound is clean before bringing it back into the mix.",
-    "play": "Play/stop starts and stops the transport. thud always keeps looping the current bar; play just starts the loop.",
+    "play": "Play/stop starts and stops the transport. oontz always keeps looping the current bar; play just starts the loop.",
     "stop": "Stops playback. The pattern is still there, ready to resume from the top of the bar.",
-    "rec": "Starts or stops recording exactly what you hear to a .wav in takes/, plus a .thud alongside it so the same session can be reloaded or handed to anyone.",
+    "rec": "Starts or stops recording exactly what you hear to a .wav in takes/, plus a .oontz alongside it so the same session can be reloaded or handed to anyone.",
     "songs": "Lists the starter songbook in songs/ - ready-made templates to load and learn from or build on top of.",
-    "open": "Loads a song by name from songs/ (or a full .thud path), replacing the current session.",
-    "save": "Writes the current session - tempo, patterns, every command that shaped it - to a .thud file you can reload later or hand to someone.",
-    "load": "Reads a .thud file and replays its commands to rebuild that exact session.",
+    "open": "Loads a song by name from songs/ (or a full .oontz path), replacing the current session.",
+    "save": "Writes the current session - tempo, patterns, every command that shaped it - to a .oontz file you can reload later or hand to someone.",
+    "load": "Reads a .oontz file and replays its commands to rebuild that exact session.",
     "render": "Renders the current pattern offline to a .wav without needing to play it live - useful for quick exports.",
     "ab": "A/B stores the current session in a slot, then swaps it back on the next call - a quick way to compare two versions and pick the one that's actually better.",
     "undo": "Steps back one edit. Every pattern or parameter change is undoable, so mistakes are free.",
@@ -284,7 +284,7 @@ WHY = {
     "notes": "Notes are the pitches a melodic track (bass/stab) plays per step, e.g. `a1 . a1~ c2!` - note name, ~ to slide from the previous note, ! to accent.",
     "view": "View switches which panel fills the middle of the screen - pattern grid, spectrum, scope, whatever's registered. perform is always there.",
     "voice": "Voice points a track at a different sound engine - same pattern, same steps, different instrument underneath. `voice bass reese` swaps the 303 for a reese bass.",
-    "track": "Track adds or removes a track - thud isn't fixed at 8. `track add rumble sub` adds one called rumble playing the sub voice; `track del rumble` removes it.",
+    "track": "Track adds or removes a track - oontz isn't fixed at 8. `track add rumble sub` adds one called rumble playing the sub voice; `track del rumble` removes it.",
     "voices": "Lists every sound engine currently registered - everything you can point a track at with `voice`.",
     "fx": "Fx chains an effect onto a track (or `master` for the whole mix) - `fx bass drive amount 2.5` adds drive; `fx bass off` clears it. Stacks with the track's own filter, applied after it.",
     "fxlist": "Lists every effect currently registered - everything you can chain on with `fx`.",
@@ -348,7 +348,7 @@ LESSON = [
     ("Stop and admire it",
      "Press `R` again to stop. You just built a track from nothing: kick, hats, "
      "bass, a sidechain, a filter sweep, a variation, a take. Everything else in "
-     "thud is just more of this.",
+     "oontz is just more of this.",
      lambda s: (not s.recording) and bool(s.rec_name)),
 ]
 
@@ -381,7 +381,7 @@ def suggest(snapshot, history):
     """Concrete commands worth running now, mined from past command strings.
 
     history: list[str] of previously-run command lines, oldest first - one per
-    line the way ~/.thud/history.jsonl stores them: {"ts": <float>, "cmd": "<line>"}
+    line the way ~/.oontz/history.jsonl stores them: {"ts": <float>, "cmd": "<line>"}
     per line, cmd already extracted before this is called. No file I/O happens
     here; the caller reads the jsonl and hands over the parsed cmd list.
     """
@@ -502,13 +502,13 @@ def demo():
     from . import ui                      # safe here: only reached long after core is loaded
 
     print("=" * 70)
-    print("thud teach.py demo")
+    print("oontz teach.py demo")
     print("=" * 70)
 
     # ---- build a family of realistic snapshots off the real engine ----
     core.do("open warehouse")
     stopped = core.snapshot()
-    assert stopped.name == "warehouse.thud"
+    assert stopped.name == "warehouse.oontz"
 
     playing_good = dataclasses.replace(core.snapshot(), playing=True, bar=20, peak=0.3,
                                        recording=False)

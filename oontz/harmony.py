@@ -58,12 +58,12 @@ def pc(name):
 
 
 def token(semi, octave=1):
-    """Semitone offset -> a thud note token. Octave carries over automatically."""
+    """Semitone offset -> a oontz note token. Octave carries over automatically."""
     return NAMES[semi % 12] + str(octave + semi // 12)
 
 
 def scale_notes(root, scale="minor", octave=1, count=8):
-    """Ascending scale tones as thud note tokens, wrapping octaves as it climbs."""
+    """Ascending scale tones as oontz note tokens, wrapping octaves as it climbs."""
     steps = SCALES.get(scale, SCALES["minor"])
     base = pc(root)
     return [token(base + steps[i % len(steps)] + 12 * (i // len(steps)), octave)
@@ -237,7 +237,7 @@ def accent_shift(m):
 
 
 def motif_to_tokens(m, root, scale="minor", octave=1):
-    """A motif as a thud note-command argument string: 'a1! . c2~ d2 . a1 ...'"""
+    """A motif as a oontz note-command argument string: 'a1! . c2~ d2 . a1 ...'"""
     out = []
     for d, _s, accent, slide in m:
         if d is None:

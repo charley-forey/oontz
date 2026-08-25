@@ -2,7 +2,7 @@
 
 ## The constraint that decides everything
 
-thud is Python + numpy + sounddevice + a terminal. **None of that runs in a browser.**
+oontz is Python + numpy + sounddevice + a terminal. **None of that runs in a browser.**
 Three ways out, and only one of them is a playable instrument:
 
 | approach | latency | cost at scale | verdict |

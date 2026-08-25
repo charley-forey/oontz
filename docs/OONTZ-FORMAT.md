@@ -31,7 +31,7 @@ idea.
 The same song exists in two forms, the way a program exists as source and as
 an AST. Both are plain text. Both are executable.
 
-### `.thud` — the command log (canonical source)
+### `.oontz` — the command log (canonical source)
 
 The exact commands that make the instrument produce the song, one per line.
 Comments start with `#`. This is what you'd type; it is also what a take
@@ -63,11 +63,11 @@ audited in [PRIOR-ART.md](PRIOR-ART.md).
 ### `.song` — the compiled timeline (JSON)
 
 What the composer emits and the players consume: the whole arrangement as
-data. Field-for-field, from `thud/song.py` (`format: "thud-song-1"`):
+data. Field-for-field, from `oontz/song.py` (`format: "oontz-song-1"`):
 
 ```jsonc
 {
-  "format": "thud-song-1",
+  "format": "oontz-song-1",
   "name": "warehouse", "bpm": 138, "swing": 8,
   "key": "a", "scale": "minor",
   "order": ["intro", "build", "drop", "break", "drop2", "outro"],
@@ -101,7 +101,7 @@ data. Field-for-field, from `thud/song.py` (`format: "thud-song-1"`):
 The engine is a pure function of the source: `state_at(bar)` answers what any
 bar sounds like, offline render equals live playback sample-for-sample, and
 the QA gate keeps golden renders byte-identical across changes. Two engines —
-the Python original (`thud/`) and the browser port (`web/app/oontz.js`) —
+the Python original (`oontz/`) and the browser port (`web/app/oontz.js`) —
 derive their music theory from one file and are held to identical output by a
 360-arrangement cross-language gate.
 
@@ -132,5 +132,5 @@ PDF is compiled from a document.
 
 ## Versioning
 
-`format: "thud-song-1"` names this schema. Readers should accept unknown
+`format: "oontz-song-1"` names this schema. Readers should accept unknown
 extra fields (forward compatibility) and refuse unknown formats loudly.

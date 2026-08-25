@@ -13,7 +13,7 @@ what we skip, and — kept honest — what oontz already had before reading any 
 | [TidalCycles](https://tidalcycles.org) | the *ideas* of mini-notation: rests, repeats, probability, grouping | the Haskell, the cleverness | rests **already had** (`.`); `* N` repeat and `?` probability **shipped this cycle**; `[xx..]` subdivision later |
 | [Sonic Pi](https://sonic-pi.net) | make the first sound in seconds; joy as a requirement | being a programming language | **already had**: browser, one command, no install, no account |
 | [SuperCollider](https://supercollider.github.io) | language ≠ audio engine | its scale and UGen surface | **already had, stronger**: two full runtimes (Python + WebAudio) held identical by a 360-arrangement parity gate and golden renders |
-| [ABC notation](https://abcnotation.com) | a versioned formal spec that outlives any app | its syntax (wrong genre) | **already had**: `format: "thud-song-1"`, [OONTZ-FORMAT.md](OONTZ-FORMAT.md) |
+| [ABC notation](https://abcnotation.com) | a versioned formal spec that outlives any app | its syntax (wrong genre) | **already had**: `format: "oontz-song-1"`, [OONTZ-FORMAT.md](OONTZ-FORMAT.md) |
 
 ## The one-line verdicts
 
@@ -42,7 +42,7 @@ representation of a song.
 
 **ABC** proves a plain-text music format can outlive every application around it —
 decades, thousands of tools, one spec. That discipline (versioned spec, canonical
-format, independent implementations) is exactly the `thud-song-1` posture.
+format, independent implementations) is exactly the `oontz-song-1` posture.
 
 ## What none of them solve — the oontz thesis
 

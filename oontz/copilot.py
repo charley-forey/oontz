@@ -8,7 +8,7 @@ Three lines, always visible:
 
 The rule that makes it safe and makes it simple: the copilot NEVER changes
 anything. It proposes commands, you press Enter. Everything it suggests is a
-command you could have typed, so it lands in undo and in the .thud file like any
+command you could have typed, so it lands in undo and in the .oontz file like any
 other edit, and you can always see exactly what it did.
 
 It is useful with no model at all. Narration and most suggestions come from the
@@ -217,7 +217,7 @@ def why_cmd(state, args):
     except Exception:
         try:
             from . import keyboard_view as kv
-            return kv.key_help(__import__("thud.core", fromlist=["x"]).ST.mode, args[0])
+            return kv.key_help(__import__("oontz.core", fromlist=["x"]).ST.mode, args[0])
         except Exception:
             return "no explanation for %r yet" % args[0]
 

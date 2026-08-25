@@ -1,4 +1,4 @@
-/* Arrangement, in the browser. The port of thud/compose.py + thud/theory.py.
+/* Arrangement, in the browser. The port of oontz/compose.py + oontz/theory.py.
  *
  * A song is a walk along a shape. Section content follows its ROLE - an intro is
  * thin because it is an intro - and ONE motif is developed across the whole
@@ -19,7 +19,7 @@ var SCALES = {
   harmonic: [0,2,3,5,7,8,11]
 };
 
-/* The theory is not copied here. theory.js is generated from thud/theory.py and
+/* The theory is not copied here. theory.js is generated from oontz/theory.py and
    must load first; what the composer needs is derived from it. */
 var T = g.OONTZ_THEORY;
 if(!T) throw new Error("theory.js must load before compose.js");
@@ -239,7 +239,7 @@ function energyFor(role, pos){
 
 /* Bjorklund: spread k hits as evenly as possible over n steps. e(4,16) is
    four-on-the-floor, e(3,8) is the tresillo, e(7,16) is a classic hat.
-   Ported from thud/gen.py so a genre's rhythms are one definition, not two. */
+   Ported from oontz/gen.py so a genre's rhythms are one definition, not two. */
 function euclid(k, n, rotate){
   n = n | 0; if(n <= 0) return "";
   k = Math.max(0, Math.min(k | 0, n));

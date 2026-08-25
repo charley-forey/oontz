@@ -1,11 +1,11 @@
 ---
 name: evolve
-description: Run one thud evolution cycle - pick the top open roadmap item, implement it, prove it, push it, and append what was learned. Use when the user says "evolve", "improve thud", "next cycle", or runs /loop over this project.
+description: Run one oontz evolution cycle - pick the top open roadmap item, implement it, prove it, push it, and append what was learned. Use when the user says "evolve", "improve oontz", "next cycle", or runs /loop over this project.
 ---
 
 # One evolution cycle
 
-You are improving `thud` at C:\Users\charl\desktop\oontz. Do ONE cycle, completely,
+You are improving `oontz` at C:\Users\charl\desktop\oontz. Do ONE cycle, completely,
 then stop. Do not start a second cycle in the same run.
 
 ## The cycle
@@ -16,7 +16,7 @@ then stop. Do not start a second cycle in the same run.
    and append ONE new item to "Next" with a one-line reason - a gap between what
    IDEAS.md asks for and what the code does. That is how the roadmap grows on its own.
 
-2. **Read the code it touches** before writing anything. `thud/contracts.py` is the
+2. **Read the code it touches** before writing anything. `oontz/contracts.py` is the
    frozen seam; modules register into shared dicts and nothing edits `core.py`
    except deliberately.
 
@@ -24,8 +24,8 @@ then stop. Do not start a second cycle in the same run.
    (numpy and sounddevice only). Match the surrounding code.
 
 4. **Prove it.** Both must pass, and you must run them:
-   - `python -m thud test`
-   - `python -m thud.qa --quick`
+   - `python -m oontz test`
+   - `python -m oontz.qa --quick`
    Add at least one assert that would FAIL if your change regressed. A change with
    no check is not finished.
 

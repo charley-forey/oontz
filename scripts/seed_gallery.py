@@ -20,7 +20,7 @@ import urllib.error
 import urllib.request
 
 sys.path.insert(0, ".")
-from thud import compose, theory  # noqa: E402
+from oontz import compose, theory  # noqa: E402
 
 HOUSE_EMAIL = "hello@oontz.sh"
 HOUSE_HANDLE = "oontz"
@@ -59,7 +59,7 @@ PLAYLISTS = {
 def compose_doc(style, minutes, curve, seed):
     sg = compose.compose_song(style, minutes, seed=seed, curve_name=curve)
     d = sg.to_dict()
-    d["format"] = "thud-song-1"
+    d["format"] = "oontz-song-1"
     crit = theory.critique(sg, style=style)
     score = theory.score(crit) if crit else None
     return d, score

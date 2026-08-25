@@ -4,7 +4,7 @@ No thread and no stream: the worker calls render_bar() whenever its ring buffer
 has room, and that one call does what the scheduler thread and the bar boundary
 of the audio callback do natively - render ahead, count the bar, take the next.
 The page is the same ui.build() the terminal draws; JS turns the SGR codes into
-spans. `python scripts/pack_thud.py` zips this package for the browser to fetch.
+spans. `python scripts/pack_oontz.py` zips this package for the browser to fetch.
 """
 import io
 import os
@@ -16,12 +16,12 @@ from .core import ST
 from .contracts import VERSION
 
 ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
-ZIP = "web/app/py/thud.zip"
+ZIP = "web/app/py/oontz.zip"
 
 
 def boot():
     core.refresh()
-    return "thud %s  %d modules" % (VERSION, len(core.MODULES))
+    return "oontz %s  %d modules" % (VERSION, len(core.MODULES))
 
 
 def do(cmd):
@@ -61,7 +61,7 @@ def key(ch):
 
 
 def _members():
-    for d, exts in (("thud", (".py",)), ("songs", (".thud", ".song"))):
+    for d, exts in (("oontz", (".py",)), ("songs", (".oontz", ".song"))):
         for f in sorted(os.listdir(os.path.join(ROOT, d))):
             if f.endswith(exts):
                 yield d + "/" + f

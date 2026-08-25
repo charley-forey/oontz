@@ -3,6 +3,7 @@ __pycache__/
 *.wav
 takes/
 demo/
-.thudcache/
+.oontzcache/
 *.song.bak
 .claude/
+.browsergate-profile/

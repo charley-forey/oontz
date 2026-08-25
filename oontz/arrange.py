@@ -3,10 +3,10 @@ section timeline, and sets. Owned entirely by this file - see the module
 docstring at the bottom for the core.py hooks this still needs to actually
 fire at bar boundaries; nothing here calls into core beyond reading ST.
 
-THE RULE (from contracts.py): every COMMANDS function returns thud command
+THE RULE (from contracts.py): every COMMANDS function returns oontz command
 STRINGS - the same primitives a user could type (bpm, gain, filter, pattern
 setters, ...) - never verbs of its own (scene/ramp/song/set/build/...) that
-core.do() doesn't know yet. That's what lets `python -m thud.arrange` prove
+core.do() doesn't know yet. That's what lets `python -m oontz.arrange` prove
 every generated line actually parses against TODAY's core.do(), with zero
 changes to core.py. Automations and macros register their own bookkeeping
 in module-level dicts/lists here (SCENES, AUTOMATIONS, SONG, SETLIST) and
@@ -41,7 +41,7 @@ def ramp_value(frm, to, bars, curve, t):
 
 
 def _emit(tracks, target, v):
-    """target -> the one primitive thud command that sets it to v now."""
+    """target -> the one primitive oontz command that sets it to v now."""
     if target == "bpm":
         return "bpm %g" % v
     name, param = target.split(".", 1)
@@ -299,7 +299,7 @@ SETLIST = []   # list of (song_name, bars)
 
 
 def _song_bpm(name):
-    path = name if name.endswith(".thud") else "songs/%s.thud" % name
+    path = name if name.endswith(".oontz") else "songs/%s.oontz" % name
     try:
         for line in open(path, encoding="utf-8"):
             parts = line.split()
@@ -313,7 +313,7 @@ def _song_bpm(name):
 def _transition(state, i, bars):
     """Beatmatch into SETLIST[i]: ramp bpm to the target song's tempo, then
     hard-cut patterns on `open` and fade the new tracks in from silence.
-    ponytail: thud is a single-deck engine - there is no second buffer to
+    ponytail: oontz is a single-deck engine - there is no second buffer to
     crossfade against, so this fakes it with a tempo ramp + fade-in rather
     than a real overlap. A second render buffer in core would fix that."""
     name, _bars = SETLIST[i]
@@ -343,7 +343,7 @@ def set_cmd(state, args):
 
 
 def to_commands():
-    """Everything this module knows, as plain lines a .thud file can hold.
+    """Everything this module knows, as plain lines a .oontz file can hold.
     Needs the COMMANDS-dispatch hook below before load() can replay them;
     until then they're inert text, same as typing an unwired verb today."""
     out = []

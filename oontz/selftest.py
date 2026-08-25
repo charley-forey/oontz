@@ -1,7 +1,7 @@
 """One runnable check. asserts only - no framework, no fixtures.
 
 Covers the M1 surface: voices, sequencer, DSL, undo, aliases, completion, the
-page renderer, and the recorder. Run: python -m thud test
+page renderer, and the recorder. Run: python -m oontz test
 """
 import os
 import time
@@ -124,7 +124,7 @@ def selftest():
         do("extra x.......")
     if FX:
         do("fx bass %s" % (sorted(FX)[0]))
-    p = "_selftest_%d.thud" % os.getpid()   # unique: tests run concurrently
+    p = "_selftest_%d.oontz" % os.getpid()   # unique: tests run concurrently
     do("save " + p)
     want = render_bar()
     ST.tracks = {n: new_track(n) for n in core.TRACK_ORDER}
@@ -135,8 +135,8 @@ def selftest():
     assert np.array_equal(want, got), "save/load did not round-trip"
     os.remove(p)
     out = do("save ../etc/passwd")                # a typed name can never leave OUTDIR
-    assert "passwd.thud" in out and not os.path.exists("../etc/passwd.thud"), out
-    os.remove("passwd.thud")
+    assert "passwd.oontz" in out and not os.path.exists("../etc/passwd.oontz"), out
+    os.remove("passwd.oontz")
 
     # -- per-track band energy is measured, not guessed ------------------
     do("open industrial")
@@ -171,10 +171,10 @@ def selftest():
         assert len(expand_pat(["x" * 16, "*9"])) <= 64, "*N is capped"
 
         # the exported theory the browser and the API read must match this module
-        assert not theory.stale(), "stale: %s - run `python -m thud theory export`" % theory.stale()
+        assert not theory.stale(), "stale: %s - run `python -m oontz theory export`" % theory.stale()
         # so must the package the browser fetches
         from . import web
-        assert not web.stale(), "stale: %s - run `python scripts/pack_thud.py`" % web.stale()
+        assert not web.stale(), "stale: %s - run `python scripts/pack_oontz.py`" % web.stale()
 
         # the composer obeys the theory it is graded by: first drop inside the window
         for style, g in theory.GENRES.items():
@@ -344,8 +344,8 @@ def selftest():
         assert f.getnchannels() == 2, "take is not stereo"
         assert f.getnframes() == 20 * 512, "recorded %d frames, want %d" % (f.getnframes(), 20 * 512)
         assert f.getframerate() == SR
-    assert os.path.exists(core.REC.path[:-4] + ".thud"), "take did not save its .thud"
-    for f in (core.REC.path, core.REC.path[:-4] + ".thud"):
+    assert os.path.exists(core.REC.path[:-4] + ".oontz"), "take did not save its .oontz"
+    for f in (core.REC.path, core.REC.path[:-4] + ".oontz"):
         for _ in range(20):                      # the writer thread may still hold the
             try:                                 # handle for a moment on Windows
                 os.remove(f)

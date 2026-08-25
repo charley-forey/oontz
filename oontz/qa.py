@@ -4,9 +4,9 @@ Every module tests itself. Nothing tested them together, and integration is wher
 this breaks. Checks skip gracefully when a module is absent, so this is useful at
 any point in the build.
 
-    python -m thud.qa            everything
-    python -m thud.qa --quick    the fast subset
-    python -m thud.qa --bless    update the golden render hashes
+    python -m oontz.qa            everything
+    python -m oontz.qa --quick    the fast subset
+    python -m oontz.qa --bless    update the golden render hashes
 """
 import os
 import sys
@@ -39,7 +39,7 @@ class SkipCheck(Exception):
 
 def _mod(name):
     try:
-        return __import__("thud." + name, fromlist=["x"])
+        return __import__("oontz." + name, fromlist=["x"])
     except ImportError:
         raise SkipCheck("%s not present" % name)
 
@@ -47,16 +47,16 @@ def _mod(name):
 # ------------------------------------------------------------- 1. registries
 
 def c_registries():
-    from thud import core
-    from thud.contracts import COLLISIONS
+    from oontz import core
+    from oontz.contracts import COLLISIONS
     assert not COLLISIONS, "registry collisions: %s" % (COLLISIONS,)
     assert not core.MODULE_ERRORS, "modules failed to import: %s" % (core.MODULE_ERRORS,)
     return "%d modules, no collisions, no import errors" % len(core.MODULES)
 
 
 def c_voices():
-    from thud.contracts import VOICES
-    from thud import core
+    from oontz.contracts import VOICES
+    from oontz import core
     bad = []
     for name, fn in VOICES.items():
         try:
@@ -81,7 +81,7 @@ def c_voices():
 
 
 def c_fx():
-    from thud.contracts import FX
+    from oontz.contracts import FX
     bad = []
     mono = (np.sin(np.linspace(0, 200, 4096)) * 0.4).astype(np.float32)
     st = np.stack([mono, mono * 0.9], axis=1)
@@ -109,8 +109,8 @@ def c_fx():
 
 
 def c_views():
-    from thud.contracts import VIEWS
-    from thud import core, ui
+    from oontz.contracts import VIEWS
+    from oontz import core, ui
     snap = core.snapshot()
     bad = []
     for name, fn in VIEWS.items():
@@ -144,13 +144,13 @@ FUZZ_ARGS = ["", "0", "-1", "1e9", "-1e9", "nan", "inf", "0.5", "999999",
 
 
 def c_fuzz(n=2500):
-    from thud import core
-    from thud.contracts import COMMANDS
+    from oontz import core
+    from oontz.contracts import COMMANDS
     import tempfile
     r = random.Random(20240823)
     verbs = list(core.CMDS) + list(COMMANDS) + list(core.ST.tracks)
     crashes = []
-    core.OUTDIR = tempfile.mkdtemp(prefix="thud-fuzz-")   # fuzzed `save`/`render` land here, not in the repo
+    core.OUTDIR = tempfile.mkdtemp(prefix="oontz-fuzz-")   # fuzzed `save`/`render` land here, not in the repo
     for _ in range(n):
         v = r.choice(verbs)
         args = [r.choice(FUZZ_ARGS) for _ in range(r.randrange(0, 4))]
@@ -172,7 +172,7 @@ def c_fuzz(n=2500):
 # ---------------------------------------------------------- 3. song invariants
 
 def c_song():
-    from thud import core, song as sm
+    from oontz import core, song as sm
     cp = _mod("compose")
     sg = cp.compose_song("hardtechno", 2.0, seed=42)
     total = sg.total_bars()
@@ -218,7 +218,7 @@ def c_song():
 
 def c_scrub():
     """A bar rendered from a scrub must equal that bar of the full render."""
-    from thud import core, song as sm
+    from oontz import core, song as sm
     cp = _mod("compose")
     sg = cp.compose_song("acid", 1.0, seed=7)
     full = sm.render(sg, core.render_state)
@@ -232,9 +232,9 @@ def c_scrub():
 # --------------------------------------------------------------- 4. layout
 
 def c_layout():
-    from thud import core, ui
-    from thud.contracts import PANELS
-    from thud.layout import solve, compose as lcompose
+    from oontz import core, ui
+    from oontz.contracts import PANELS
+    from oontz.layout import solve, compose as lcompose
     snap = core.snapshot()
     tested = 0
     for mode in ("studio", "deck"):
@@ -269,7 +269,7 @@ def c_layout():
 
 def c_soak(minutes=2.0):
     """Drive the callback by hand, so no audio hardware is needed."""
-    from thud import core
+    from oontz import core
     cp = _mod("compose")
     core.set_song(cp.compose_song("hardtechno", 1.0, seed=5))
     core.ST.bar = core.render_bar()
@@ -300,7 +300,7 @@ def c_soak(minutes=2.0):
 def c_perf_fx():
     """Every dj effect, driven hard, must stay in bounds."""
     dj = _mod("dj")
-    from thud import core
+    from oontz import core
     bar = core.render_bar()
     r = random.Random(3)
     for name, fn in dj.PERFORM.items():
@@ -322,10 +322,10 @@ def c_perf_fx():
 
 def c_golden(bless=False):
     import glob
-    from thud import core, song as sm
+    from oontz import core, song as sm
     hashes = {}
-    for p in sorted(glob.glob("songs/*.thud"))[:8]:
-        core.do("open " + os.path.basename(p)[:-5])
+    for p in sorted(glob.glob("songs/*.oontz"))[:8]:
+        core.do("open " + os.path.splitext(os.path.basename(p))[0])
         h = hashlib.sha1(core.render_bar().tobytes()).hexdigest()[:16]
         hashes[os.path.basename(p)] = h
     for p in sorted(glob.glob("songs/*.song"))[:4]:
@@ -350,13 +350,13 @@ def c_golden(bless=False):
 # ----------------------------------------------------- 3. the two composers
 
 def c_composers_agree():
-    """thud/compose.py and web/app/compose.js implement one algorithm. Prove it."""
+    """oontz/compose.py and web/app/compose.js implement one algorithm. Prove it."""
     import shutil
     import subprocess
     node = shutil.which("node")
     if not node:
         raise SkipCheck("node not on PATH")
-    from thud import compose, theory
+    from oontz import compose, theory
     cases, want = [], []
     for style, g in theory.GENRES.items():
         for curve in theory.TEMPLATES:
@@ -393,7 +393,7 @@ def report():
 
 
 def main(argv=()):
-    os.environ.setdefault("THUD_OFFLINE", "1")   # 600 fuzzed `ask`s once spent 10 minutes in the claude CLI
+    os.environ.setdefault("OONTZ_OFFLINE", "1")   # 600 fuzzed `ask`s once spent 10 minutes in the claude CLI
     quick = "--quick" in argv
     bless = "--bless" in argv
     check("registries", c_registries)

@@ -127,7 +127,7 @@ def legend_items(mode, focus_kind=""):
 
 
 # ---------------------------------------------------------------------------
-# THE TABLE. Every key thud responds to is declared exactly once, right here.
+# THE TABLE. Every key oontz responds to is declared exactly once, right here.
 # ui.on_key dispatches these; keyboard_view draws them; the legend and the ?
 # overlay are generated from them. selftest asserts the table and the dispatcher
 # agree in BOTH directions, so a displayed key cannot lie about what it does.
@@ -146,7 +146,7 @@ bind_many([
     (_ALL, "?", "ui.help_overlay", "all keys", "system", "show every key"),
     (_ALL, "", "ui.cancel", "cancel", "system", "!leave command mode"),
     (_ALL, "	", "ui.cycle_view", "view", "view", "cycle the visual panel"),
-    (_ALL, "", "ui.quit", "quit", "system", "!leave thud"),
+    (_ALL, "", "ui.quit", "quit", "system", "!leave oontz"),
     (_ALL, "", "core.ST.undo_one", "undo", "system", "step back"),
     (_ALL, "", "core.ST.redo_one", "redo", "system", "step forward"),
 

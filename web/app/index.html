@@ -472,7 +472,7 @@ var CMDS = {
     if(!token) return line('you need an account to publish. `login you@example.com`','w');
     try{ var r=await fetch(API+'/songs',{method:'POST',
         headers:{'content-type':'application/json','authorization':'Bearer '+token},
-        body:JSON.stringify({title:song.name, data:Object.assign({format:'thud-song-1'}, song), public:true, remix_of:REMIX_OF||undefined})});
+        body:JSON.stringify({title:song.name, data:Object.assign({format:'oontz-song-1'}, song), public:true, remix_of:REMIX_OF||undefined})});
       var j=await r.json();
       if(j.id){ w('<span class="ok">▸ published.</span> <span class="dim">'+esc(j.url||'')+'</span>');
         if(j.id) w('<span class="dim">  a light-show link (opens as visuals): https://oontz.music/t/'+esc(j.id)+'?watch=1</span>'); }
@@ -776,7 +776,7 @@ var CMDS = {
   /* the format, in hand: source out, load in, diff between */
   source: async function(a){
     if(!song) return line(CP.err_nosong,'w');
-    var doc = Object.assign({format: 'thud-song-1'}, song);
+    var doc = Object.assign({format: 'oontz-song-1'}, song);
     var text = JSON.stringify(doc), kb = (text.length/1024).toFixed(1);
     if((a[0]||'') === 'save'){
       var url = URL.createObjectURL(new Blob([JSON.stringify(doc, null, 1)], {type:'application/json'}));
@@ -840,8 +840,8 @@ var CMDS = {
       return loadSong(hit.data, 'loaded "'+esc(hit.data.name)+'"');
     }
     var sg; try{ sg = JSON.parse(raw); }catch(e){ return line('that is not JSON. `source copy` on a song makes some.','w'); }
-    if(sg.format && sg.format !== 'thud-song-1')
-      return line('unknown format '+esc(String(sg.format))+' — this player speaks thud-song-1','w');
+    if(sg.format && sg.format !== 'oontz-song-1' && sg.format !== 'thud-song-1')   // thud-song-1: the pre-rename name, still in the wild
+      return line('unknown format '+esc(String(sg.format))+' — this player speaks oontz-song-1','w');
     if(!sg.order || !sg.sections) return line('JSON, but not a song: it needs order and sections','w');
     snapshot('load'); loadSong(sg, 'loaded from source');
   },

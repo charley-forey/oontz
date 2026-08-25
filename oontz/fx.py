@@ -321,7 +321,7 @@ def _rms(v):
 
 
 def demo():
-    """One runnable check. asserts only - no framework. Run: python -m thud.fx"""
+    """One runnable check. asserts only - no framework. Run: python -m oontz.fx"""
     n = 8192
     t = np.arange(n) / SR
     mono = np.sin(TAU * 220 * t) * np.exp(-t / 0.05) * 0.7

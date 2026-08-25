@@ -155,7 +155,7 @@ def main():
         assert call("GET", "/playlists/" + pl2["id"], token=tok2)[0] == 404
 
         # -- takes --------------------------------------------------------------------
-        log = "# thud session\nbpm 140\nkick x...x...x...x...\nbass a1 . a1~ c2\n"
+        log = "# oontz session\nbpm 140\nkick x...x...x...x...\nbass a1 . a1~ c2\n"
         st, t, _ = call("POST", "/takes", {"song_id": sid, "name": "first", "data": log}, token=tok)
         assert st == 200 and t["id"], t
         st, j, _ = call("POST", "/takes", {"name": "huge", "data": "x" * (64 * 1024 + 1)}, token=tok)

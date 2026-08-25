@@ -32,7 +32,7 @@ def _read_song(path):
     sg = sm.Song.load(path)
     hm = _hm()
     energies = [e for _n, e, _b in sg.energy_curve()] or [0.5]
-    return {"name": sg.name or os.path.basename(path)[:-5], "path": path,
+    return {"name": sg.name or os.path.splitext(os.path.basename(path))[0], "path": path,
             "format": "song", "bpm": round(sg.bpm, 2), "key": sg.key,
             "scale": sg.scale, "camelot": hm.camelot(sg.key, sg.scale) if hm else "",
             "seconds": round(sg.seconds(), 1), "bars": sg.total_bars(),
@@ -41,9 +41,9 @@ def _read_song(path):
             "mtime": os.path.getmtime(path), "fingerprint": sg.fingerprint()}
 
 
-def _read_thud(path):
+def _read_oontz(path):
     """A v2 command-log session. Cheap to parse - just read the header lines."""
-    bpm, name = 132.0, os.path.basename(path)[:-5]
+    bpm, name = 132.0, os.path.splitext(os.path.basename(path))[0]
     try:
         for line in open(path, encoding="utf-8"):
             if line.startswith("bpm "):
@@ -51,7 +51,7 @@ def _read_thud(path):
                 break
     except Exception:
         pass
-    return {"name": name, "path": path, "format": "thud", "bpm": round(bpm, 2),
+    return {"name": name, "path": path, "format": "oontz", "bpm": round(bpm, 2),
             "key": "a", "scale": "minor", "camelot": "8A", "seconds": 0.0,
             "bars": 0, "sections": 1, "peak_energy": 0.7, "mean_energy": 0.7,
             "mtime": os.path.getmtime(path), "fingerprint": ""}
@@ -64,7 +64,7 @@ def scan(force=False):
     old = _CACHE["entries"] or _load_index()
     out = {}
     for path in sorted(glob.glob(os.path.join(DIR, "*.song")) +
-                       glob.glob(os.path.join(DIR, "*.thud"))):
+                       glob.glob(os.path.join(DIR, "*.oontz"))):
         key = os.path.basename(path)
         prev = old.get(key)
         try:
@@ -75,7 +75,7 @@ def scan(force=False):
             out[key] = prev                      # unchanged: keep it, ratings and all
             continue
         try:
-            e = _read_song(path) if path.endswith(".song") else _read_thud(path)
+            e = _read_song(path) if path.endswith(".song") else _read_oontz(path)
         except Exception as exc:
             e = {"name": key, "path": path, "format": "broken", "bpm": 0.0,
                  "key": "", "scale": "", "camelot": "", "seconds": 0.0, "bars": 0,
@@ -117,7 +117,7 @@ def all_songs():
 
 def get(name):
     for e in scan().values():
-        if e["name"] == name or os.path.basename(e["path"])[:-5] == name:
+        if e["name"] == name or os.path.splitext(os.path.basename(e["path"]))[0] == name:
             return e
     return None
 

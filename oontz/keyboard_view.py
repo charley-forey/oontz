@@ -16,7 +16,7 @@ from . import keymap as K
 
 def _mode(s):
     return getattr(s, "mode", None) if getattr(s, "mode", "") in K.MODES else \
-        (__import__("thud.core", fromlist=["x"]).ST.mode if True else "studio")
+        (__import__("oontz.core", fromlist=["x"]).ST.mode if True else "studio")
 
 
 def _cur_mode(s):
@@ -112,7 +112,7 @@ def cheatsheet(s, w, h, page=0):
     cats = K.by_cat(mode)
     order = ["transport", "track", "step", "sound", "song", "perform",
              "deck", "mix", "view", "system"]
-    lines = ["", "  " + T.c("accent", "THUD — %s keys" % mode.upper()), ""]
+    lines = ["", "  " + T.c("accent", "OONTZ — %s keys" % mode.upper()), ""]
     for cat in order:
         bs = cats.get(cat)
         if not bs:
@@ -157,7 +157,7 @@ def key_help(mode, key):
 
 def printable_map(mode="studio"):
     """The keymap as markdown, so docs are generated from the same table."""
-    out = ["# thud keys — %s" % mode.upper(), ""]
+    out = ["# oontz keys — %s" % mode.upper(), ""]
     for cat, bs in sorted(K.by_cat(mode).items()):
         out.append("## %s" % cat)
         out.append("")

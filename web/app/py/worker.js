@@ -1,4 +1,4 @@
-/* The Python side of the spike: Pyodide + numpy + the real thud package, in a
+/* The Python side of the spike: Pyodide + numpy + the real oontz package, in a
  * worker so a slow bar can never glitch the page. The main thread asks; this
  * answers. Every render is timed — the number this spike exists to produce. */
 importScripts("https://cdn.jsdelivr.net/pyodide/v0.27.5/full/pyodide.js");
@@ -12,15 +12,15 @@ async function boot() {
   const t1 = performance.now();
   await py.loadPackage("numpy");
   const t2 = performance.now();
-  const zip = await (await fetch("thud.zip")).arrayBuffer();
+  const zip = await (await fetch("oontz.zip")).arrayBuffer();
   py.unpackArchive(zip, "zip", { extractDir: "/app" });
   py.runPython("import sys; sys.path.insert(0, '/app')");
-  web = py.pyimport("thud.web");
+  web = py.pyimport("oontz.web");
   const hello = web.boot();
   const t3 = performance.now();
   const ms = (a, b) => Math.round(b - a);
-  console.log("[oontz-py] pyodide " + ms(t0, t1) + "ms · numpy " + ms(t1, t2) + "ms · thud " + ms(t2, t3) + "ms");
-  return { hello: hello, pyodide: ms(t0, t1), numpy: ms(t1, t2), thud: ms(t2, t3) };
+  console.log("[oontz-py] pyodide " + ms(t0, t1) + "ms · numpy " + ms(t1, t2) + "ms · oontz " + ms(t2, t3) + "ms");
+  return { hello: hello, pyodide: ms(t0, t1), numpy: ms(t1, t2), oontz: ms(t2, t3) };
 }
 
 const booted = boot();

@@ -12,7 +12,7 @@ arrangement grammar instead of the model.
 """
 from .contracts import COMMANDS
 
-# Words people actually use, mapped onto things thud can do.
+# Words people actually use, mapped onto things oontz can do.
 MOODS = {
     "dark": ("phrygian", "lower the filter, minor second in the bassline"),
     "hypnotic": ("minor", "few elements, long sections, tiny variations"),
@@ -259,7 +259,7 @@ def steps(p):
     out.append(Step(
         "Record a take",
         "Press R. Recording captures exactly what you hear, performance effects "
-        "and all, and saves the .thud beside it so you can get back here.",
+        "and all, and saves the .oontz beside it so you can get back here.",
         ["rec"],
         lambda s: s.recording))
 

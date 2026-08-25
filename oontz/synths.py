@@ -259,7 +259,7 @@ ALL = (v_sub, v_reese, v_hoover, v_pluck, v_lead, v_screech, v_pad, v_atmos,
 
 
 def demo():
-    """asserts + a level table. Run: python -m thud.synths"""
+    """asserts + a level table. Run: python -m oontz.synths"""
     a1, a2, a3 = note_hz("a1"), note_hz("a2"), note_hz("a3")
     cases = [
         ("sub", lambda: v_sub(a1, 0.5)),

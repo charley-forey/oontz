@@ -5,7 +5,7 @@ is the whole integration.
 
 THE RULE: a model reply is untrusted text. It is never executed, never eval'd,
 never applied blind. validate() is the gate - every line is parsed and checked
-against thud's real command table before anything is even shown to the user,
+against oontz's real command table before anything is even shown to the user,
 and the caller always gets a preview (AskResult.commands + .diff) to approve.
 Everything else in this module is built on top of validate(); it is written
 first and it is the paranoid part.
@@ -36,7 +36,7 @@ def available():
     then every call would fail. Callers get a truthy/falsy value either way;
     _run_raw uses the cached value itself as argv[0].
     """
-    if os.environ.get("THUD_OFFLINE"):          # the test gates set this: a fuzzed `ask` must not call a model
+    if os.environ.get("OONTZ_OFFLINE"):          # the test gates set this: a fuzzed `ask` must not call a model
         return None
     global _claude_bin
     if _claude_bin is None:
@@ -329,8 +329,8 @@ def _system_prompt(snap):
     names = [t.name for t in snap.tracks]
     pitched = [n for n in names
                if n in core.ST.tracks and core.is_pitched(core.ST.tracks[n])]
-    return """You are editing a live techno pattern in thud, a terminal step
-sequencer. A thud session is just a log of commands, one per line - your
+    return """You are editing a live techno pattern in oontz, a terminal step
+sequencer. A oontz session is just a log of commands, one per line - your
 entire output is more of those lines, applied on top of what already exists.
 
 TRACKS: %s
@@ -359,9 +359,9 @@ WHAT MAKES A TRACK WORK (decide with this; it is what the grader checks):
 CURRENT STATE:
 %s
 
-Reply with ONLY thud command lines, one per line. No prose, no markdown
+Reply with ONLY oontz command lines, one per line. No prose, no markdown
 fences, no numbering, no explanation - every line must be something that
-could be pasted straight into thud.""" % (
+could be pasted straight into oontz.""" % (
         ", ".join(names), ", ".join(pitched) or "none",
         _cmd_table_text(), _theory_text(), _render_state(snap))
 
@@ -473,11 +473,11 @@ def ask(prompt, snapshot, timeout=25):
 def arrange(description, snapshot, timeout=40):
     """'5 minutes, hypnotic, slow build' -> a section timeline as commands,
     '# label' comment lines marking sections (do() treats '#' as a no-op, so
-    they survive into the .thud file as readable markers)."""
+    they survive into the .oontz file as readable markers)."""
     full = (_system_prompt(snapshot) +
             "\n\nBuild a full arrangement timeline for: " + description.strip() +
             "\nMark sections with '# <label>' comment lines (e.g. '# intro', "
-            "'# build', '# drop', '# breakdown'), thud commands under each. "
+            "'# build', '# drop', '# breakdown'), oontz commands under each. "
             "Comments and commands only, nothing else.")
     ok, text = _run_raw(full, timeout)
     if not ok:
@@ -623,10 +623,10 @@ def demo():
         "kick x...x... | cat",                    # |
         "bpm $(whoami)",                          # $(
         "bass `id`",                              # backtick
-        "bpm 140\nsave evil.thud",                 # embedded newline injection
+        "bpm 140\nsave evil.oontz",                 # embedded newline injection
         "kick x?x?x?x?",                          # illegal pattern char
         "bass q9 . . .",                          # not a note
-        "save C:\\evil.thud",                      # absolute path
+        "save C:\\evil.oontz",                      # absolute path
     ]
     good, rejected = validate(bad)
     assert good == [], "adversarial lines slipped through validate(): %r" % good
@@ -638,7 +638,7 @@ def demo():
         "bpm 140", "swing 12", "gain kick 0.8", "pan bass -0.3", "tune hat 6000",
         "filter bass lp 420 res 0.8", "filter bass off", "sidechain bass 0.6",
         "humanize hat 4", "mute kick", "solo bass", "play", "stop", "rec", "songs",
-        "open warehouse", "save songs/_tmp_ai_demo.thud", "load songs/warehouse.thud",
+        "open warehouse", "save songs/_tmp_ai_demo.oontz", "load songs/warehouse.oontz",
         "render takes/_tmp_ai_demo.wav --bars 4", "ab a", "undo", "redo",
         "gen techno", "variation kick",
         "view perform", "voice bass bass", "voices",

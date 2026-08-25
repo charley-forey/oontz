@@ -3,11 +3,11 @@ and full style packs.
 
 Every function here is a COMMANDS entry: f(state, args) -> list[str]. It never
 touches `state` - it only reads it for context (an existing note to reuse, the
-focused track) - and returns plain thud command strings. That is what keeps
+focused track) - and returns plain oontz command strings. That is what keeps
 generated music honest: run the strings through core.do() and you get exactly
 what a human typing them would get, so it undoes and saves like anything else.
 
-Owns: this file, and new songs/*.thud. Nothing else.
+Owns: this file, and new songs/*.oontz. Nothing else.
 """
 import random
 
@@ -558,7 +558,7 @@ def demo():
             pc = NAMES.index(bare.rstrip("0123456789"))
             assert pc in pcs, (scale, t, pcs)
 
-    # -- integration: every COMMANDS function's output must be real thud ----
+    # -- integration: every COMMANDS function's output must be real oontz ----
     def apply_fresh(cmds):
         core.ST.tracks = {t: core.new_track(t) for t in core.TRACK_ORDER}
         core.ST.log.clear()
@@ -596,7 +596,7 @@ def demo():
     # -- write and verify the songbook ---------------------------------------
     os.makedirs("songs", exist_ok=True)
     for fname, (style, desc) in SONGS.items():
-        path = "songs/%s.thud" % fname
+        path = "songs/%s.oontz" % fname
         cmds = _style_cmds(STYLES[style])
         with open(path, "w", encoding="utf-8") as f:
             f.write("# %s - %s\n" % (fname, desc))
@@ -610,15 +610,15 @@ def demo():
 
 
 if __name__ == "__main__":
-    # `python -m thud.gen` executes this file under the name "__main__"; it is
-    # never given the name "thud.gen" in sys.modules. demo() below imports
-    # core, whose load_modules() then imports "thud.gen" for real - a second,
+    # `python -m oontz.gen` executes this file under the name "__main__"; it is
+    # never given the name "oontz.gen" in sys.modules. demo() below imports
+    # core, whose load_modules() then imports "oontz.gen" for real - a second,
     # separate execution of everything above, registering a second set of
     # (behaviorally identical but not identical-by-id) functions and tripping
     # the collision detector against ourselves. Alias the module we're already
     # running under its real name so that import is a no-op.
     import sys
-    sys.modules.setdefault("thud.gen", sys.modules[__name__])
+    sys.modules.setdefault("oontz.gen", sys.modules[__name__])
     results = demo()
     print("gen.py: all checks pass\n")
     for name, (bpm, rms, peak, active, _bar) in sorted(results.items()):

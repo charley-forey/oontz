@@ -6,7 +6,7 @@ the per-cycle backlog and log.
 ## The goal, in one sentence
 
 **oontz.music** tells people who we are and what we do. **oontz.sh** *is* the
-software — the same instrument you get from `python -m thud`, running in the
+software — the same instrument you get from `python -m oontz`, running in the
 browser for anyone, free, with an account only if you want to keep things.
 
 ## The two sites, and what each is for
@@ -19,16 +19,16 @@ browser for anyone, free, with an account only if you want to keep things.
 
 ## The decision that matters: one engine, not two
 
-There are two composers today: `thud/` (Python, the real one, 20 modules) and
+There are two composers today: `oontz/` (Python, the real one, 20 modules) and
 `web/app/oontz.js` (a 725-line JS port). ROADMAP already calls the drift between
 them a risk and built `theory.py → theory.js` to contain it. That is a treatment,
 not a cure.
 
 The honest way to put "the actual software" at oontz.sh is **Pyodide**: run the
-real `thud` package in the visitor's browser (numpy in WASM), the terminal page
+real `oontz` package in the visitor's browser (numpy in WASM), the terminal page
 drawn from `ui.build()` exactly as on the desktop, audio through an AudioWorklet.
 ARCHITECTURE-WEB.md rejected Pyodide because of "GC pauses in the audio path" —
-but thud's audio path never runs Python per sample. It renders bar N+1 while bar N
+but oontz's audio path never runs Python per sample. It renders bar N+1 while bar N
 plays (`core.render_bar`) and the callback only slices a buffer. That design is
 what makes it viable: Python renders in a Web Worker, the worklet slices.
 
@@ -42,7 +42,7 @@ oontz.sh to the real engine and delete the JS port. If not, the JS port stays an
 we vectorise `svf` first (already on the roadmap, it is 99 ms of that 200 ms). The
 landing page keeps its 80-line toy either way — it is a demo, not the product.
 
-What the spike needs from `thud/`: `sounddevice` import made optional, a
+What the spike needs from `oontz/`: `sounddevice` import made optional, a
 JS-callable surface (`do(cmd)`, `render_bar()`, `snapshot()`, `ui.build()`), and
 the render-ahead scheduler driven from JS instead of a thread. Small changes at
 the seams `contracts.py` already draws.
@@ -61,7 +61,7 @@ the seams `contracts.py` already draws.
 
 ### 1. Accounts that buy something
 Email + magic link exists. Add what a signed-in user actually gets:
-- **Takes.** `R` records; a signed-in `save` stores the *take* — the `.thud`
+- **Takes.** `R` records; a signed-in `save` stores the *take* — the `.oontz`
   command log, a few KB — not the WAV. The engine is deterministic, so a take
   re-renders identically anywhere. Storage stays free.
 - **Playlists.** Ordered lists of songs (yours or public ones), `public` flag,
@@ -112,7 +112,7 @@ visuals can *anticipate* the drop instead of detecting it late.
   survives the engine swap.
 
 ### 6. The loop that keeps it improving
-- Gate stays: `python -m thud test` + `python -m thud.qa` + `node web/app/check.js`,
+- Gate stays: `python -m oontz test` + `python -m oontz.qa` + `node web/app/check.js`,
   and a web cycle is done only when Railway reports SUCCESS and the live file has
   the change.
 - Cycles pick the top open item here, do it, prove it, log it (ROADMAP "Cycle log").
@@ -129,7 +129,7 @@ a PDF generated from the document. The spec lives in `docs/OONTZ-FORMAT.md`.
 
 Three layers, in the order they compound:
 
-1. **The format.** `.thud` (command log) and `.song` (`format: "thud-song-1"`
+1. **The format.** `.oontz` (command log) and `.song` (`format: "oontz-song-1"`
    JSON timeline) — tiny, deterministic, diffable, already real.
 2. **The ecosystem.** Fork/remix with provenance (shipped), playlists and share
    pages (shipped), then: structural search, a module registry ("npm for

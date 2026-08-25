@@ -171,7 +171,7 @@ class Song:
 
     # -- persistence -----------------------------------------------------
     def to_dict(self):
-        return {"format": "thud-song-1", "name": self.name, "bpm": self.bpm,
+        return {"format": "oontz-song-1", "name": self.name, "bpm": self.bpm,
                 "swing": self.swing, "key": self.key, "scale": self.scale,
                 "order": self.order, "meta": self.meta,
                 "sections": {k: v.to_dict() for k, v in self.sections.items()}}

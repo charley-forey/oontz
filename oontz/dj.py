@@ -1,6 +1,6 @@
 """Live performance FX - pointer math over the pre-rendered bar, not synthesis.
 
-CENTRAL IDEA (see core.py's docstring and _callback): thud renders ONE BAR into a
+CENTRAL IDEA (see core.py's docstring and _callback): oontz renders ONE BAR into a
 (n,2) array and the audio callback only ever slices it. So a "live" effect here
 never re-renders - it is POINTER MATH over that existing buffer: where to read
 from, how fast, which direction. A loop roll re-reads the last window. A spinback

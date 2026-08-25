@@ -1,4 +1,4 @@
-/* Used by `python -m thud.qa`: reads [[curve, minutes, bpm, dropLo, dropHi], ...]
+/* Used by `python -m oontz.qa`: reads [[curve, minutes, bpm, dropLo, dropHi], ...]
  * on stdin and prints the browser composer's plan for each, so the Python and JS
  * arrangers can be held to the same answer. */
 "use strict";

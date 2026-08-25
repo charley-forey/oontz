@@ -16,7 +16,7 @@ import numpy as np
 
 from .contracts import SR, COMMANDS
 
-CACHE = ".thudcache"
+CACHE = ".oontzcache"
 CACHE_MAX = 40                                   # files; oldest evicted first
 
 
@@ -276,7 +276,7 @@ DECKS = Decks()
 def _load_cmd(state, args):
     """`dload a warehouse` - render a song onto a deck.
 
-    Not `load`: core already owns that verb for .thud session files.
+    Not `load`: core already owns that verb for .oontz session files.
     """
     from . import core
     from . import song as sm
