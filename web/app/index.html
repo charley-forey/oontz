@@ -1464,12 +1464,11 @@ var CMDS = {
     if(MODE!=='deck') CMDS.mode(['deck']);
     var pr = w('<span class="dim">  rendering onto '+name+'…</span>');
     try{ var t0 = performance.now(), nm = esc(sg.name);      // inside the try: a bad song must not throw before the catch exists
-      /* onProgress covers building the graph, which is under a second of it. The
-         render itself reports nothing and takes about twice the length of the track,
-         so say that out loud instead of showing a percentage that means nothing. */
+      /* A deck renders in chunks, so this percentage is real work finished, not a
+         guess - and the render yields between chunks, so it actually paints. */
       var rr = await OZ.renderSong(sg, function(f){
-        if(f >= 1) pr.innerHTML = '<span class="dim">  rendering '+nm+' onto '+name+
-          '… <span class="w">'+mmss(songSeconds(sg))+' of audio, this takes a moment</span></span>';
+        pr.innerHTML = '<span class="dim">  rendering '+nm+' onto '+name+'… '+
+          Math.round(f * 100)+'%</span>';
       }, {raw: true});                                      // the live master chain does the mastering
       d.load(rr); DECKFOC = name;
       pr.innerHTML = '<span class="ok">  '+name.toUpperCase()+' ← '+esc(sg.name)+'</span> <span class="dim">'+mmss(rr.seconds)+' · '+rr.grid.length+' beats on the grid · rendered in '+((performance.now()-t0)/1000).toFixed(1)+'s</span>';

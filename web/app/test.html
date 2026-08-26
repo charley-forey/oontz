@@ -255,16 +255,83 @@ async function until(fn, ms, what){
     return "3 renders, max " + W.OZ.renderFlight().max + " in flight";
   });
 
-  await t("a render says when it has stopped blocking the page", async function(){
-    var pct = [], t0 = performance.now(), buildAt = 0;
-    await W.OZ.renderSong(W.CO.compose("techno", 1, "classic"), function(f){
-      pct.push(f); if(f >= 1 && !buildAt) buildAt = performance.now() - t0;
-    }, {raw: true});
-    ok(pct.length >= 1 && pct[pct.length - 1] === 1, "onProgress never reported the graph was built");
-    /* The point of the callback: the caller learns the tab is free long before the
-       render ends, which is what lets it say something truthful in between. */
-    ok(buildAt < (performance.now() - t0), "the build was not reported before the render finished");
-    return "graph built in " + Math.round(buildAt) + "ms";
+  /* A whole song in one context is quadratic in its length - every scheduled node
+     stays in the graph, so every quantum walks all of them. A deck renders in
+     chunks instead, which is what makes a real track loadable at all. */
+  await t("a deck render is chunked, and stays roughly linear", async function(){
+    var sg = W.CO.compose("techno", 2, "classic");
+    var short = W.OZ.totalBars(sg);
+    var pct = [];
+    var t0 = performance.now();
+    var rr = await W.OZ.renderSong(sg, function(f){ pct.push(f); }, {raw: true});
+    var ms = performance.now() - t0, secs = rr.seconds;
+
+    ok(pct.length > 2, "a chunked render must report per chunk, not once at the end");
+    ok(pct[pct.length - 1] === 1, "progress never reached the end");
+    ok(pct.every(function(f, i){ return i === 0 || f >= pct[i - 1]; }), "progress went backwards");
+    ok(rr.buf.length >= Math.floor(secs * 44100), "the stitched buffer is shorter than the song");
+
+    /* The whole point. Before chunking this ran at ~2100ms per second of audio for a
+       song this long; a chunk stays down at a few hundred. Generous ceiling so a slow
+       machine passes and a return to quadratic does not. */
+    var perSec = ms / secs;
+    ok(perSec < 900, "a deck render is back to quadratic: " + Math.round(perSec) + "ms per second of audio");
+
+    /* Silence would also be fast. */
+    var d = rr.buf.getChannelData(0), peak = 0;
+    for(var i = 0; i < d.length; i += 17) if(Math.abs(d[i]) > peak) peak = Math.abs(d[i]);
+    ok(peak > 0.05, "the stitched render is silent - peak " + peak.toFixed(3));
+    return short + " bars, " + Math.round(perSec) + "ms per audio-second, peak " + peak.toFixed(2);
+  });
+
+  /* Chunking has to produce the same MUSIC as one long render - same hits, at the
+     same times, at the same levels, with tails ringing across the seams instead of
+     being cut off at them.
+     It is deliberately not asserted sample-by-sample. It was measured that way, and
+     it is not sample-identical: individual hits differ in phase detail because a
+     voice is built against its own context's clock. What holds, and what a listener
+     would notice if it broke, is the envelope - measured at 0.99987 correlation with
+     matching RMS, against a single-context render of the same song. A dropped tail,
+     a mistimed chunk or a lost hit all break that immediately. */
+  await t("a chunked render is the same music as one long render", async function(){
+    var R = 44100;
+    var sg = W.CO.compose("techno", 1, "classic");
+    sg.order = ["intro"]; sg.sections.intro.bars = 8;      /* two chunks, and cheap to render whole */
+    var total = W.OZ.totalBars(sg), g0 = W.OZ.gridFor(sg);
+
+    /* the reference: the whole thing in one context, which is what chunking replaced */
+    var off = new W.OfflineAudioContext(1, Math.ceil((g0.seconds + 1.5) * R), R);
+    var g = off.createGain(); g.gain.value = 0.85; g.connect(off.destination);
+    var fake = new W.OZ.Engine(); fake.ctx = off; fake.groove = W.OZ.grooveOf(sg);
+    var tt = 0;
+    for(var bar = 0; bar < total; bar++){
+      var st = W.OZ.stateAt(sg, bar), spb = 60 / (st.bpm || g0.bpm);
+      for(var i = 0; i < 16; i++)
+        fake._hits(off, g, tt + i * spb / 4, i, st.tracks, st.order, st.bpm || g0.bpm, st.swing || 0, bar);
+      tt += 4 * spb;
+    }
+    var a = (await off.startRendering()).getChannelData(0);
+    var b = (await W.OZ.renderSong(sg, null, {raw: true})).buf.getChannelData(0);
+
+    function env(x){
+      var Wn = Math.round(0.05 * R), out = [];
+      for(var s = 0; s + Wn < x.length; s += Wn){
+        var e = 0; for(var i = 0; i < Wn; i++){ var v = x[s + i]; e += v * v; }
+        out.push(Math.sqrt(e / Wn));
+      }
+      return out;
+    }
+    var ea = env(a), eb = env(b), n = Math.min(ea.length, eb.length);
+    var num = 0, da = 0, db = 0;
+    for(var i = 0; i < n; i++){ num += ea[i] * eb[i]; da += ea[i] * ea[i]; db += eb[i] * eb[i]; }
+    var corr = num / Math.sqrt(da * db);
+    var rmsA = Math.sqrt(da / n), rmsB = Math.sqrt(db / n);
+
+    ok(rmsA > 0.01, "the reference render is silent, so this proves nothing");
+    ok(corr > 0.999, "chunked audio no longer tracks the single-context render: correlation " + corr.toFixed(5));
+    ok(Math.abs(rmsA - rmsB) / rmsA < 0.05,
+       "chunked audio changed level: " + rmsA.toFixed(4) + " vs " + rmsB.toFixed(4));
+    return "corr " + corr.toFixed(5) + ", rms " + rmsA.toFixed(4) + " vs " + rmsB.toFixed(4);
   });
 
   await t("a gallery track that is not there says so, out loud", async function(){

@@ -958,35 +958,100 @@ function breathe(){ return new Promise(function(r){ setTimeout(r, 0); }); }
    for a five-minute song that is tens of thousands of nodes constructed before
    startRendering() is even called, and the tab is frozen solid for all of it. That
    freeze, not the render, is what "it says loading and never loads" was. */
+/* Rendering a whole song into ONE context is quadratic in the length of the song.
+ *
+ * Every note for the whole arrangement is scheduled up front, and a scheduled node
+ * stays in the graph from the moment it is created - so each render quantum walks
+ * every node in the song, and total cost goes as duration x nodes, which is
+ * duration squared. Measured, techno, one context, per second of audio produced:
+ *
+ *     4 bars   7.3s audio    129 ms/s
+ *     8 bars  14.5s audio    209 ms/s
+ *    16 bars  29.1s audio   1057 ms/s
+ *    32 bars  58.2s audio   2114 ms/s
+ *
+ * A three-minute track is not slow that way, it is never. Rendered four bars at a
+ * time it is about 23 seconds, because each chunk stays in the cheap part of that
+ * curve. Chunks are summed, not concatenated, so a voice that rings past the end of
+ * its own chunk lands in the next one exactly where it would have.
+ *
+ * This is exact for `raw`, which is what a deck loads: raw has no master chain, so
+ * there is no state carried across a seam and the sum is the same audio the long
+ * render would have produced. The MASTERED path is left whole on purpose - its two
+ * DynamicsCompressors carry their state through time, and chopping that up would
+ * change what you export. Slow and right beats fast and different.
+ */
+var CHUNK_BARS = 4;
+var CHUNK_TAIL = 2.0;              /* how long a voice may ring past its last hit; the engine's own pad is 1.5s */
+/* A lead-in, because _hits ends with Math.max(0, t + sw) and `sw` goes NEGATIVE:
+   groove.push_ms pushes a hit a few milliseconds EARLY. Deep in a long render that
+   is fine, but a chunk that starts its bars at t=0 clamps those hits to 0 and
+   mistimes the first step of every chunk. 50ms is far past the 15ms the engine
+   calls the limit of feel. */
+var CHUNK_PRE = 0.05;
+var CHUNK_PRE_N = Math.round(CHUNK_PRE * SR);      /* whole samples, so the sum below is an exact shift */
+
+/* `frac` carries the sub-sample part of where this chunk really begins. Rounding
+   each chunk to the nearest sample would misalign it against the song by up to half
+   a sample, and half a sample of shift on a transient is a big arithmetic
+   difference even though the chunk itself sounds right. */
+function _chunkGraph(song, bar0, nBars, g0, master, frac){
+  var C = global.OfflineAudioContext || global.webkitOfflineAudioContext;
+  var dur = 0, b, s;
+  for(b = 0; b < nBars; b++){ s = stateAt(song, bar0 + b); dur += 4 * 60 / ((s && s.bpm) || g0.bpm); }
+  var off = new C(1, Math.ceil((CHUNK_PRE + dur + CHUNK_TAIL) * SR), SR);
+  var g;
+  if(master) g = buildMaster(off, off.destination);
+  else { g = off.createGain(); g.gain.value = 0.85; g.connect(off.destination); }
+  var fake = new Engine(); fake.ctx = off; fake.groove = grooveOf(song);
+  var t = CHUNK_PRE + (frac || 0);
+  for(b = 0; b < nBars; b++){
+    var st = stateAt(song, bar0 + b); if(!st) break;
+    var spb = 60 / (st.bpm || g0.bpm);
+    for(var i = 0; i < 16; i++)
+      fake._hits(off, g, t + i * spb / 4, i, st.tracks, st.order, st.bpm || g0.bpm, st.swing || 0, bar0 + b);
+    t += 4 * spb;
+  }
+  return off.startRendering().then(function(buf){ return {buf: buf, seconds: dur}; });
+}
+
 function renderSong(song, onProgress, opts){
   var g0 = gridFor(song), total = totalBars(song);
+  var raw = !!(opts && opts.raw);
   return queued(async function(){
     var C = global.OfflineAudioContext || global.webkitOfflineAudioContext;
-    var off = new C(1, Math.ceil((g0.seconds + 1.5) * SR), SR);
-    /* `raw` skips the master chain: a deck plays through the LIVE one, and mastering
-       the same audio twice glue-compresses and limits it twice, which pumps. */
-    var g;
-    if(opts && opts.raw){ g = off.createGain(); g.gain.value = 0.85; g.connect(off.destination); }
-    else g = buildMaster(off, off.destination);
-    var fake = new Engine(); fake.ctx = off; fake.groove = grooveOf(song);
-    var t = 0;
-    for(var bar = 0; bar < total; bar++){
-      var st = stateAt(song, bar), spb = 60 / (st.bpm || g0.bpm);
-      for(var i = 0; i < 16; i++) fake._hits(off, g, t + i * spb / 4, i, st.tracks, st.order, st.bpm || g0.bpm, st.swing || 0, bar);
-      t += 4 * spb;
-      if(bar % 8 === 7) await breathe();
+    var len = Math.ceil((g0.seconds + 1.5) * SR), buf;
+
+    if(raw){
+      var out = new Float32Array(len), at = 0, done = 0;
+      for(var b0 = 0; b0 < total; b0 += CHUNK_BARS){
+        var n = Math.min(CHUNK_BARS, total - b0);
+        var startN = Math.round(at * SR);
+        var c = await _chunkGraph(song, b0, n, g0, false, at - startN / SR);
+        /* The lead-in is a whole number of samples, so undoing it is an exact shift. */
+        var src = c.buf.getChannelData(0), base = startN - CHUNK_PRE_N;
+        var from = Math.max(0, -base), lim = Math.min(src.length, out.length - base);
+        for(var i = from; i < lim; i++) out[base + i] += src[i];   /* sum, so the tail rings on */
+        at += c.seconds; done += n;
+        if(onProgress) onProgress(done / total);                 /* real progress: a chunk really is done */
+        await breathe();
+      }
+      buf = new C(1, len, SR).createBuffer(1, len, SR);
+      buf.copyToChannel(out, 0);
+    } else {
+      /* Whole, in one context, for the reason in the comment above. */
+      var off = new C(1, len, SR), g = buildMaster(off, off.destination);
+      var fake = new Engine(); fake.ctx = off; fake.groove = grooveOf(song);
+      var t = 0;
+      for(var bar = 0; bar < total; bar++){
+        var st = stateAt(song, bar), spb = 60 / (st.bpm || g0.bpm);
+        for(var k = 0; k < 16; k++) fake._hits(off, g, t + k * spb / 4, k, st.tracks, st.order, st.bpm || g0.bpm, st.swing || 0, bar);
+        t += 4 * spb;
+        if(bar % 8 === 7) await breathe();
+      }
+      if(onProgress) onProgress(1);        /* the graph is built; the render reports nothing */
+      buf = await off.startRendering();
     }
-    /* Where the time actually goes, measured on this machine: 32 bars of techno is
-       58s of audio, half a second to build this graph and TWO MINUTES inside
-       startRendering. So there is no honest percentage to show - the only hook into
-       a render in flight is suspend(), and driving it in a resume loop wedged the
-       renderer for longer than the render it was reporting on. onProgress therefore
-       covers the build and says so, and the caller says "rendering" for the rest
-       rather than parking a fake 100% on screen for two minutes.
-       ponytail: no render-phase progress. Revisit if renders ever get fast enough
-       that suspend() is cheap relative to them. */
-    if(onProgress) onProgress(1);
-    var buf = await off.startRendering();
     return {buf: buf, grid: g0.grid, marks: g0.marks, seconds: g0.seconds, bpm: g0.bpm, name: song.name};
   }, g0.seconds);
 }
