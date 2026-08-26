@@ -791,7 +791,7 @@ function promptEv(v, how){
   const t = v.trim(); if(!t) return;
   const pv0 = t.split(/\s+/)[0].toLowerCase();
   ev('prompt_submit', {text: t.slice(0,300), verb: ALIAS[pv0]||pv0, len: t.length, site: 'music',
-    think_ms: KS.at ? Date.now()-KS.at : 0, nkeys: KS.n, backspaces: KS.back, paste: KS.paste,
+    think_ms: KS.at ? Date.now()-KS.at : 0, strokes: KS.n, backspaces: KS.back, paste: KS.paste,
     from_history: HI < HIST.length ? 1 : 0, how: how});
   ksReset();
 }

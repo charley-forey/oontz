@@ -2085,7 +2085,7 @@ IN.addEventListener('keydown', function(e){
   if(e.key==='Enter'){ var v=IN.value; IN.value=''; TABS=null; sugClose();
     if(v.trim()){ var pv0 = v.trim().split(/\s+/)[0].toLowerCase();
       ev('prompt_submit', {text: v.trim().slice(0,300), verb: ALIAS[pv0]||pv0, len: v.trim().length,
-        site: 'app', think_ms: KS.at ? Date.now()-KS.at : 0, nkeys: KS.n, backspaces: KS.back,
+        site: 'app', think_ms: KS.at ? Date.now()-KS.at : 0, strokes: KS.n, backspaces: KS.back,
         paste: KS.paste, from_history: HI < HIST.length ? 1 : 0}); }
     ksReset();
     if(v.trim()){ if(HIST[HIST.length-1] !== v.trim()) HIST.push(v.trim());
