@@ -156,6 +156,21 @@ Engine.prototype.wave = function(){
 /* -- primitives ---------------------------------------------------------- */
 
 function envTo(g, t, a, d, peak){
+  /* Shut the gate NOW, not at t.
+   *
+   * An AudioParam holds its default until its first scheduled event, and a
+   * GainNode's gain defaults to 1.0 - so between the moment a hit is built and the
+   * moment it plays, its gain node is WIDE OPEN. That is harmless for a silent
+   * oscillator, but not for a WaveShaper: satCurve interpolates to a small non-zero
+   * value at zero input, so every hit that has not played yet trickles DC into the
+   * mix at unity gain.
+   *
+   * In a whole-song render that is thousands of pending hits at once. Measured: 16
+   * bars of pending kicks put a CONSTANT 0.1075 (peak == rms, so pure DC) into the
+   * silence before any of them started, which inflated the opening of every render
+   * and decayed as the song used its notes up. It is why a quiet intro came out as
+   * loud as the drop. */
+  g.gain.value = 0.0001;
   g.gain.setValueAtTime(0.0001, t);
   g.gain.linearRampToValueAtTime(peak, t + a);
   g.gain.exponentialRampToValueAtTime(0.0001, t + a + d);

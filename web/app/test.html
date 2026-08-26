@@ -142,6 +142,41 @@ async function until(fn, ms, what){
     return m.order.length + " tracks, peak " + m.master.peakDb.toFixed(2) + " dBFS";
   });
 
+  /* A hit that has not played yet must be SILENT.
+   *
+   * An AudioParam holds its default until its first scheduled event and a gain
+   * defaults to 1.0, so a built-but-not-yet-played hit used to sit wide open - and a
+   * WaveShaper is not silent on silence, because satCurve interpolates to a non-zero
+   * value at zero input. Every pending hit therefore trickled DC into the mix.
+   * Measured before the fix: 16 bars of pending kicks put a constant 0.1075 into the
+   * silence ahead of them (peak == rms, so pure DC, ~0.0019 per pending hit). It
+   * inflated the opening of every render and faded as the song used its notes up,
+   * which is why a quiet intro came out as loud as the drop. */
+  await t("a hit that has not played yet is silent", async function(){
+    var R = 44100;
+    var sg = W.CO.compose("techno", 1, "classic");
+    sg.order = ["intro"]; sg.sections.intro.bars = 16;
+    var g0 = W.OZ.gridFor(sg);
+    /* three seconds of context, with every note scheduled to start at ten */
+    var off = new W.OfflineAudioContext(1, 3 * R, R);
+    var out = off.createGain(); out.gain.value = 0.85; out.connect(off.destination);
+    var fake = new W.OZ.Engine(); fake.ctx = off; fake.groove = W.OZ.grooveOf(sg);
+    var t0 = 10;
+    for(var bar = 0; bar < 16; bar++){
+      var st = W.OZ.stateAt(sg, bar), spb = 60 / (st.bpm || g0.bpm);
+      for(var i = 0; i < 16; i++)
+        fake._hits(off, out, t0 + i * spb / 4, i, st.tracks, st.order, st.bpm || g0.bpm, st.swing || 0, bar);
+      t0 += 4 * spb;
+    }
+    var x = (await off.startRendering()).getChannelData(0);
+    var e = 0, peak = 0;
+    for(var k = 0; k < x.length; k++){ e += x[k] * x[k]; var v = Math.abs(x[k]); if(v > peak) peak = v; }
+    var rms = Math.sqrt(e / x.length);
+    ok(rms < 1e-3, "pending hits leak into the silence before them: rms " + rms.toFixed(5) +
+                   ", peak " + peak.toFixed(5) + (Math.abs(peak - rms) < rms * 0.05 ? " (constant, so DC)" : ""));
+    return "rms " + rms.toExponential(1) + " across 3s of nothing";
+  });
+
   await t("the master chain enforces its own rules", async function(){
     var m = W.EARLAST;
     ok(m.master.peakDb <= -0.5, "no headroom: " + m.master.peakDb.toFixed(2) + " dBFS");
