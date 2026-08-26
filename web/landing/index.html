@@ -274,7 +274,10 @@ function frame(){
   if(reduce) return;
   tt+=playing?.02:.006;
   cx.fillStyle='rgba(8,10,12,.16)'; cx.fillRect(0,0,W,H);
-  const cxx=W/2, cyy=H/2, R=Math.min(W,H)*.42;
+  /* hypot, not min: min(W,H) inscribes the rings in a centred square and throws away
+     half the width of a 16:9 screen. The diagonal lets the outer rings leave the frame,
+     which is what makes it read as a background rather than a logo. */
+  const cxx=W/2, cyy=H/2, R=Math.hypot(W,H)*.5;
   const beat = playing ? Math.max(0,1-((performance.now()/1000*bpm/60)%1)) : .25;
   const rings = 5;
   for(let r=0;r<rings;r++){
@@ -283,12 +286,16 @@ function frame(){
     for(let a=0;a<=64;a++){
       const th=a/64*Math.PI*2;
       const wob=1+Math.sin(th*(3+r)+tt*2)*.12*(1+beat);
-      const x=cxx+Math.cos(th)*rad*wob, y=cyy+Math.sin(th)*rad*wob*.42;
+      /* .42 squashed the y a SECOND time, so it reached 40% of the height at best */
+      const x=cxx+Math.cos(th)*rad*wob, y=cyy+Math.sin(th)*rad*wob*.72;
       a?cx.lineTo(x,y):cx.moveTo(x,y);
     }
     cx.closePath();
     const hue=(tt*40+r*40)%360;
-    cx.strokeStyle=`hsla(${hue},80%,60%,${(1-p)*.22*(playing?1:.45)})`;
+    /* Idle was .22*.45 = .099 alpha under a canvas at opacity .5 - about .05 on
+       screen, which is invisible. The text carries a halo now, and that is what buys
+       the headroom to let this be seen without competing with a single glyph. */
+    cx.strokeStyle=`hsla(${hue},80%,62%,${(1-p)*.26*(playing?1:.85)})`;
     cx.lineWidth=(1.5+beat*2)*devicePixelRatio; cx.stroke();
   }
 }
