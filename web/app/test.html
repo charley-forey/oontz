@@ -239,6 +239,59 @@ async function until(fn, ms, what){
     W.CMDS.mode(["studio"]); eq(W.MODE, "studio", "did not return to studio");
   });
 
+  /* The deck used to be a room with the door painted on. Entering it left focus in
+     the prompt, and the global keydown handler bails on a focused prompt - so space,
+     sync, loop, the crossfader and M itself all did nothing, and there was no button
+     either. These four are that bug, from four directions. */
+  await t("the deck keyboard is alive even though the prompt was focused", function(){
+    W.IN.focus();
+    W.CMDS.mode(["deck"]);
+    ok(W.document.activeElement !== W.IN, "entering the deck left the prompt focused");
+    var d = W.E.decks()[W.DECKFOC];
+    ok(d.r, "the deck under focus has nothing loaded to play");
+    var before = d.playing;
+    W.dispatchEvent(new W.KeyboardEvent("keydown", {key: " ", bubbles: true}));
+    ok(d.playing !== before, "space did not reach the deck");
+    W.dispatchEvent(new W.KeyboardEvent("keydown", {key: " ", bubbles: true}));
+    eq(d.playing, before, "space did not toggle back");
+  });
+
+  await t("M gets you out, and so does the button", function(){
+    W.CMDS.mode(["deck"]);
+    W.dispatchEvent(new W.KeyboardEvent("keydown", {key: "M", bubbles: true}));
+    eq(W.MODE, "studio", "M did not leave the deck");
+    W.CMDS.mode(["deck"]);
+    var x = W.document.getElementById("deckx");
+    ok(x && x.offsetParent !== null, "the deck has no visible way out");
+    x.dispatchEvent(new W.PointerEvent("pointerdown", {bubbles: true}));
+    eq(W.MODE, "studio", "the exit button did nothing");
+  });
+
+  await t("exit and quit mean exit on the deck", function(){
+    W.CMDS.mode(["deck"]); W.run("exit");
+    eq(W.MODE, "studio", "`exit` did not leave the deck");
+    W.CMDS.mode(["deck"]); W.run("quit");
+    eq(W.MODE, "studio", "`quit` did not leave the deck");
+  });
+
+  /* The two tests after this one query #hud .sq and #rack .st. If the exit path
+     ever leaves deck state behind they fail somewhere else entirely, so prove the
+     studio is whole here, where the message names the real cause. */
+  await t("the studio comes back whole", function(){
+    W.E.jump(2); W.E.play();
+    var bar = W.E.songbar;
+    W.CMDS.mode(["deck"]);
+    ok(!W.E.playing, "deck mode should have stopped the studio transport");
+    W.CMDS.mode(["studio"]);
+    ok(W.E.playing, "the studio transport did not come back");
+    eq(W.E.songbar, bar, "the studio came back at the wrong bar");
+    ok(!W.document.body.classList.contains("deck"), "body kept the deck class");
+    W.draw();
+    ok(W.document.getElementById("rack").classList.contains("on"), "the rack did not come back");
+    ok(W.document.querySelectorAll("#hud .sq").length > 4, "the section map did not come back");
+    W.E.stop();
+  });
+
   /* ---- the keyboard ----------------------------------------------------- */
   await t("keys perform when the prompt is blurred", function(){
     W.IN.blur();
