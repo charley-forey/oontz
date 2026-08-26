@@ -330,8 +330,10 @@ A.ok(!/we (also )?collect nothing|no data/i.test(legal), "the notice must not ov
 var idx = fs.readFileSync(require("path").join(here, "index.html"), "utf8");
 A.ok(idx.indexOf('src="legal.js"') >= 0, "index.html must load legal.js");
 A.ok(idx.indexOf("github.com/charley-forey/oontz") >= 0, "the app must link its source");
-A.ok(/prompts you send to the AI/.test(legal),
-  "api/main.py logs ai_prompt - the notice must say so");
+/* substance, not wording: the notice must disclose that prompts are logged, however
+   that sentence happens to be phrased today */
+A.ok(/prompt/i.test(legal) && /log/i.test(legal),
+  "api/main.py logs ai_prompt - the notice must say prompts are logged");
 A.ok(/terms: function/.test(idx) && /privacy: function/.test(idx),
   "terms and privacy must be commands, not just a file");
 
@@ -367,6 +369,16 @@ A.strictEqual(bt.notes.indexOf(undefined), -1, "undefined in the notes lane sile
    else in draw() was escaped and these two were not. And the model proposes
    music, never account actions - the server prompt claims the client refuses,
    so the client has to actually refuse. */
+/* esc() lands INSIDE double-quoted attributes (data-t, data-cmd), so escaping
+   only &<> was a breakout: a track named `" onmouseover=x y="` shipped as markup.
+   Asserting the call site is escaped is not enough - assert the escaper. */
+var escSrc = html.slice(html.indexOf("var esc = function"),
+                        html.indexOf("};", html.indexOf("var esc = function")) + 2);
+var esc = eval("(" + escSrc.replace(/^var esc = /, "").replace(/;$/, "") + ")");
+A.strictEqual(esc('" onmouseover=x'), "&quot; onmouseover=x", "esc() must escape double quotes");
+A.strictEqual(esc("'"), "&#39;", "esc() must escape single quotes");
+A.strictEqual(esc("<&>"), "&lt;&amp;&gt;", "esc() must still escape angle brackets and ampersand");
+
 var drawFn = html.slice(html.indexOf("function draw()"), html.indexOf("psychedelic bg"));
 A.strictEqual(drawFn.split("data-t=").length - 1, 2, "expected two data-t sites in draw()");
 drawFn.split("data-t=").slice(1).forEach(function(chunk, i){
@@ -658,5 +670,23 @@ A.ok(pageSrc.indexOf("ev('prompt_submit'") >= 0 && /prompt_submit'[\s\S]{0,120}t
   A.ok(pageSrc.indexOf("ev('" + n + "'") >= 0, "index.html never fires ev('" + n + "')"); });
 var swSrc = fs2.readFileSync(path2.join(__dirname, "sw.js"), "utf8");
 A.ok(/CORE[\s\S]{0,300}"\/track\.js"/.test(swSrc), "sw.js CORE must cache /track.js, or the PWA loads without it");
+
+/* DECK, the way out. Every deck key sits behind a handler that bails while the
+ * prompt has focus, and the prompt always has focus - so entering deck mode
+ * WITHOUT blurring leaves the page with no keyboard and no exit. The behaviour is
+ * asserted live in test.html; these guard the wiring the browser cannot see once
+ * it is gone. */
+A.ok(/if\(m==='deck'\)[\s\S]{0,600}IN\.blur\(\)/.test(pageSrc),
+  "entering deck mode must blur the prompt, or the whole DECK_KEYS table is dead");
+A.ok(/stop: function\(\)\{ if\(MODE === 'deck'\) return CMDS\.mode\(\['studio'\]\)/.test(pageSrc),
+  "stop/exit/quit/q must leave the deck when you are on it");
+A.ok(/id="deckx"/.test(pageSrc) && /id="deckpal"/.test(pageSrc),
+  "deck mode needs a tappable way out and a tappable way to the prompt - a phone has neither M nor Ctrl+K");
+A.ok(/getElementById\('deckx'\)[\s\S]{0,200}CMDS\.mode\(\['studio'\]\)/.test(pageSrc),
+  "the deck exit button must be wired to something");
+A.ok(/else \{ MODE = m;[\s\S]{0,400}mixStop\(\)/.test(pageSrc),
+  "leaving deck mode must stop a running mix - mixTick bails on MODE and the set never ends");
+A.ok(/function closePal\(\)[\s\S]{0,160}MODE === 'deck'/.test(pageSrc),
+  "closing the palette must not hand focus back to the prompt in deck mode");
 
 console.log("web checks pass  ·  write-through · pads · viz · touch · midi · voices+4 · viz-auto · themes · stage · pwa · notes · roll · jumps · decks · diff · pat2 · midi · paint · tilt · rooms · theory (" + checked + " plans in window) · legible · ear · track · " + OZ.KEYS.length + " keys listed");

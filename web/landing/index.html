@@ -147,7 +147,9 @@
 <script>
 "use strict";
 const OUT = document.getElementById('out'), IN = document.getElementById('in');
-const esc = s => String(s).replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+/* Quotes too: esc() lands inside double-quoted data-cmd attributes, and a
+   pattern string out of a published song is attacker-chosen. */
+const esc = s => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 function w(html, cls){ const d=document.createElement('div'); if(cls)d.className=cls;
   d.innerHTML=html; OUT.appendChild(d); OUT.scrollTop=OUT.scrollHeight; return d; }
 function line(s='', cls){ return w(esc(s), cls); }

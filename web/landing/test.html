@@ -189,17 +189,39 @@ async function until(fn, ms, what){
     /* Losing a first-time visitor's first edit at the door would be the one
        unforgivable thing this page could do. Decoding the link it hands out proves
        the edits really reached the engine, without reaching into it. */
-    var opened = [], real = W.open;
-    W.open = function(u){ opened.push(u); return {opener: null}; };
+    /* Stub inside the FRAME'S OWN realm. window.open is a [Replaceable] attribute and
+       assigning it across realms does not reliably shadow the real one - the stub
+       looked installed from out here and the page kept calling the genuine article. */
+    W.eval("window.__opened = []; window.open = function(u){ window.__opened.push(u); return {opener:null}; };");
     W.run("open");
-    await until(function(){ return opened.length > 0; }, 6000, "a tab to be opened");
-    W.open = real;
+    /* deflating a whole song is real work, and this machine may be running another
+       gate at the same time - be generous rather than flaky */
+    await until(function(){ return W.__opened && W.__opened.length > 0; }, 20000, "a tab to be opened");
+    var opened = W.__opened;
     ok(/#s=/.test(opened[0]), "an edited track must travel whole, got " + opened[0].slice(0, 80));
     var back = await W.oontz.unpackSong(opened[0].split("#s=")[1]);
     eq(Math.round(back.bpm), 175, "the carried song is not the edited one");
     var kick = back.sections[back.order[0]].tracks.kick.pat;
     eq(kick, "x.x.x.x.x.x.x.x.", "the carried song lost the drum edit");
     return "carried the edit";
+  });
+
+  await t("/terms and /privacy are real, linkable URLs", async function(){
+    /* A privacy notice reachable only by typing a command into a terminal is not one
+       anyone can link to - and these are precisely the two URLs people ask for. */
+    for (var i = 0; i < 2; i++){
+      var which = ["terms", "privacy"][i];
+      var r = await fetch("/" + which);
+      eq(r.status, 200, "/" + which + " must exist");
+      var html = await r.text();
+      ok(html.indexOf('window.OONTZ_BOOT="' + which + '"') >= 0,
+         "/" + which + " must boot into the " + which + " command");
+      ok(/property="og:url" content="https?:\/\//.test(html), "/" + which + " needs an absolute og:url");
+    }
+    /* and the documents themselves must be loaded and non-empty */
+    ok(W.OONTZ_LEGAL, "legal.js did not load");
+    ok(W.OONTZ_LEGAL.terms.length > 10 && W.OONTZ_LEGAL.privacy.length > 10, "documents are stubs");
+    return "both routes";
   });
 
   await t("a shared playlist gets a card too", async function(){

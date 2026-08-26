@@ -167,6 +167,16 @@
     border-radius:4px;padding:3px 8px;min-height:26px;min-width:28px;cursor:pointer;
     touch-action:manipulation}
   #tight:hover{color:var(--accent);border-color:var(--accent)}
+  /* Deck mode has no rack to collapse, so #tight's corner is free: the way out and
+     the way to the prompt live there instead. Both have to be TAPPABLE - a phone can
+     press neither M (there is no keyboard) nor Ctrl+K (there is no Ctrl). */
+  #deckbar{position:absolute;top:3px;right:5px;z-index:3;display:none;gap:5px}
+  body.deck #deckbar{display:flex}
+  body.deck #tight{display:none}
+  #deckbar button{font:inherit;font-size:.85em;line-height:1;color:var(--dim);
+    background:var(--plate);border:1px solid var(--line);border-radius:4px;padding:3px 8px;
+    min-height:26px;min-width:28px;cursor:pointer;touch-action:manipulation}
+  #deckbar button:hover{color:var(--accent);border-color:var(--accent)}
   /* Collapsed: the map and the grid fold away and the terminal gets the room back.
      The HUD's one text line always stays - you never lose where you are in the song. */
   body.tight #rack{display:none}
@@ -199,7 +209,9 @@
 <div id="pal"><div id="palbox"><input id="palin" autocomplete="off" spellcheck="false"
   placeholder="what do you want to do?" aria-label="command palette"><div id="pallist"></div></div></div>
 <div id="wrap">
-  <div id="stage"><div id="hud"></div><button id="tight" aria-label="collapse the stage">−</button></div>
+  <div id="stage"><div id="hud"></div><button id="tight" aria-label="collapse the stage">−</button>
+    <div id="deckbar"><button id="deckpal" aria-label="open the command palette">⌘</button><button
+      id="deckx" aria-label="back to the studio">✕ studio</button></div></div>
   <div id="rack"></div>
   <div id="out"><div id="slack"></div></div>
   <div id="tail">↓ live</div>
@@ -228,8 +240,10 @@ var CP = window.OONTZ_COPY || {}, CO = window.OONTZ_COMPOSE, OZ = window.oontz;
 var OUT = document.getElementById('out'), IN = document.getElementById('in'),
     HUD = document.getElementById('hud'), RACK = document.getElementById('rack'),
     TAIL = document.getElementById('tail');
-var esc = function(s){ return String(s).replace(/[&<>]/g, function(c){
-  return {'&':'&amp;','<':'&lt;','>':'&gt;'}[c]; }); };
+/* Quotes too: every data-cmd/data-t site below puts this INSIDE a double-quoted
+   attribute, and a track name out of a stranger's published song is the value. */
+var esc = function(s){ return String(s).replace(/[&<>"']/g, function(c){
+  return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); };
 /* Autoscroll only when the reader is already at the bottom. Scrolling up is how
    you read what just went by; the log must not fight you for it. */
 function atBottom(){ return OUT.scrollHeight - OUT.scrollTop - OUT.clientHeight < 24; }
@@ -767,7 +781,11 @@ var CMDS = {
     E.play(); PLAYAT = Date.now();
     ev('play', {id: NOWID, source: 'cmd', of_ms: Math.round(songSeconds(song) * 1000)});
     line('▸ playing','dim'); },
-  stop: function(){ E.stop();
+  /* `exit`, `quit` and `q` all alias here, and in deck mode stopping the studio
+     transport is a no-op that reads as a broken command. One guard, and all four
+     verbs mean the obvious thing on the page you are actually looking at. */
+  stop: function(){ if(MODE === 'deck') return CMDS.mode(['studio']);
+    E.stop();
     ev('stop', {id: NOWID, played_ms: PLAYAT ? Date.now() - PLAYAT : 0,
                 of_ms: Math.round(songSeconds(song) * 1000)});
     PLAYAT = 0; line('▸ stopped','dim'); },
@@ -806,7 +824,7 @@ var CMDS = {
       ev('signin_request', {sent: j.sent ? 1 : 0});
       if(j.sent) line('▸ check your email. the link signs you in.','ok');
       else if(j.link){ line('▸ mail is off on this deploy, here is your link:','w');
-        w('  <a href="'+j.link+'">'+esc(j.link)+'</a>'); }
+        w('  <a href="'+esc(j.link)+'">'+esc(j.link)+'</a>'); }
       else line('▸ could not send that: '+(j.why||'unknown'),'w');
     }catch(e){ line('auth unreachable','w'); } },
   /* `publish` and `share` do the same thing; this one just insists on your name
@@ -1394,10 +1412,23 @@ var CMDS = {
   /* -- decks -- */
   mode: function(a){ var m = (a[0]||(MODE==='deck'?'studio':'deck')).toLowerCase();
     if(m!=='deck' && m!=='studio') return line('mode deck|studio','w');
-    MODE = m; if(m==='deck'){ E.stop(); E.start(); if(!DECKTIMER) DECKTIMER = setInterval(function(){ if(MODE==='deck') draw(); }, 100);
+    if(m === MODE){ draw(); return; }
+    if(m==='deck'){ DECKWAS = {playing: !!E.playing, bar: E.songbar|0};
+      MODE = m; document.body.classList.add('deck');
+      E.stop(); E.start();
+      /* Every deck key - space, s, l, the crossfader, M itself - lives behind a
+         handler that bails while the prompt has focus, and the prompt ALWAYS has
+         focus. touch.js has blurred before dispatching since the pads shipped;
+         desktop never did, which is why the decks have been keyboard-dead. */
+      IN.blur();
+      if(!DECKTIMER) DECKTIMER = setInterval(function(){ if(MODE==='deck') draw(); }, 100);
       line('▸ DECK. dload a this · dload b hardtechno · deck b sync · xf 0.5 · M to go back','dim'); }
-    else { var D = E.decks(); D.a.stop(); D.b.stop();
+    else { MODE = m; document.body.classList.remove('deck');
+      mixStop();                       /* mixTick bails on MODE!=='deck', so a set left running here never ends */
+      var D = E.decks(); D.a.stop(); D.b.stop();
       if(DECKTIMER){ clearInterval(DECKTIMER); DECKTIMER = null; }
+      if(DECKWAS && DECKWAS.playing){ E.jump(DECKWAS.bar); E.play(); }   /* deck mode stopped it; put it back */
+      DECKWAS = null; IN.focus();
       line('▸ STUDIO','dim'); }
     draw(); },
   mix: async function(a){
@@ -1507,7 +1538,7 @@ var CMDS = {
       pr.innerHTML = '<span class="ok">  saved '+esc(name)+'</span> <span class="dim">'+mmss(rr.seconds)+' · 16-bit · the same render the decks use</span>';
     }catch(e){ pr.innerHTML = '<span class="w">  render failed: '+esc(e.message||e)+'</span>'; } }
 };
-var MODE = 'studio', DECKFOC = 'a', DECKTIMER = null;
+var MODE = 'studio', DECKFOC = 'a', DECKTIMER = null, DECKWAS = null;
 
 /* -- mix: a playlist becomes a set. The scheduler only owns the crossfader while
    a blend is running; grab it (or `mix off`) and the set is yours. -- */
@@ -1704,7 +1735,8 @@ function palRender(){
   var sel = PALLIST.querySelector('.sel'); if(sel) sel.scrollIntoView({block:'nearest'});
 }
 function openPal(){ PAL.classList.add('on'); PALIN.value=''; PALSEL=0; palRender(); PALIN.focus(); }
-function closePal(){ PAL.classList.remove('on'); IN.focus(); }
+function closePal(){ PAL.classList.remove('on');
+  if(MODE === 'deck') IN.blur(); else IN.focus(); }   /* focusing the prompt would re-deafen the deck keys */
 function palRun(){ var it = PALROWS[PALSEL]; if(!it) return; closePal(); run(it[2]); }
 PALIN.addEventListener('input', function(){ PALSEL = 0; palRender(); });
 PALIN.addEventListener('keydown', function(e){
@@ -2269,6 +2301,13 @@ TIGHT.addEventListener('pointerdown', function(e){
   setTight(!document.body.classList.contains('tight'));
   draw();
 });
+/* pointerdown, not click: the deck bar sits over #stage, whose pointer handler seeks. */
+document.getElementById('deckx').addEventListener('pointerdown', function(e){
+  e.preventDefault(); e.stopPropagation(); CMDS.mode(['studio']);
+});
+document.getElementById('deckpal').addEventListener('pointerdown', function(e){
+  e.preventDefault(); e.stopPropagation(); openPal();
+});
 addEventListener('pointerup', function(){ delete HUD.dataset.drag; });
 
 OUT.addEventListener('scroll', function(){ TAIL.classList.toggle('on', !atBottom()); });
@@ -2280,6 +2319,7 @@ addEventListener('click', function(e){
   var k = e.target.closest('.k');                 /* tap a listed command: it runs */
   if(k && OUT.contains(k)){ run(k.textContent.trim()); return; }
   if(COARSE && !e.target.closest('#bar')) return; /* a phone tap should not summon the keyboard */
+  if(MODE === 'deck' && !e.target.closest('#bar')) return;   /* nor should a click re-deafen the deck keys */
   IN.focus(); });
 
 /* the working song survives a refresh */
