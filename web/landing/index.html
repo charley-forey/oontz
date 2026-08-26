@@ -38,12 +38,21 @@
 <meta name="twitter:image" content="https://oontz.music/og/brand.png">
 <style>
   :root{
-    --bg:#07090b; --surface:#0e1216; --line:#18212b; --dim:#46545f;
-    --fg:#c6d2dc; --bright:#f4f9fc; --accent:#22e0d0; --accent2:#ff4fa3;
+    /* Contrast against #07090b. --dim was #46545f, which is 2.56:1 - under the 4.5:1
+       WCAG AA floor, on the token that carries most of the body text here. The
+       instrument uses #93a4b3 (7.79:1) for the same job. Matched, along with --fg and
+       --bright. The accents are already 12:1 and are a brand choice, so they stay. */
+    --bg:#07090b; --surface:#0e1216; --line:#24313d; --dim:#93a4b3;
+    --fg:#dbe6f0; --bright:#ffffff; --accent:#22e0d0; --accent2:#ff4fa3;
     --warn:#ffb020; --hot:#ff3b3b; --ok:#4ade80;
     --plate:rgba(6,9,12,.62);          /* the same glass the instrument wears */
     --mono:ui-monospace,"SF Mono",Menlo,Consolas,"DejaVu Sans Mono",monospace;
     --size:15px;                       /* the same body size the instrument uses */
+    /* Text sits over a moving canvas here exactly as it does in the instrument, and
+       this page had no halo at all - so every glyph competed with whatever the viz
+       was doing behind it. The halo is what buys legibility without dropping a slab
+       over the art. */
+    --halo:0 0 3px rgba(4,6,8,.98), 0 0 9px rgba(4,6,8,.85), 0 1px 2px rgba(0,0,0,.95);
   }
   *{box-sizing:border-box}
   html,body{height:100%}
@@ -66,7 +75,7 @@
   #vig{position:fixed;inset:0;z-index:3;pointer-events:none;
     background:radial-gradient(ellipse at 50% 45%,transparent 38%,rgba(0,0,0,.8) 100%)}
   #wrap{position:relative;z-index:4;height:100%;display:flex;flex-direction:column;
-    max-width:1100px;margin:0 auto;padding:16px 20px}
+    max-width:1100px;margin:0 auto;padding:16px 20px;text-shadow:var(--halo)}
   /* overscroll-behavior:contain is not optional. Without it, reaching either end of
      the log chains the scroll to the document - which on a phone drags the browser
      chrome and pull-to-refresh into it, and reads as the scroll fighting you. The
