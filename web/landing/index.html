@@ -316,6 +316,19 @@ const CMDS = {
   stop(){ stop(); stopTrack(); line("▸ stopped.", 'dim'); },
   terms(){ block(OONTZ_LEGAL.terms); },
   privacy(){ block(OONTZ_LEGAL.privacy); },
+  /* track.js reads the flag once at load, so this cannot stop a tracker that is
+     already running - say so instead of pretending. */
+  notrack(){
+    let off;
+    try{
+      off = !localStorage.getItem('oontz_notrack');
+      if(off){ localStorage.setItem('oontz_notrack','1'); localStorage.removeItem('oontz_did'); }
+      else localStorage.removeItem('oontz_notrack');
+    }catch(e){ return line('this browser will not let me write that flag','w'); }
+    line(off ? '▸ tracking off. reload and nothing in privacy section 4 is collected here again.'
+             : '▸ tracking back on. reload and it resumes.', off ? 'ok' : 'dim');
+    line('  do not track is honoured too, and notrack again flips this back.','dim');
+  },
   repo(){ line();
     w('  <span class="dim">every line of this, including the synth:</span>');
     w('  <a href="https://github.com/charley-forey/oontz" target="_blank" rel="noopener">github.com/charley-forey/oontz →</a>');

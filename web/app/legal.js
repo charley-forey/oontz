@@ -8,6 +8,7 @@
  * the software collects, this file is part of that change:
  *   - api/main.py users(email)            -> "what we keep"
  *   - api/main.py events(ip, ua, props)   -> "what the server logs", incl. ai_prompt
+ *   - web/app/track.js                    -> everything else section 4 lists
  *   - api/main.py EVENT_DAYS = 180        -> the retention number
  *   - the gtag tags in both index.html    -> Google Analytics
  *   - localStorage keys across web/       -> "what stays in your browser"
@@ -104,13 +105,25 @@
     { s: "stored as the command log — a few KB of text — never as audio." },
     {},
     { t: "4. What the server logs", cls: "a" },
-    { s: "For each request that matters we record: the time, the page, the referrer," },
-    { s: "your IP address, your browser's user-agent string, a session id, a device id," },
-    { s: "and your account id if you are signed in." },
+    { s: "We record what you do here, not only that you were here. Every record" },
+    { s: "carries the time, the page, the referrer, your IP address, your browser's" },
+    { s: "user-agent string, a session id, a device id, and your account id if you" },
+    { s: "are signed in. What gets recorded, plainly:" },
     {},
-    { s: "This includes the text of prompts you send to the AI, so that the thing can" },
-    { s: "be debugged and improved. Do not type anything into `ask`, `jam`, `produce`" },
-    { s: "or `dream` that you would not want us to be able to read." },
+    { s: "  every line you type into the terminal, on either site — the whole line," },
+    { s: "  as you typed it, not just the ones you send to the AI" },
+    { s: "  what you click and what you follow: buttons, links, the text on them" },
+    { s: "  where your pointer is, sampled a few times a second and rounded to one" },
+    { s: "  of 96 boxes on the screen — coarse activity, not your exact cursor path" },
+    { s: "  how far down a page you scroll" },
+    { s: "  when a session starts and ends, and how long you stay" },
+    {},
+    { s: "Prompts you send to the AI are logged on our server too, so they survive" },
+    { s: "even when the browser half is blocked. Do not type anything into `ask`," },
+    { s: "`jam`, `produce`, `dream` — or into the terminal at all — that you would" },
+    { s: "not want us to be able to read." },
+    {},
+    { s: "This is on unless you turn it off. Section 8 says how." },
     {},
     { s: "These records are deleted after 180 days." },
     {},
@@ -143,6 +156,11 @@
     { s: "Ask us at " + CONTACT + " for a copy of what we hold about you, for it to be" },
     { s: "corrected, or for all of it to be deleted, and we will do it. You can delete" },
     { s: "your own songs at any time from the instrument." },
+    {},
+    { s: "Type `notrack` on either site to switch off everything in section 4. It" },
+    { s: "sets a flag in your browser; type it again to switch it back on. If your" },
+    { s: "browser sends Do Not Track we honour that and never start in the first" },
+    { s: "place." },
     {},
     { s: "Read the other half: `terms`" }
   ];

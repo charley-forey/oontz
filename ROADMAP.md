@@ -57,10 +57,11 @@ no loop.
       energy, tempo and sections to its own state. A 15 KB file defining hours of music.
 - [ ] **Provenance graph UI** — the remix family tree, walkable: who forked what,
       which bassline is the most forked in techno.
-- [ ] **Edit-history corpus** — takes, jam/produce accept-vs-undo already generate
-      (state, instruction, exact transformation, verdict) tuples. Deciding to keep
-      them is a privacy/consent decision to make deliberately, opt-in, before any
-      collection.
+- [x] **Edit-history corpus** — takes, jam/produce accept-vs-undo already generate
+      (state, instruction, exact transformation, verdict) tuples. The privacy call was
+      made on 2026-08-25 and it went the other way: collection is **opt-out**, on by
+      default, with the raw IP kept. It is written down (`privacy`, section 4), DNT is
+      honoured, and `notrack` switches it off. The `events` table holds the tuples.
 
 ## Later
 
@@ -460,6 +461,17 @@ real-device pass). Eggs: `boots and cats` (the beat is the pronunciation),
 prompt drives in Chrome; gates grew paint/tilt asserts.
 
 Append one line per completed cycle: what changed, what it measured, what it learned.
+
+- 2026-08-25 — interaction telemetry. One `events` table, one `POST /e` batch ingest
+  (50 events a batch, 2KB a prop, always 200), 183 lines of `track.js` on both sites
+  behind the `ev()` hook that already existed, ~14 chokepoint events, and
+  `/admin/summary` + `/admin/events` + `scripts/analytics.py` to read it back. Four
+  server-side events too, so a blocked client still leaves the prompt text. Retention
+  180 days; opt-out is DNT or `notrack`; the privacy notice now lists every one of the
+  six things collected instead of only the AI prompts. Learned that the honest privacy
+  copy is the hard half: `nkeys` matched the `key` redaction rule and the server was
+  silently deleting a legitimate prop, which is exactly the class of bug a policy
+  written from a template would never have caught.
 
 - 2026-08-24 — cycles 9-12: the ear, the track, and the interface. `grade` renders
   the loudest section once per track and measures it, so every mixing rule in

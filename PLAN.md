@@ -150,7 +150,7 @@ What is true today vs. future (kept honest so the loop builds in order):
 | Search by bpm/key/pattern/structure + similarity + family tree | shipped |
 | Module registry, marketplace, PR merge UI | later |
 | Adaptive/game runtime (music as logic reacting to state) | later |
-| Deliberate edit-history dataset (RLHF-for-music) | later; needs a privacy decision first |
+| Deliberate edit-history dataset (RLHF-for-music) | shipped 2026-08-25; opt-out, IP kept, written down in `privacy` |
 
 **Prior art:** the audit of Strudel/Tidal/Sonic Pi/SuperCollider/ABC — what we
 absorb and what we decline — lives in `docs/PRIOR-ART.md`.
