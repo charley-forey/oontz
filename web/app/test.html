@@ -422,6 +422,156 @@ async function until(fn, ms, what){
   /* The two tests after this one query #hud .sq and #rack .st. If the exit path
      ever leaves deck state behind they fail somewhere else entirely, so prove the
      studio is whole here, where the message names the real cause. */
+  /* ---- the mixer ------------------------------------------------------- */
+  await t("the mixer mounts inside #wrap and takes the screen", function(){
+    W.CMDS.mode(["deck"]);
+    var mx = W.document.getElementById("mixer");
+    ok(mx, "no #mixer");
+    ok(W.document.getElementById("wrap").contains(mx),
+       "the mixer must live inside #wrap or watch mode will not hide it");
+    eq(W.getComputedStyle(mx).display, "grid", "the mixer did not lay out");
+    eq(W.getComputedStyle(W.document.getElementById("out")).display, "none",
+       "the log must step aside, or it fights the mixer for the same flex space");
+    ok(W.document.getElementById("hud").textContent.indexOf("A") >= 0, "the HUD line stopped drawing");
+    eq(mx.querySelectorAll("canvas").length, 2, "two decks, two waveforms");
+    return mx.querySelectorAll("input[type=range]").length + " faders";
+  });
+
+  await t("a fader moves a real AudioParam", async function(){
+    W.CMDS.mode(["deck"]);
+    await W.CMDS.dload(["a", "this"]);
+    var d = W.E.decks().a;
+    d._chain();
+    /* Ask, do not wait: resume() never settles when autoplay is blocked, and awaiting
+       it hangs the gate on a machine with no audio permission. */
+    try { W.E.ctx.resume(); } catch(e){}
+    await sleep(60);
+    var live = W.E.ctx.state === "running";     /* a suspended clock never advances a ramp */
+    var mx = W.document.getElementById("mixer");
+    function fire(sel, v){
+      var el = mx.querySelector(sel);
+      ok(el, "no control matching " + sel);
+      el.value = String(v); el.dispatchEvent(new W.Event("input", {bubbles: true}));
+      return el;
+    }
+
+    /* level: the deck records it immediately, the gain node ramps to it */
+    fire('input[aria-label="deck a level"]', 0.25);
+    near(d.lvl, 0.25, 1e-9, "the level fader did not reach the deck");
+    await sleep(120);
+    if(live) ok(d.nodes.fader.gain.value < 0.9,
+      "the level fader did not reach the gain node (" + d.nodes.fader.gain.value + ")");
+    /* and it must be its OWN node, or the crossfader would wipe it on every move */
+    ok(d.nodes.fader !== d.nodes.gain, "the channel fader and the crossfader share a node");
+    fire('input[aria-label="deck a level"]', 1);
+
+    /* eq: a kill is recorded on the deck and driven into the shelf */
+    fire('input[aria-label="deck a low"]', 0);
+    eq(d.kill.low, true, "an EQ kill was not recorded on the deck");
+    await sleep(120);
+    if(live) ok(d.nodes.lo.gain.value < -20, "an EQ kill did not reach the shelf (" + d.nodes.lo.gain.value + ")");
+    fire('input[aria-label="deck a low"]', 1);
+    eq(d.kill.low, false, "the EQ did not come back");
+
+    /* filter: the type flips immediately, no ramp involved */
+    fire('input[aria-label="deck a filter"]', -1);
+    eq(d.nodes.flt.type, "lowpass", "filter left should be a low-pass");
+    near(d.flt, -1, 1e-9, "the filter value did not reach the deck");
+    fire('input[aria-label="deck a filter"]', 1);
+    eq(d.nodes.flt.type, "highpass", "filter right should be a high-pass");
+    fire('input[aria-label="deck a filter"]', 0);
+    eq(d.nodes.flt.type, "lowpass", "the middle should be a wide-open low-pass");
+    await sleep(60);
+    if(live) ok(d.nodes.flt.frequency.value > 15000, "the middle of the filter is not out of the way");
+
+    /* crossfader */
+    fire('input[aria-label="crossfader"]', 1);
+    eq(W.E.decks().xf, 1, "the crossfader did not move the engine");
+    await sleep(120);
+    if(live) ok(d.nodes.gain.gain.value < 0.2, "hard right should shut deck A (" + d.nodes.gain.gain.value + ")");
+    fire('input[aria-label="crossfader"]', 0);
+    await sleep(60);
+    return "level, eq, filter and crossfader all reach the graph" + (live ? "" : " (clock suspended: params checked as state)");
+  });
+
+  await t("the deck buttons do what they say", async function(){
+    W.CMDS.mode(["deck"]);
+    var d = W.E.decks().a;
+    ok(d.r, "deck A is empty");
+    var mx = W.document.getElementById("mixer");
+
+    ok(d.hot && d.hot.filter(function(v){ return v != null; }).length > 0,
+       "hot cues should be seeded from the track's own sections");
+
+    d.stop(); d.pos0 = d.r.grid[8];
+    var before = d.beat();
+    var jump = Array.prototype.filter.call(mx.querySelectorAll("button"), function(b){ return b.textContent === "+4"; })[0];
+    ok(jump, "no +4 beat jump");
+    jump.click();
+    eq(d.beat(), before + 4, "a +4 beat jump did not move four beats");
+
+    var l4 = Array.prototype.filter.call(mx.querySelectorAll(".deck:not(.b) button"), function(b){ return b.textContent === "4"; })[0];
+    ok(l4, "no 4-beat loop button");
+    l4.click();
+    ok(d.loop, "the loop button set no loop");
+    near(d.loop[1] - d.loop[0], 4 * 60 / d.r.bpm, 1e-6, "the loop is not four beats");
+    l4.click();
+    ok(!d.loop, "the loop button did not clear the loop");
+    return "cues seeded, jump on the grid, loop exact";
+  });
+
+  await t("waveform peaks are built once per load, not per frame", function(){
+    W.CMDS.mode(["deck"]);
+    var n0 = W.OONTZ_MIXER.peaksBuilt();
+    W.OONTZ_MIXER.paint(); W.OONTZ_MIXER.paint(); W.OONTZ_MIXER.paint();
+    eq(W.OONTZ_MIXER.peaksBuilt(), n0, "peaks were recomputed on a repaint - that is what makes a waveform stutter");
+    var cv = W.document.getElementById("mixer").querySelector("canvas");
+    ok(cv.width > 0 && cv.height > 0, "the waveform canvas has no backing store");
+    return "cached across 3 repaints, canvas " + cv.width + "x" + cv.height;
+  });
+
+  /* The three layouts, driven for real. The iframe IS a viewport, so resizing it
+     re-evaluates the media queries - no window manager involved, and no guessing
+     about a phone we do not have. Each one has to place every panel it names AND
+     not scroll sideways, which is the failure you only see on the one device you
+     did not own. */
+  await t("the mixer lays out on a phone, on its side, and on a desktop", async function(){
+    W.CMDS.mode(["deck"]);
+    var F2 = W.parent.document.getElementById("frame") || document.getElementById("frame");
+    var mx = W.document.getElementById("mixer");
+    var was = {w: F2.style.width, h: F2.style.height};
+    var seen = {};
+    async function at(w, h, name, want){
+      F2.style.width = w + "px"; F2.style.height = h + "px";
+      await sleep(220);                       /* a reflow, then the rAF that repaints */
+      var areas = W.getComputedStyle(mx).gridTemplateAreas.replace(/\s+/g, " ").trim();
+      seen[name] = areas;
+      want.forEach(function(a){
+        ok(areas.indexOf(a) >= 0, name + " (" + w + "x" + h + ") lost `" + a + "`: " + areas);
+      });
+      ok(W.document.documentElement.scrollWidth <= W.innerWidth + 2,
+         name + " scrolls sideways at " + w + "px (" + W.document.documentElement.scrollWidth + " > " + W.innerWidth + ")");
+      ok(W.document.getElementById("bar").getBoundingClientRect().bottom <= h + 2,
+         name + " pushed the prompt off the bottom");
+    }
+    await at(380, 780, "portrait", ["wavea", "decka", "mixer", "deckb", "waveb", "browse"]);
+    await at(700, 360, "landscape", ["wavea", "waveb", "decka", "deckb", "mixer"]);
+    await at(1100, 760, "desktop", ["wavea", "master", "waveb", "decka", "mixer", "deckb", "browse"]);
+    F2.style.width = was.w || "420px"; F2.style.height = was.h || "280px";
+    await sleep(200);
+    return "portrait, landscape and desktop all place every panel";
+  });
+
+  await t("the palette gives the log back, so a typed command is visible", function(){
+    W.CMDS.mode(["deck"]);
+    W.openPal();
+    eq(W.getComputedStyle(W.document.getElementById("out")).display, "flex",
+       "the log stayed hidden, so anything typed would look like it did nothing");
+    W.closePal();
+    eq(W.getComputedStyle(W.document.getElementById("out")).display, "none", "the log did not step aside again");
+    W.CMDS.mode(["studio"]);
+  });
+
   await t("the studio comes back whole", function(){
     W.E.jump(2); W.E.play();
     var bar = W.E.songbar;

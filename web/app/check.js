@@ -702,6 +702,35 @@ A.ok(/CORE[\s\S]{0,300}"\/track\.js"/.test(swSrc), "sw.js CORE must cache /track
   }).catch(function(e){ console.error("render lane FAILED: " + (e && e.stack || e)); process.exit(1); });
 })();
 
+/* The mixer. Its tables are pure, so node can see them; everything visual is
+ * asserted in test.html against the real page. */
+var MX = (function(){ require("./mixer.js"); return globalThis.OONTZ_MIXER; })();
+A.ok(MX && MX.AREAS, "mixer.js must expose its layout under node, the way touch.js does");
+["desktop", "portrait", "landscape"].forEach(function(k){
+  A.ok(typeof MX.AREAS[k] === "string" && /"/.test(MX.AREAS[k]),
+    "mixer needs grid-template-areas for " + k);
+});
+/* Every area a template names has to exist in the CSS, or the panel silently
+   vanishes at that breakpoint - which is exactly the kind of thing you only see on
+   the one device you did not test on. */
+var mixSrc = fs2.readFileSync(path2.join(__dirname, "mixer.js"), "utf8");
+Object.keys(MX.AREAS).forEach(function(k){
+  (MX.AREAS[k].match(/[a-z]+/g) || []).forEach(function(area){
+    A.ok(mixSrc.indexOf("grid-area:" + area) >= 0,
+      "layout " + k + " places `" + area + "` but no rule assigns grid-area:" + area);
+  });
+});
+A.deepStrictEqual(MX.LOOPS, [1,2,4,8,16], "loop lengths");
+A.ok(MX.JUMPS.indexOf(-8) >= 0 && MX.JUMPS.indexOf(8) >= 0, "beat jump needs both directions");
+A.ok(pageSrc.indexOf('<script src="mixer.js"></script>') >= 0, "index.html must load mixer.js");
+A.ok(/OONTZ_MIXER\.show\(\)/.test(pageSrc) && /OONTZ_MIXER\.hide\(\)/.test(pageSrc),
+  "mode deck|studio must show and hide the mixer");
+A.ok(/CORE[\s\S]{0,300}"\/mixer\.js"/.test(swSrc), "sw.js CORE must cache /mixer.js");
+/* It has to mount inside #wrap: viz.js hides watch mode by naming #wrap and #touch,
+   so a sibling of #wrap would stay on screen over the visuals. */
+A.ok(/getElementById\("out"\)[\s\S]{0,160}insertBefore\(EL, out\)/.test(mixSrc),
+  "the mixer must mount inside #wrap, or watch mode will not hide it");
+
 /* DECK, the way out. Every deck key sits behind a handler that bails while the
  * prompt has focus, and the prompt always has focus - so entering deck mode
  * WITHOUT blurring leaves the page with no keyboard and no exit. The behaviour is

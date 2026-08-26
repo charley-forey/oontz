@@ -4,7 +4,7 @@
  * client-side and the API was never load-bearing for making music. */
 var V = "oontz-v3";        // v2: ?song= now redirects, so the cached "/" must go
 var CORE = ["/", "/copy.js", "/legal.js", "/oontz.js", "/theory.js", "/compose.js",
-            "/viz.js", "/account.js", "/touch.js", "/midi.js", "/track.js", "/icon.svg",
+            "/viz.js", "/account.js", "/touch.js", "/mixer.js", "/midi.js", "/track.js", "/icon.svg",
             "/manifest.webmanifest"];
 
 self.addEventListener("install", function (e) {

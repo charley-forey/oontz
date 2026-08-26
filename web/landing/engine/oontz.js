@@ -1138,14 +1138,69 @@ Deck.prototype._chain = function(){
   lo.type = "lowshelf"; lo.frequency.value = 200;
   mid.type = "peaking"; mid.frequency.value = 1000; mid.Q.value = 0.7;
   hi.type = "highshelf"; hi.frequency.value = 4000;
+  /* One filter, swept both ways, the way a DJ mixer's filter knob works and the way
+     mixer.py's Channel.filter already does it: low-pass to the left, high-pass to
+     the right, wide open in the middle. */
+  var flt = c.createBiquadFilter();
+  flt.type = "lowpass"; flt.frequency.value = 20000; flt.Q.value = 0.7;
+  /* The fader is its OWN node. The crossfader writes gain.gain directly, so sharing
+     one node would mean every crossfade wiped whatever the channel fader was set to. */
+  var fader = c.createGain(); fader.gain.value = 1;
   var gain = c.createGain();
   /* start where the crossfader actually is, or the HUD says 71%/71% while both
      decks run at unity into the limiter */
   gain.gain.value = xfGains(this.e._decks ? this.e._decks.xf : 0)[this.name === "a" ? 0 : 1];
-  lo.connect(mid); mid.connect(hi); hi.connect(gain); gain.connect(this.e.master);
-  return (this.nodes = {lo: lo, mid: mid, hi: hi, gain: gain});
+  lo.connect(mid); mid.connect(hi); hi.connect(flt); flt.connect(fader);
+  fader.connect(gain); gain.connect(this.e.master);
+  return (this.nodes = {lo: lo, mid: mid, hi: hi, flt: flt, fader: fader, gain: gain});
 };
-Deck.prototype.load = function(r){ this.stop(); this.r = r; this.pos0 = 0; this.loop = null; return this; };
+/* -1 is all low-pass, +1 is all high-pass, 0 is out of the way. */
+Deck.prototype.filter = function(v){
+  var n = this._chain(), now = this.e.ctx.currentTime;
+  v = Math.max(-1, Math.min(1, v));
+  if(v < -0.01){ n.flt.type = "lowpass"; n.flt.frequency.setTargetAtTime(20000 * Math.pow(200 / 20000, -v), now, 0.01); }
+  else if(v > 0.01){ n.flt.type = "highpass"; n.flt.frequency.setTargetAtTime(20 * Math.pow(4000 / 20, v), now, 0.01); }
+  else { n.flt.type = "lowpass"; n.flt.frequency.setTargetAtTime(20000, now, 0.01); }
+  return (this.flt = v);
+};
+Deck.prototype.fader = function(v){
+  var n = this._chain();
+  v = Math.max(0, Math.min(1, v));
+  n.fader.gain.setTargetAtTime(v, this.e.ctx.currentTime, 0.01);
+  return (this.lvl = v);
+};
+/* Hot cues. deck.py has had eight since DECK shipped and nothing was ever bound to
+   them; the marks from gridFor seed them so they are musical before you set any. */
+Deck.prototype.setHot = function(i, at){
+  if(!this.r) return null;
+  this.hot = this.hot || [];
+  this.hot[i] = at == null ? this.pos() : at;
+  return this.hot[i];
+};
+Deck.prototype.jumpHot = function(i){
+  if(!this.r || !this.hot || this.hot[i] == null) return null;
+  var at = this.hot[i];
+  this.loop = null;
+  if(this.playing) this.play(at); else this.pos0 = at;
+  return at;
+};
+Deck.prototype.seedHot = function(){
+  if(!this.r) return (this.hot = []);
+  var m = this.r.marks || [], h = [];
+  for(var i = 0; i < 8 && i < m.length; i++) h[i] = m[i][0];
+  return (this.hot = h);
+};
+/* Beat jump: n beats from where the head is, snapped to the grid. */
+Deck.prototype.jumpBeats = function(n){
+  if(!this.r) return null;
+  var g = this.r.grid, i = this.beatAt(this.pos());
+  var k = Math.max(0, Math.min(g.length - 1, i + n));
+  var at = g[k];
+  if(this.loop){ this.loop = null; if(this.src) this.src.loop = false; }
+  if(this.playing) this.play(at); else this.pos0 = at;
+  return k;
+};
+Deck.prototype.load = function(r){ this.stop(); this.r = r; this.pos0 = 0; this.loop = null; this.seedHot(); return this; };
 Deck.prototype.posAt = function(t){
   var p = this.anchor == null ? this.pos0 : this.pos0 + (t - this.anchor) * this.rate;
   if(this.loop && p >= this.loop[1]){ var L = this.loop[1] - this.loop[0]; p = this.loop[0] + ((p - this.loop[0]) % L); }

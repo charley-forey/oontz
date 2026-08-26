@@ -1421,9 +1421,14 @@ var CMDS = {
          focus. touch.js has blurred before dispatching since the pads shipped;
          desktop never did, which is why the decks have been keyboard-dead. */
       IN.blur();
+      /* Two loops on purpose: the mixer paints its canvases on rAF, which a browser
+         throttles to nothing in a background tab, and the HUD's one text line keeps a
+         plain interval so it is still right when you come back to it. */
+      if(window.OONTZ_MIXER) OONTZ_MIXER.show();
       if(!DECKTIMER) DECKTIMER = setInterval(function(){ if(MODE==='deck') draw(); }, 100);
-      line('▸ DECK. dload a this · dload b hardtechno · deck b sync · xf 0.5 · M to go back','dim'); }
+      line('▸ DECK. tap a track below to load it · M or ✕ to go back','dim'); }
     else { MODE = m; document.body.classList.remove('deck');
+      if(window.OONTZ_MIXER) OONTZ_MIXER.hide();
       mixStop();                       /* mixTick bails on MODE!=='deck', so a set left running here never ends */
       var D = E.decks(); D.a.stop(); D.b.stop();
       if(DECKTIMER){ clearInterval(DECKTIMER); DECKTIMER = null; }
@@ -1742,8 +1747,8 @@ function palRender(){
       esc(it[0])+'</span><span class="pd">'+esc(it[1])+'</span></div>'; }).join('');
   var sel = PALLIST.querySelector('.sel'); if(sel) sel.scrollIntoView({block:'nearest'});
 }
-function openPal(){ PAL.classList.add('on'); PALIN.value=''; PALSEL=0; palRender(); PALIN.focus(); }
-function closePal(){ PAL.classList.remove('on');
+function openPal(){ PAL.classList.add('on'); document.body.classList.add('palout'); PALIN.value=''; PALSEL=0; palRender(); PALIN.focus(); }
+function closePal(){ PAL.classList.remove('on'); document.body.classList.remove('palout');
   if(MODE === 'deck') IN.blur(); else IN.focus(); }   /* focusing the prompt would re-deafen the deck keys */
 function palRun(){ var it = PALROWS[PALSEL]; if(!it) return; closePal(); run(it[2]); }
 PALIN.addEventListener('input', function(){ PALSEL = 0; palRender(); });
@@ -2408,6 +2413,7 @@ addEventListener('beforeunload', function(){ try{ if(song) localStorage.setItem(
 </script>
 <script src="account.js"></script>
 <script src="touch.js"></script>
+<script src="mixer.js"></script>
 <script src="midi.js"></script>
 </body>
 </html>
