@@ -43,11 +43,14 @@
     --warn:#ffb020; --hot:#ff3b3b; --ok:#4ade80;
     --plate:rgba(6,9,12,.62);          /* the same glass the instrument wears */
     --mono:ui-monospace,"SF Mono",Menlo,Consolas,"DejaVu Sans Mono",monospace;
+    --size:15px;                       /* the same body size the instrument uses */
   }
   *{box-sizing:border-box}
   html,body{height:100%}
   body{
-    margin:0;background:var(--bg);color:var(--fg);font:14px/1.5 var(--mono);
+    /* Was 14px/1.5 against the instrument's 15px/1.55, so the two sites did not read
+       the same - and this is the one people meet first. Same size, same leading. */
+    margin:0;background:var(--bg);color:var(--fg);font:var(--size)/1.55 var(--mono);
     overflow:hidden;
   }
   /* width/height 100% are load-bearing. A canvas is a REPLACED element, so inset:0
@@ -119,9 +122,11 @@
   .cursor{display:inline-block;width:8px;height:1em;background:var(--accent);
     vertical-align:-2px;animation:bl 1.1s steps(2) infinite}
   @keyframes bl{50%{opacity:0}}
-  .grid{font-size:13px;letter-spacing:1px}
+  .grid{font-size:.95em;letter-spacing:1px}   /* relative, so it tracks --size like the instrument's */
   .k,[data-cmd]{cursor:pointer}
-  @media (max-width:640px){ body{font-size:12px} #wrap{padding:10px} .k{min-width:12ch} }
+  /* 12px on a phone was a squint, and the instrument never shrank at all. Hold the
+     size and buy the room back from the padding instead. */
+  @media (max-width:640px){ #wrap{padding:10px} .k{min-width:12ch} }
   @media (pointer: coarse){ #in,#bar{font-size:16px} #out .k,#out [data-cmd]{display:inline-block;padding:5px 0} }
   @media (prefers-reduced-motion:reduce){ #bg{display:none} .cursor{animation:none} }
 </style>
