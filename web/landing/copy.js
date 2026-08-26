@@ -24,8 +24,14 @@ var C = {};
 
 C.tagline = "techno from a command line.";
 
+/* The first three lines anybody reads. Line 1 claims the lineage and claims it as
+   FACT, not as a purity test - techno was machine music from the day it started, and
+   this is machine music in the most literal sense available. Line 3 is the bigger
+   idea and stays where it is: one layer down, for whoever wants it. Most people are
+   here to play with a drum machine, and that is a perfectly good reason to be here. */
 C.boot = [
-  "Every sound is synthesized from arithmetic. No samples, no plugins, no login.",
+  "No samples. No plugins. No login. Every kick is arithmetic —",
+  "the same way it worked when a drum machine was the whole band.",
   "A whole track is a text file. That turns out to matter more than it sounds."
 ];
 
