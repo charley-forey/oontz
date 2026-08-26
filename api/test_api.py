@@ -267,6 +267,35 @@ def main():
         st, si, _ = call("POST", "/similar", {"data": songp})
         assert st == 200 and si["songs"] and si["songs"][0]["why"], ("inline similar found nothing", si)
 
+        # -- telemetry: a batch in, rows out ------------------------------------------
+        batch = {"sid": "sess-1", "did": "dev-1", "site": "app", "path": "/", "ref": "",
+                 "events": [{"n": "prompt_submit", "t": 1.5, "p": {"text": "kick harder",
+                                                                   "oontz_key": "sk-ant-nope"}},
+                            {"n": "BAD NAME", "t": 2.0, "p": {}}]}
+        est, ej, _ = call("POST", "/e", batch, headers={"X-Forwarded-For": "9.9.9.9, 1.2.3.4"})
+        assert est == 200 and ej == {"ok": 1}, ("ingest must always say ok", est, ej)
+        with sqlite3.connect(DB) as c:
+            rows = c.execute("SELECT ts,cts,sid,did,site,name,props,path,ip,ua FROM events "
+                             "WHERE sid='sess-1'").fetchall()
+        assert len(rows) == 1, ("one good event, one bad name, got %d rows" % len(rows), rows)
+        r = rows[0]
+        assert r[0] > time.time() - 60 and r[1] == 1.5, ("server ts / client cts", r)
+        assert r[2] == "sess-1" and r[3] == "dev-1" and r[4] == "app" and r[5] == "prompt_submit", r
+        assert "kick harder" in r[6] and "sk-ant" not in r[6] and "oontz_key" not in r[6], r[6]
+        assert r[8] == "1.2.3.4", ("the ip must be the proxy's last hop", r[8])
+        # garbage must never be a 4xx: a client would retry the poison batch forever
+        for bad in ("not json", '{"events":[{"n":"x"}]}'):
+            req = urllib.request.Request(BASE + "/e", data=bad.encode(), method="POST",
+                                         headers={"content-type": "application/json"})
+            with OPEN(req, timeout=10) as rr:
+                assert json.loads(rr.read()) == {"ok": 1}, bad
+        # the server logs its own events too, so a prompt survives an ad-blocked client
+        with sqlite3.connect(DB) as c:
+            n = c.execute("SELECT COUNT(*) FROM events WHERE site='api' AND name='play_server'").fetchone()[0]
+            na = c.execute("SELECT COUNT(*) FROM events WHERE name='ai_prompt'").fetchone()[0]
+        assert n >= 1, "count_play logged no server-side event"
+        assert na >= 1, "ai_ask logged no prompt"
+
         # -- rooms: the relay forwards music between members --------------------------
         import asyncio
         async def room_relay():

@@ -83,6 +83,23 @@ def db():
     return c
 
 
+EVENT_DAYS = float(os.environ.get("OONTZ_EVENT_DAYS", "180"))
+
+
+def prune_events():
+    """Retention, enforced by deletion rather than by a promise in a privacy page.
+    # ponytail: SQLite single-writer + a 5GB volume; pointer samples are the volume
+    # driver. Move events to Postgres if inserts exceed ~1M/day or WAL contention
+    # shows up in /health latency.
+    """
+    try:
+        with closing(db()) as c:
+            c.execute("DELETE FROM events WHERE ts < ?", (time.time() - EVENT_DAYS * 86400,))
+            c.commit()
+    except sqlite3.Error:
+        pass                                     # retention must never break a request
+
+
 def init():
     with closing(db()) as c:
         c.executescript("""
@@ -113,6 +130,22 @@ def init():
         CREATE TABLE IF NOT EXISTS playlist_items(
           playlist_id TEXT NOT NULL, pos INTEGER NOT NULL, song_id TEXT NOT NULL,
           PRIMARY KEY(playlist_id, pos));
+        CREATE TABLE IF NOT EXISTS events(
+          id INTEGER PRIMARY KEY,
+          ts REAL NOT NULL,            -- server clock, authoritative
+          cts REAL,                    -- client clock, for ordering within a batch
+          sid TEXT NOT NULL,           -- session id (sessionStorage, 30-min idle rotation)
+          did TEXT,                    -- device id (localStorage, survives sessions)
+          user_id INTEGER,             -- NULL when signed out
+          site TEXT NOT NULL,          -- 'app' | 'music' | 'api'
+          name TEXT NOT NULL,
+          props TEXT,                  -- JSON, <= 2KB
+          path TEXT, ref TEXT,         -- location.pathname, document.referrer
+          ip TEXT, ua TEXT);
+        CREATE INDEX IF NOT EXISTS events_ts   ON events(ts DESC);
+        CREATE INDEX IF NOT EXISTS events_sid  ON events(sid, ts);
+        CREATE INDEX IF NOT EXISTS events_name ON events(name, ts DESC);
+        CREATE INDEX IF NOT EXISTS events_user ON events(user_id, ts DESC);
         """)
         try:                                     # lineage arrived after the table did
             c.execute("ALTER TABLE songs ADD COLUMN remix_of TEXT")
@@ -127,6 +160,7 @@ def init():
         c.execute("INSERT OR IGNORE INTO users(id,email,created) VALUES(?,?,?)",
                   (ANON_UID, "anon@oontz.invalid", time.time()))
         c.commit()
+    prune_events()
 
 
 init()
@@ -258,11 +292,17 @@ class ItemsIn(BaseModel):
 _HITS = {}
 
 
-def limit(request: Request, bucket, per_min=30):
+def client_ip(request: Request):
     # the LAST hop, not the first: the proxy appends, and everything before it
     # is whatever the caller decided to send
-    ip = request.headers.get("x-forwarded-for", "").split(",")[-1].strip() or \
+    if not request:
+        return "?"
+    return request.headers.get("x-forwarded-for", "").split(",")[-1].strip() or \
         (request.client.host if request.client else "?")
+
+
+def limit(request: Request, bucket, per_min=30):
+    ip = client_ip(request)
     now = time.time()
     key = (ip, bucket)
     hits = [t for t in _HITS.get(key, []) if now - t < 60]
@@ -274,6 +314,120 @@ def limit(request: Request, bucket, per_min=30):
         for k, v in list(_HITS.items()):
             if not [t for t in v if now - t < 60]:
                 _HITS.pop(k, None)
+
+
+# -------------------------------------------------------------- telemetry
+# Every interaction on both sites lands in one table. The client is untrusted and
+# often ad-blocked, so the caps, the redaction and the important events all live
+# on this side.
+
+EV_NAME_RE = re.compile(r"^[a-z][a-z0-9_]{0,39}$")
+EV_SECRET_KEY_RE = re.compile(r"key|token|auth|secret|password|email")
+EV_ANTHROPIC_RE = re.compile(r"sk-ant-\S+")
+EV_SITES = ("app", "music", "api")
+MAX_EVENTS = 50
+MAX_PROP_BYTES = 2 * 1024
+MAX_BATCH_BYTES = 128 * 1024
+_EV_INSERTS = [0]
+
+
+def _redact(v):
+    """The user's own Anthropic key lives in localStorage; it must never land here."""
+    if isinstance(v, str):
+        return EV_ANTHROPIC_RE.sub("[redacted]", v)
+    if isinstance(v, dict):
+        return {k: _redact(x) for k, x in v.items()
+                if not EV_SECRET_KEY_RE.search(str(k).lower())}
+    if isinstance(v, list):
+        return [_redact(x) for x in v]
+    return v
+
+
+def clean_batch(body, now, ip="", ua="", user_id=None):
+    """A batch of client events -> rows for executemany. Pure: no db, no request.
+
+    Caps rather than refusals. A 4xx would make a client retry a poison batch
+    forever, so an event that cannot be trusted is dropped and the rest go in.
+    """
+    if not isinstance(body, dict):
+        return []
+    sid = str(body.get("sid") or "")[:64]
+    if not sid:                                  # no session, no row: sid is NOT NULL
+        return []
+    did = str(body.get("did") or "")[:64] or None
+    site = body.get("site") if body.get("site") in EV_SITES else "app"
+    path = str(body.get("path") or "")[:300] or None
+    ref = str(body.get("ref") or "")[:300] or None
+    rows = []
+    for e in (body.get("events") or [])[:MAX_EVENTS]:
+        if not isinstance(e, dict):
+            continue
+        name = str(e.get("n") or "")
+        if not EV_NAME_RE.match(name):
+            continue
+        props = None
+        if e.get("p") not in (None, {}):
+            props = json.dumps(_redact(e["p"]), separators=(",", ":"), default=str)
+            if len(props.encode()) > MAX_PROP_BYTES:   # truncated, never dropped
+                props = props.encode()[:MAX_PROP_BYTES].decode("utf-8", "ignore")
+        try:
+            cts = float(e["t"]) if e.get("t") is not None else None
+        except (TypeError, ValueError):
+            cts = None
+        rows.append((now, cts, sid, did, user_id, site, name, props, path, ref, ip, ua))
+    return rows
+
+
+EV_INSERT = """INSERT INTO events(ts,cts,sid,did,user_id,site,name,props,path,ref,ip,ua)
+               VALUES(?,?,?,?,?,?,?,?,?,?,?,?)"""
+
+
+def log_event(name, props, request=None, user_id=None, sid=None):
+    """One server-side row, so a prompt survives an ad-blocked client.
+
+    Never raises: telemetry losing a row is nothing, telemetry breaking a request
+    is an outage.
+    """
+    try:
+        rows = clean_batch({"sid": sid or "server", "site": "api",
+                            "path": request.url.path if request else None,
+                            "events": [{"n": name, "p": props}]},
+                           time.time(), client_ip(request),
+                           (request.headers.get("user-agent", "")[:300] if request else ""),
+                           user_id)
+        if not rows:
+            return
+        with closing(db()) as c:
+            c.execute(EV_INSERT, rows[0])
+            c.commit()
+    except Exception:
+        pass
+
+
+@app.post("/e")
+async def ingest(request: Request, user=Depends(optional_user)):
+    """Batch ingest. Always {"ok":1} - a 4xx here only buys a retry loop."""
+    limit(request, "e", 240)
+    try:
+        if int(request.headers.get("content-length") or 0) > MAX_BATCH_BYTES:
+            return {"ok": 1}
+        raw = await request.body()
+        if len(raw) > MAX_BATCH_BYTES:
+            return {"ok": 1}
+        rows = clean_batch(json.loads(raw), time.time(), client_ip(request),
+                           request.headers.get("user-agent", "")[:300],
+                           user["id"] if user else None)
+    except Exception:
+        return {"ok": 1}
+    if rows:
+        with closing(db()) as c:
+            c.executemany(EV_INSERT, rows)
+            c.commit()
+        _EV_INSERTS[0] += len(rows)
+        if _EV_INSERTS[0] >= 1000:               # retention, paid for in small change
+            _EV_INSERTS[0] = 0
+            prune_events()
+    return {"ok": 1}
 
 
 # ------------------------------------------------------------------- routes
@@ -483,6 +637,7 @@ def count_play(sid: str, request: Request):
     with closing(db()) as c:
         c.execute("UPDATE songs SET plays=plays+1 WHERE id=? AND public!=0", (sid,))
         c.commit()
+    log_event("play_server", {"song_id": sid}, request)
     return {"ok": True}
 # ponytail: one IP can inflate a count 30/min; add a per-song cooldown if a chart
 # ever decides anything that matters.
@@ -968,9 +1123,14 @@ def ai_ask(body: AskIn, request: Request, x_anthropic_key: str = Header(default=
     used for this one request and never logged or stored.
     """
     limit(request, "ai", 12)
+    t0 = time.time()
+    log_event("ai_prompt", {"prompt": body.prompt, "source": "api",
+                            "state_bytes": len(json.dumps(body.state or {}))}, request)
     own = x_anthropic_key.strip()
     key = own if own.startswith("sk-ant-") else ANTHROPIC_KEY
     if not key:
+        log_event("ai_result", {"ms": 0, "n_commands": 0, "ok": False,
+                                "error": "not configured"}, request)
         raise HTTPException(503, "the AI helper is not configured on this deployment")
     system = (
         "You control 'oontz', a terminal techno instrument. Reply with ONLY bare "
@@ -1006,13 +1166,18 @@ def ai_ask(body: AskIn, request: Request, x_anthropic_key: str = Header(default=
         with urllib.request.urlopen(req, timeout=30) as r:
             data = json.loads(r.read())
     except Exception as e:
+        log_event("ai_result", {"ms": int((time.time() - t0) * 1000), "n_commands": 0,
+                                "ok": False, "error": type(e).__name__}, request)
         raise HTTPException(502, "the AI helper is unreachable right now (%s)" % type(e).__name__)
     text = "".join(b.get("text", "") for b in data.get("content", []))
     lines = [l.strip() for l in text.splitlines() if l.strip()
              and not l.strip().startswith(("#", "`"))]
     why = next((l.strip().lstrip("#").strip() for l in text.splitlines()
                 if l.strip().startswith("#")), "")
-    return {"commands": lines[:24], "why": why[:120], "raw": text}
+    out = {"commands": lines[:24], "why": why[:120], "raw": text}
+    log_event("ai_result", {"ms": int((time.time() - t0) * 1000),
+                            "n_commands": len(out["commands"]), "ok": True, "error": ""}, request)
+    return out
 
 
 # ---------------------------------------------------------------- rooms
@@ -1081,4 +1246,6 @@ async def room_ws(ws: WebSocket, code: str):
 
 @app.exception_handler(HTTPException)
 def http_err(request, exc):
+    log_event("api_error", {"path": str(request.url.path), "status": exc.status_code,
+                            "detail": str(exc.detail)[:200]}, request)
     return JSONResponse({"error": exc.detail}, status_code=exc.status_code)

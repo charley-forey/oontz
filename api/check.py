@@ -64,8 +64,43 @@ def check_rate_limit_key():
     return "keyed on the proxy's hop"
 
 
+def check_clean_batch():
+    """The ingest caps and the redaction. Everything here is what the client cannot
+    be trusted to have done itself."""
+    B = lambda **kw: dict({"sid": "s1", "site": "app"}, **kw)          # noqa: E731
+    ev = lambda n, p=None: {"n": n, "t": 1.0, "p": p}                  # noqa: E731
+
+    rows = main.clean_batch(B(events=[ev("click") for _ in range(60)]), 100.0)
+    assert len(rows) == 50, "a 60-event batch became %d rows" % len(rows)
+    assert rows[0][0] == 100.0, "the server clock is not stamped"
+
+    rows = main.clean_batch(B(events=[ev("boot", {"note": "my key is sk-ant-abc123 ok",
+                                                  "nest": [{"deep": "sk-ant-xyz"}]})]), 1.0)
+    assert "sk-ant-" not in rows[0][7], "an Anthropic key reached the table: %s" % rows[0][7]
+
+    rows = main.clean_batch(B(events=[ev("boot", {"email": "a@b.c", "API_TOKEN": "x",
+                                                  "ok": 1})]), 1.0)
+    props = rows[0][7]
+    assert "a@b.c" not in props and "API_TOKEN" not in props and '"ok":1' in props, props
+
+    rows = main.clean_batch(B(events=[ev("boot", {"text": "z" * 4096})]), 1.0)
+    assert len(rows) == 1, "an oversized prop dropped the event instead of truncating it"
+    assert len(rows[0][7].encode()) <= 2048, "props are %d bytes" % len(rows[0][7].encode())
+
+    rows = main.clean_batch(B(events=[ev("Click Me"), ev("9lives"), ev("x" * 41), ev("ok_1")]), 1.0)
+    assert [r[6] for r in rows] == ["ok_1"], "a bad event name got through: %s" % [r[6] for r in rows]
+
+    assert main.clean_batch({"site": "app", "events": [ev("click")]}, 1.0) == [], \
+        "a batch with no sid was accepted - sid is NOT NULL"
+    assert main.clean_batch(B(site="hax", events=[ev("click")]), 1.0)[0][5] == "app", \
+        "an unknown site was stored verbatim"
+    assert main.clean_batch("not a batch", 1.0) == [] and main.clean_batch(None, 1.0) == []
+    return "50-cap, sk-ant stripped, secrets dropped, 2KB truncate"
+
+
 def main_():
-    checks = [check_state_text, check_sessions, check_no_email_in_public, check_rate_limit_key]
+    checks = [check_state_text, check_sessions, check_no_email_in_public, check_rate_limit_key,
+              check_clean_batch]
     bad = 0
     for fn in checks:
         try:
