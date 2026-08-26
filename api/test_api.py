@@ -31,6 +31,7 @@ def free_port():
     return port
 
 
+ADMIN_KEY = "test-admin-key"
 PORT = free_port()
 BASE = "http://127.0.0.1:%d" % PORT
 
@@ -76,7 +77,8 @@ def sign_in(email):
 
 def main():
     env = dict(os.environ, OONTZ_DB=DB, OONTZ_API_URL=BASE, OONTZ_SITE_URL="https://oontz.music",
-               ANTHROPIC_API_KEY="", RESEND_API_KEY="", RAILWAY_ENVIRONMENT="")
+               ANTHROPIC_API_KEY="", RESEND_API_KEY="", RAILWAY_ENVIRONMENT="",
+               OONTZ_ADMIN_KEY=ADMIN_KEY)
     proc = subprocess.Popen([sys.executable, "-m", "uvicorn", "main:app", "--host", "127.0.0.1",
                              "--port", str(PORT), "--log-level", "warning"], cwd=HERE, env=env)
     try:
@@ -296,6 +298,27 @@ def main():
         assert n >= 1, "count_play logged no server-side event"
         assert na >= 1, "ai_ask logged no prompt"
 
+        # -- the analysis surface: guarded, filtered, aggregated -----------------------
+        assert call("GET", "/admin/summary")[0] == 404, "the admin surface answered with no key"
+        assert call("GET", "/admin/summary", headers={"X-Admin-Key": "wrong"})[0] == 404, \
+            "a wrong admin key must 404, not 401 - a 401 confirms there is a door"
+        AK = {"X-Admin-Key": ADMIN_KEY}
+        st, sm, _ = call("GET", "/admin/summary?window=30", headers=AK)
+        assert st == 200 and sm["window_days"] == 30, ("summary", st, sm)
+        assert any(p["text"] == "kick harder" for p in sm["top_prompts"]), sm["top_prompts"]
+        assert {f["stage"] for f in sm["funnel"]} == {"land", "command", "audio", "save",
+                                                      "signin", "publish"}, sm["funnel"]
+        assert dict((f["stage"], f["sessions"]) for f in sm["funnel"])["command"] >= 1, sm["funnel"]
+        assert any(e["name"] == "api_error" for e in sm["recent_errors"]), sm["recent_errors"]
+        assert call("GET", "/admin/summary?window=99999", headers=AK)[1]["window_days"] == 365, \
+            "the window is not clamped"
+        st, ev, _ = call("GET", "/admin/events?name=prompt_submit&sid=sess-1&limit=5000",
+                         headers=AK)
+        assert st == 200 and len(ev["events"]) == 1, ("filtered rows", ev)
+        assert ev["events"][0]["sid"] == "sess-1" and ev["events"][0]["ip"] == "1.2.3.4", ev
+        assert call("GET", "/admin/events?name=prompt_submit'--", headers=AK)[0] == 200, \
+            "a quote in a filter must be data, not SQL"
+
         # -- rooms: the relay forwards music between members --------------------------
         import asyncio
         async def room_relay():
@@ -322,7 +345,7 @@ def main():
         asyncio.run(room_relay())
 
         print("api checks pass  ·  link -> sqlite -> verify · save · publish · handle · "
-              "playlist · /p/{id} · takes · remix · search/similar/tree/charts · rooms · BYO key (upstream said %s)" % st)
+              "playlist · /p/{id} · takes · remix · search/similar/tree/charts · rooms · admin summary/events · BYO key (upstream said %s)" % st)
     finally:
         proc.terminate()
         try:

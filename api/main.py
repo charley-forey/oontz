@@ -430,6 +430,131 @@ async def ingest(request: Request, user=Depends(optional_user)):
     return {"ok": 1}
 
 
+# ---------------------------------------------------------------- analysis
+# The read side of the events table: one JSON summary for a human, raw rows for
+# HNIP. Aggregates are plain SQL - SQLite has json_extract, so props never has to
+# be parsed in Python here.
+
+ADMIN_KEY = os.environ.get("OONTZ_ADMIN_KEY", "")
+
+# stage -> the event names that count as having reached it
+FUNNEL = [("land", ("boot", "session_start")),
+          ("command", ("prompt_submit",)),
+          ("audio", ("play", "play_server")),
+          ("save", ("song_save",)),
+          ("signin", ("signin_request", "signin_done")),
+          ("publish", ("song_publish",))]
+OUTCOMES = ("cmd_result", "ai_result", "ai_accept", "ai_reject", "ai_undo")
+
+
+def clamp(v, lo, hi, default):
+    """Query params are whatever the caller typed. A summary that full-scans an
+    unbounded table is a self-inflicted outage."""
+    try:
+        v = float(v)
+    except (TypeError, ValueError):
+        return default
+    if v != v:                                   # NaN compares false against everything
+        return default
+    return int(max(lo, min(hi, v)))
+
+
+def admin_ok(supplied):
+    """Unset key means the surface does not exist at all - hence 404 everywhere
+    below, never 401: a 401 would confirm there is something here to guess at."""
+    if not ADMIN_KEY:
+        return False
+    return hmac.compare_digest(str(supplied or ""), ADMIN_KEY)
+
+
+def _guard(key):
+    if not admin_ok(key):
+        raise HTTPException(404, "Not Found")
+
+
+def _in(c, names, since, expr="COUNT(DISTINCT sid)"):
+    q = "SELECT %s FROM events WHERE ts>=? AND name IN (%s)" % (
+        expr, ",".join("?" * len(names)))       # placeholders, never the values
+    return c.execute(q, (since,) + tuple(names)).fetchone()[0]
+
+
+@app.get("/admin/events")
+def admin_events(since: float = 0, name: str = "", sid: str = "",
+                 limit: int = 200, x_admin_key: str = Header(default="")):
+    """Raw rows, newest first. `since` is epoch seconds."""
+    _guard(x_admin_key)
+    sql = "SELECT * FROM events WHERE ts>=?"
+    args = [float(since or 0)]
+    if name:
+        sql += " AND name=?"
+        args.append(name[:40])
+    if sid:
+        sql += " AND sid=?"
+        args.append(sid[:64])
+    sql += " ORDER BY ts DESC, id DESC LIMIT ?"
+    args.append(clamp(limit, 1, 1000, 200))
+    with closing(db()) as c:
+        rows = c.execute(sql, args).fetchall()
+    return {"events": [dict(r) for r in rows]}
+
+
+@app.get("/admin/summary")
+def admin_summary(window: int = 30, x_admin_key: str = Header(default="")):
+    """Everything the plan asked the table to answer, as one JSON document."""
+    _guard(x_admin_key)
+    days = clamp(window, 1, 365, 30)
+    since = time.time() - days * 86400
+    with closing(db()) as c:
+        q = lambda sql, a=(): [dict(r) for r in c.execute(sql, (since,) + a).fetchall()]  # noqa: E731
+        totals = c.execute("""SELECT COUNT(*) events, COUNT(DISTINCT sid) sessions,
+                              COUNT(DISTINCT did) devices, COUNT(DISTINCT user_id) users
+                              FROM events WHERE ts>=?""", (since,)).fetchone()
+        top_prompts = q("""SELECT json_extract(props,'$.text') text, COUNT(*) n,
+                           COUNT(DISTINCT sid) sessions FROM events
+                           WHERE ts>=? AND name='prompt_submit'
+                             AND json_extract(props,'$.text') IS NOT NULL
+                           GROUP BY text ORDER BY n DESC, text LIMIT 50""")
+        outcomes = q("""SELECT name, json_extract(props,'$.ok') ok, COUNT(*) n
+                        FROM events WHERE ts>=? AND name IN (%s)
+                        GROUP BY name, ok ORDER BY n DESC"""
+                     % ",".join("?" * len(OUTCOMES)), OUTCOMES)
+        dau = q("""SELECT date(ts,'unixepoch') day, COUNT(*) events,
+                   COUNT(DISTINCT sid) sessions, COUNT(DISTINCT did) devices
+                   FROM events WHERE ts>=? GROUP BY day ORDER BY day DESC LIMIT 90""")
+        wau = q("""SELECT strftime('%Y-W%W',ts,'unixepoch') week, COUNT(DISTINCT sid) sessions,
+                   COUNT(DISTINCT did) devices FROM events WHERE ts>=?
+                   GROUP BY week ORDER BY week DESC LIMIT 26""")
+        per_device = q("""SELECT did, COUNT(DISTINCT sid) sessions FROM events
+                          WHERE ts>=? AND did IS NOT NULL
+                          GROUP BY did ORDER BY sessions DESC LIMIT 50""")
+        # SQLite has no median; the middle row of the ordered durations is one.
+        n_sess = c.execute("""SELECT COUNT(*) FROM (SELECT sid FROM events WHERE ts>=?
+                              GROUP BY sid HAVING COUNT(*)>1)""", (since,)).fetchone()[0]
+        median = c.execute("""SELECT max(ts)-min(ts) d FROM events WHERE ts>=?
+                              GROUP BY sid HAVING COUNT(*)>1
+                              ORDER BY d LIMIT 1 OFFSET ?""",
+                           (since, n_sess // 2)).fetchone() if n_sess else None
+        commands = q("""SELECT json_extract(props,'$.verb') verb, COUNT(*) n,
+                        SUM(CASE WHEN json_extract(props,'$.ok') IN (0,'false') THEN 1 ELSE 0 END) errors
+                        FROM events WHERE ts>=? AND name='cmd_result'
+                        GROUP BY verb ORDER BY n DESC LIMIT 50""")
+        funnel = [{"stage": s, "sessions": _in(c, names, since)} for s, names in FUNNEL]
+        top_ips = q("""SELECT ip, COUNT(*) n, COUNT(DISTINCT sid) sessions
+                       FROM events WHERE ts>=? AND ip IS NOT NULL AND ip!=''
+                       GROUP BY ip ORDER BY n DESC LIMIT 50""")
+        errors = q("""SELECT id,ts,sid,site,name,props,path FROM events
+                      WHERE ts>=? AND name IN ('error','api_error')
+                      ORDER BY ts DESC LIMIT 50""")
+    for r in commands:
+        r["error_rate"] = round((r["errors"] or 0) / r["n"], 3) if r["n"] else 0.0
+    return {"window_days": days, "since": since, "totals": dict(totals),
+            "top_prompts": top_prompts, "prompt_outcomes": outcomes,
+            "dau": dau, "wau": wau, "sessions_per_device": per_device,
+            "median_session_sec": round(median["d"], 1) if median else None,
+            "commands": commands, "funnel": funnel, "top_ips": top_ips,
+            "recent_errors": errors}
+
+
 # ------------------------------------------------------------------- routes
 
 @app.get("/health")

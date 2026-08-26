@@ -98,9 +98,79 @@ def check_clean_batch():
     return "50-cap, sk-ant stripped, secrets dropped, 2KB truncate"
 
 
+def check_admin_guard():
+    """No key configured means no admin surface at all - and a wrong key must
+    look exactly like no surface, or the 401 itself is the leak."""
+    old = main.ADMIN_KEY
+    try:
+        main.ADMIN_KEY = ""
+        assert not main.admin_ok("anything"), "the admin surface opened with no key set"
+        main.ADMIN_KEY = "s3cret"
+        assert main.admin_ok("s3cret"), "the right key was refused"
+        assert not main.admin_ok("s3cre"), "a prefix opened the door"
+        assert not main.admin_ok(""), "an empty header opened the door"
+        assert not main.admin_ok(None), "a missing header opened the door"
+    finally:
+        main.ADMIN_KEY = old
+    src = open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "main.py"),
+               encoding="utf-8").read()
+    assert "compare_digest(str(supplied" in src, "the admin key is compared with =="
+    assert main.clamp(9999, 1, 365, 30) == 365 and main.clamp(0, 1, 365, 30) == 1, \
+        "the window is not clamped - a summary would full-scan an unbounded table"
+    assert main.clamp("nope", 1, 1000, 200) == 200 and main.clamp(None, 1, 1000, 200) == 200
+    assert main.clamp(float("nan"), 1, 1000, 200) == 200, "NaN slipped past the clamp"
+    assert main.clamp("50", 1, 1000, 200) == 50, "a numeric string was thrown away"
+    return "404 posture, constant-time compare, clamped window"
+
+
+def check_admin_summary():
+    """The aggregates, against a seeded table. Three sessions on two devices,
+    one of which fails its command."""
+    now = main.time.time()
+    with main.closing(main.db()) as c:
+        c.execute("DELETE FROM events")
+        for sid, did in (("a", "d1"), ("b", "d1"), ("c", "d2")):
+            names = [("boot", None),
+                     ("prompt_submit", {"text": "kick harder", "verb": "kick"}),
+                     ("cmd_result", {"verb": "kick", "ok": sid != "c"}),
+                     ("play", {"song_id": "x"}),
+                     ("api_error", {"status": 500})]
+            rows = main.clean_batch({"sid": sid, "did": did, "site": "app", "path": "/",
+                                     "events": [{"n": n, "t": now, "p": p} for n, p in names]},
+                                    now, "1.2.3.4", "ua")
+            c.executemany(main.EV_INSERT, rows)
+        c.commit()
+    old = main.ADMIN_KEY
+    try:
+        main.ADMIN_KEY = ""
+        try:
+            main.admin_summary(window=30, x_admin_key="k")
+            raise AssertionError("the summary answered with OONTZ_ADMIN_KEY unset")
+        except main.HTTPException as e:
+            assert e.status_code == 404, "an unset admin key leaked a %d" % e.status_code
+        main.ADMIN_KEY = "k"
+        s = main.admin_summary(window=30, x_admin_key="k")
+        ev = main.admin_events(name="prompt_submit", x_admin_key="k")["events"]
+    finally:
+        main.ADMIN_KEY = old
+    assert s["totals"]["sessions"] == 3 and s["totals"]["devices"] == 2, s["totals"]
+    assert s["top_prompts"][0] == {"text": "kick harder", "n": 3, "sessions": 3}, s["top_prompts"]
+    verbs = {r["verb"]: r for r in s["commands"]}
+    assert verbs["kick"]["n"] == 3 and verbs["kick"]["errors"] == 1 \
+        and verbs["kick"]["error_rate"] == 0.333, verbs
+    stages = {f["stage"]: f["sessions"] for f in s["funnel"]}
+    assert stages == {"land": 3, "command": 3, "audio": 3, "save": 0,
+                      "signin": 0, "publish": 0}, stages
+    assert s["top_ips"][0]["ip"] == "1.2.3.4" and s["top_ips"][0]["n"] == 15, s["top_ips"]
+    assert len(s["recent_errors"]) == 3, s["recent_errors"]
+    assert s["median_session_sec"] is not None, "no session length was measured"
+    assert len(ev) == 3 and ev[0]["name"] == "prompt_submit", ev
+    return "3 sessions, 2 devices, funnel + prompts + error rates"
+
+
 def main_():
     checks = [check_state_text, check_sessions, check_no_email_in_public, check_rate_limit_key,
-              check_clean_batch]
+              check_clean_batch, check_admin_guard, check_admin_summary]
     bad = 0
     for fn in checks:
         try:
