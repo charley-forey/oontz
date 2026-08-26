@@ -885,28 +885,95 @@ function songToMidi(song){
   return new Uint8Array(bytes);
 }
 
+/* One render at a time, everywhere.
+ *
+ * Every render opens an OfflineAudioContext, and there is no close() and no abort
+ * on one - the spec puts close() on AudioContext alone. The only thing that frees a
+ * context is GC, once the last reference to it and its whole node graph is gone. So
+ * the only way to hold the count down is to not build the next one until the last
+ * has settled. renderTracks learned this the hard way and fixed it for itself (see
+ * its comment); dload, mix, export and the ear all still opened them in parallel,
+ * and a deck that says `rendering...` forever is what that looks like from outside.
+ *
+ * Honest about the mechanism: Chrome's hard six-context cap is on realtime
+ * AudioContext. Offline is bounded by memory and node count instead, and iOS Safari
+ * is the one that gives up early - so this is a memory fix, not a quota fix.
+ *
+ * ponytail: one lane, globally. ear.measure's Promise.all now serialises, so
+ * `improve`'s six measurements take roughly twice as long. Per-caller lanes if that
+ * ever matters more than not stalling the tab.
+ */
+var RQ = Promise.resolve(), FLIGHT = 0, FLIGHT_MAX = 0;
+
+function queued(make, seconds){
+  /* Six times real time, a second at the floor. This is a hang guard, not a
+     performance assertion: a phone renders a lot slower than a laptop, and a render
+     that is merely slow must be allowed to finish. */
+  var ms = Math.max(1000, (seconds || 60) * 6000), timer = 0, giveUp;
+  var guard = new Promise(function(_, bad){ giveUp = bad; });
+
+  var run = RQ.then(function(){
+    FLIGHT++; if(FLIGHT > FLIGHT_MAX) FLIGHT_MAX = FLIGHT;
+    /* The clock starts HERE, when this render starts - not when it was asked for. A
+       job that waited behind two others has not been slow, it has been queued, and
+       arming the timer at call time made the queue time out the very work it exists
+       to order. */
+    timer = setTimeout(function(){
+      giveUp(new Error("render timed out after " + Math.round(ms / 1000) + "s")); }, ms);
+    return Promise.resolve().then(make).then(
+      function(v){ FLIGHT--; clearTimeout(timer); return v; },
+      function(e){ FLIGHT--; clearTimeout(timer); throw e; });
+  });
+  RQ = run.catch(function(){});                  /* one failure must not wedge the lane */
+  /* The watchdog rejects the CALLER, never the lane. A render that has begun cannot
+     be cancelled - there is no abort on an OfflineAudioContext - so the next one
+     still waits for the real settle. Letting it start on top of a live render would
+     cause the exact stall this guards against. */
+  return Promise.race([run, guard]);
+}
+
+/* A real yield, not `await null`. A microtask does not let the browser paint, and
+   the whole point of stopping here is that the page can show how far along it is. */
+function breathe(){ return new Promise(function(r){ setTimeout(r, 0); }); }
+
 /* The whole song, offline, through the same _hits the live clock uses. Mono:
-   ponytail: nothing sets pan yet and two 5-minute stereo decks are 200MB. */
+   ponytail: nothing sets pan yet and two 5-minute stereo decks are 200MB.
+
+   The bar loop yields. It used to build the entire graph in one un-yielded pass -
+   for a five-minute song that is tens of thousands of nodes constructed before
+   startRendering() is even called, and the tab is frozen solid for all of it. That
+   freeze, not the render, is what "it says loading and never loads" was. */
 function renderSong(song, onProgress, opts){
   var g0 = gridFor(song), total = totalBars(song);
-  var C = global.OfflineAudioContext || global.webkitOfflineAudioContext;
-  var off = new C(1, Math.ceil((g0.seconds + 1.5) * SR), SR);
-  /* `raw` skips the master chain: a deck plays through the LIVE one, and mastering
-     the same audio twice glue-compresses and limits it twice, which pumps. */
-  var g;
-  if(opts && opts.raw){ g = off.createGain(); g.gain.value = 0.85; g.connect(off.destination); }
-  else g = buildMaster(off, off.destination);
-  var fake = new Engine(); fake.ctx = off; fake.groove = grooveOf(song);
-  var t = 0;
-  for(var bar = 0; bar < total; bar++){
-    var st = stateAt(song, bar), spb = 60 / (st.bpm || g0.bpm);
-    for(var i = 0; i < 16; i++) fake._hits(off, g, t + i * spb / 4, i, st.tracks, st.order, st.bpm || g0.bpm, st.swing || 0, bar);
-    t += 4 * spb;
-    if(onProgress && bar % 16 === 0) onProgress(bar / total);
-  }
-  return off.startRendering().then(function(buf){
+  return queued(async function(){
+    var C = global.OfflineAudioContext || global.webkitOfflineAudioContext;
+    var off = new C(1, Math.ceil((g0.seconds + 1.5) * SR), SR);
+    /* `raw` skips the master chain: a deck plays through the LIVE one, and mastering
+       the same audio twice glue-compresses and limits it twice, which pumps. */
+    var g;
+    if(opts && opts.raw){ g = off.createGain(); g.gain.value = 0.85; g.connect(off.destination); }
+    else g = buildMaster(off, off.destination);
+    var fake = new Engine(); fake.ctx = off; fake.groove = grooveOf(song);
+    var t = 0;
+    for(var bar = 0; bar < total; bar++){
+      var st = stateAt(song, bar), spb = 60 / (st.bpm || g0.bpm);
+      for(var i = 0; i < 16; i++) fake._hits(off, g, t + i * spb / 4, i, st.tracks, st.order, st.bpm || g0.bpm, st.swing || 0, bar);
+      t += 4 * spb;
+      if(bar % 8 === 7) await breathe();
+    }
+    /* Where the time actually goes, measured on this machine: 32 bars of techno is
+       58s of audio, half a second to build this graph and TWO MINUTES inside
+       startRendering. So there is no honest percentage to show - the only hook into
+       a render in flight is suspend(), and driving it in a resume loop wedged the
+       renderer for longer than the render it was reporting on. onProgress therefore
+       covers the build and says so, and the caller says "rendering" for the rest
+       rather than parking a fake 100% on screen for two minutes.
+       ponytail: no render-phase progress. Revisit if renders ever get fast enough
+       that suspend() is cheap relative to them. */
+    if(onProgress) onProgress(1);
+    var buf = await off.startRendering();
     return {buf: buf, grid: g0.grid, marks: g0.marks, seconds: g0.seconds, bpm: g0.bpm, name: song.name};
-  });
+  }, g0.seconds);
 }
 
 /* A slice of the song, rendered offline. `only` mutes everything but one track
@@ -914,26 +981,28 @@ function renderSong(song, onProgress, opts){
    what you measure is the track as it sits in the mix, not in isolation. */
 function renderSlice(song, opts){
   opts = opts || {};
-  var bar0 = opts.bar | 0, nBars = Math.max(1, opts.bars || 1), only = opts.only;
-  var C = global.OfflineAudioContext || global.webkitOfflineAudioContext;
-  var dur = 0, b;
-  for(b = 0; b < nBars; b++){
-    var s0 = stateAt(song, bar0 + b);
-    dur += 4 * 60 / ((s0 && s0.bpm) || song.bpm || 138);
-  }
-  var off = new C(opts.channels || 2, Math.ceil((dur + 1.2) * SR), SR);
-  var g = buildMaster(off, off.destination);
-  var fake = new Engine(); fake.ctx = off; fake.groove = grooveOf(song);
-  var t = 0;
-  for(b = 0; b < nBars; b++){
-    var st = stateAt(song, bar0 + b); if(!st) break;
-    var spb = 60 / (st.bpm || song.bpm || 138);
-    var order = only ? (st.order.indexOf(only) >= 0 ? [only] : []) : st.order;
-    for(var i = 0; i < 16; i++)
-      fake._hits(off, g, t + i * spb / 4, i, st.tracks, order, st.bpm || song.bpm || 138, st.swing || 0, bar0 + b);
-    t += 4 * spb;
-  }
-  return off.startRendering();
+  return queued(function(){
+    var bar0 = opts.bar | 0, nBars = Math.max(1, opts.bars || 1), only = opts.only;
+    var C = global.OfflineAudioContext || global.webkitOfflineAudioContext;
+    var dur = 0, b;
+    for(b = 0; b < nBars; b++){
+      var s0 = stateAt(song, bar0 + b);
+      dur += 4 * 60 / ((s0 && s0.bpm) || song.bpm || 138);
+    }
+    var off = new C(opts.channels || 2, Math.ceil((dur + 1.2) * SR), SR);
+    var g = buildMaster(off, off.destination);
+    var fake = new Engine(); fake.ctx = off; fake.groove = grooveOf(song);
+    var t = 0;
+    for(b = 0; b < nBars; b++){
+      var st = stateAt(song, bar0 + b); if(!st) break;
+      var spb = 60 / (st.bpm || song.bpm || 138);
+      var order = only ? (st.order.indexOf(only) >= 0 ? [only] : []) : st.order;
+      for(var i = 0; i < 16; i++)
+        fake._hits(off, g, t + i * spb / 4, i, st.tracks, order, st.bpm || song.bpm || 138, st.swing || 0, bar0 + b);
+      t += 4 * spb;
+    }
+    return off.startRendering();
+  });
 }
 
 /* Every track of one bar, each on its own channel, in a SINGLE render.
@@ -958,19 +1027,21 @@ function renderTracks(song, opts){
   if(!names.length) return Promise.resolve({names: [], buf: null});
 
   var spb = 60 / (st.bpm || song.bpm || 138), dur = 4 * spb;
-  var C = global.OfflineAudioContext || global.webkitOfflineAudioContext;
-  var off = new C(names.length, Math.ceil((dur + 1.2) * SR), SR);
-  var merger = off.createChannelMerger(names.length);
-  merger.connect(off.destination);
+  return queued(function(){
+    var C = global.OfflineAudioContext || global.webkitOfflineAudioContext;
+    var off = new C(names.length, Math.ceil((dur + 1.2) * SR), SR);
+    var merger = off.createChannelMerger(names.length);
+    merger.connect(off.destination);
 
-  var fake = new Engine(); fake.ctx = off; fake.groove = grooveOf(song);
-  names.forEach(function(n, ch){
-    var bus = off.createGain(); bus.gain.value = 1;
-    bus.connect(merger, 0, ch);
-    for(var i = 0; i < 16; i++)
-      fake._hits(off, bus, i * spb / 4, i, st.tracks, [n], st.bpm || song.bpm || 138, st.swing || 0, bar);
+    var fake = new Engine(); fake.ctx = off; fake.groove = grooveOf(song);
+    names.forEach(function(n, ch){
+      var bus = off.createGain(); bus.gain.value = 1;
+      bus.connect(merger, 0, ch);
+      for(var i = 0; i < 16; i++)
+        fake._hits(off, bus, i * spb / 4, i, st.tracks, [n], st.bpm || song.bpm || 138, st.swing || 0, bar);
+    });
+    return off.startRendering().then(function(buf){ return {names: names, buf: buf}; });
   });
-  return off.startRendering().then(function(buf){ return {names: names, buf: buf}; });
 }
 
 /* A deck is a rendered song, a read position, and a rate. AudioBufferSourceNodes
@@ -1254,7 +1325,9 @@ global.oontz = {
   Deck: Deck, gridFor: gridFor, renderSong: renderSong, renderSlice: renderSlice,
   songDiff: songDiff, songToMidi: songToMidi, maybe: maybe, expandPat: expandPat,
   patIndex: patIndex, grooveOf: grooveOf, buildMaster: buildMaster, keepsLows: keepsLows,
-  renderTracks: renderTracks,
+  renderTracks: renderTracks, queued: queued,
+  /* what the gates watch: if this ever reads above 1, the lane has a hole in it */
+  renderFlight: function(){ return {now: FLIGHT, max: FLIGHT_MAX}; },
   xfGains: xfGains, wavBlob: wavBlob, packSong: packSong, unpackSong: unpackSong,
   armAudio: armAudio,
   stateAt: stateAt, sectionAt: sectionAt, totalBars: totalBars, SR: SR

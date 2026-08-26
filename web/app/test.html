@@ -201,6 +201,49 @@ async function until(fn, ms, what){
     return D.a.r.grid.length + " beats, " + D.a.r.seconds.toFixed(1) + "s";
   });
 
+  /* The deck said `rendering...` forever because every render opened an
+     OfflineAudioContext nobody could close and nothing waited its turn, and because
+     the graph for a whole song was built in one un-yielded loop that froze the tab
+     before rendering even started. Both, from the outside. */
+  await t("overlapping renders take turns and all finish", async function(){
+    var sg = W.CO.compose("techno", 1, "classic"), seen = [];   /* short on purpose: three of these run back to back */
+    var three = [
+      W.OZ.renderSong(sg, null, {raw: true}),
+      W.OZ.renderSong(sg, null, {raw: true}),
+      W.OZ.renderSlice(sg, {bar: 0, bars: 1})
+    ];
+    var out = await Promise.all(three);
+    out.forEach(function(r){ seen.push(!!(r && (r.buf || r.length))); });
+    ok(seen.length === 3 && seen.every(Boolean), "a render started at the same time as another never came back");
+    ok(W.OZ.renderFlight().max <= 1,
+       "renders overlapped - " + W.OZ.renderFlight().max + " contexts were open at once");
+    return "3 renders, max " + W.OZ.renderFlight().max + " in flight";
+  });
+
+  await t("a render says when it has stopped blocking the page", async function(){
+    var pct = [], t0 = performance.now(), buildAt = 0;
+    await W.OZ.renderSong(W.CO.compose("techno", 1, "classic"), function(f){
+      pct.push(f); if(f >= 1 && !buildAt) buildAt = performance.now() - t0;
+    }, {raw: true});
+    ok(pct.length >= 1 && pct[pct.length - 1] === 1, "onProgress never reported the graph was built");
+    /* The point of the callback: the caller learns the tab is free long before the
+       render ends, which is what lets it say something truthful in between. */
+    ok(buildAt < (performance.now() - t0), "the build was not reported before the render finished");
+    return "graph built in " + Math.round(buildAt) + "ms";
+  });
+
+  await t("a gallery track that is not there says so, out loud", async function(){
+    var was = W.GAL;
+    W.GAL = [{id: "definitely-not-a-real-song-id"}];
+    var n = ERRORS.length;
+    await W.CMDS.dload(["a", "1"]);
+    W.GAL = was;
+    ok(ERRORS.length === n, "a missing track became an unhandled rejection: " + ERRORS.slice(n).join(" | "));
+    var txt = W.document.getElementById("out").textContent;
+    ok(/not public any more|could not load that one|render failed/.test(txt),
+       "a missing track failed silently - nothing on screen said why");
+  });
+
   await t("two decks sync to the same phase", async function(){
     await W.CMDS.compose(["acid", "1"]); W.E.stop();
     await W.CMDS.dload(["b", "this"]);

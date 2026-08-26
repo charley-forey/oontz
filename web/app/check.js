@@ -671,6 +671,37 @@ A.ok(pageSrc.indexOf("ev('prompt_submit'") >= 0 && /prompt_submit'[\s\S]{0,120}t
 var swSrc = fs2.readFileSync(path2.join(__dirname, "sw.js"), "utf8");
 A.ok(/CORE[\s\S]{0,300}"\/track\.js"/.test(swSrc), "sw.js CORE must cache /track.js, or the PWA loads without it");
 
+/* The render lane. An OfflineAudioContext has no close() and no abort - GC after
+ * the last reference drops is the only thing that frees one - so the only defence
+ * is refusing to build the next until the last has settled. Node has no
+ * OfflineAudioContext, but the lane itself is pure, so it can be proved here. */
+(function(){
+  var log = [], live = 0;
+  function job(ms, fail){
+    return function(){ live++; log.push(live);
+      return new Promise(function(good, bad){ setTimeout(function(){
+        live--; fail ? bad(new Error("nope")) : good("done"); }, ms); }); };
+  }
+  var results = [];
+  Promise.all([
+    OZ.queued(job(30)).then(function(v){ results.push(v); }),
+    OZ.queued(job(10)).then(function(v){ results.push(v); }),
+    OZ.queued(job(5, true)).catch(function(e){ results.push("caught:" + e.message); }),
+    OZ.queued(job(5)).then(function(v){ results.push("after-failure:" + v); }),
+    /* never settles, half a second of patience: the caller is let go, the lane is not */
+    OZ.queued(function(){ return new Promise(function(){}); }, 0.5)
+      .catch(function(e){ results.push("timeout:" + /timed out/.test(e.message)); })
+  ]).then(function(){
+    A.ok(Math.max.apply(null, log) === 1,
+      "renders must not overlap - observed " + Math.max.apply(null, log) + " at once");
+    A.ok(results.indexOf("caught:nope") >= 0, "a failing render must reject its own caller");
+    A.ok(results.indexOf("after-failure:done") >= 0, "one failure must not wedge the lane");
+    A.ok(results.indexOf("timeout:true") >= 0, "a render that never settles must time out its caller");
+    A.ok(OZ.renderFlight().max <= 1, "renderFlight disagrees with the lane");
+    console.log("  render lane ok  ·  " + log.length + " jobs, never more than one in flight");
+  }).catch(function(e){ console.error("render lane FAILED: " + (e && e.stack || e)); process.exit(1); });
+})();
+
 /* DECK, the way out. Every deck key sits behind a handler that bails while the
  * prompt has focus, and the prompt always has focus - so entering deck mode
  * WITHOUT blurring leaves the page with no keyboard and no exit. The behaviour is
