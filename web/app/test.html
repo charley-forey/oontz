@@ -422,6 +422,60 @@ async function until(fn, ms, what){
   /* The two tests after this one query #hud .sq and #rack .st. If the exit path
      ever leaves deck state behind they fail somewhere else entirely, so prove the
      studio is whole here, where the message names the real cause. */
+  /* The whole point of chunking, from the user's side: you do not wait for the
+     track. The deck is playable after the FIRST chunk and the rest arrives while
+     you are already mixing. Rendering runs several times faster than realtime, so
+     once it has a head start the renderer never falls behind the playhead. */
+  await t("a deck is playable long before the track has finished rendering", async function(){
+    var sg = W.CO.compose("techno", 2, "classic");
+    var whole = W.OZ.gridFor(sg);                      /* the score knows the length before any audio exists */
+    var firstAt = 0, fullAt = 0, partials = 0, readyAtFirst = 0;
+    var t0 = performance.now();
+    var rr = await W.OZ.renderSong(sg, null, {raw: true, onPartial: function(part, ready){
+      partials++;
+      if(!firstAt){ firstAt = performance.now() - t0; readyAtFirst = ready; }
+      ok(part.buf && part.buf.length > 0, "a partial handed over no buffer");
+      /* A partial is short on AUDIO, never on knowledge: the grid, the marks and the
+         length all come from the score, so scrubbing and cues work immediately. */
+      near(part.seconds, whole.seconds, 1e-6, "a partial must report the FULL length, not what it has so far");
+      eq(part.grid.length, whole.grid.length, "a partial must carry the whole beat grid");
+      ok(part.marks.length >= 1, "a partial must carry the section marks");
+      ok(ready <= part.seconds + 1e-6, "a partial claims more rendered than the track is long");
+    }});
+    fullAt = performance.now() - t0;
+
+    ok(partials >= 1, "the render never handed over anything playable");
+    ok(firstAt > 0 && firstAt < fullAt, "the first playable buffer did not arrive before the end");
+    /* The number that matters. A whole track used to be the only thing you could
+       load, and that is what made it a twelve second wait. */
+    ok(firstAt < fullAt * 0.5,
+       "playable at " + Math.round(firstAt) + "ms of a " + Math.round(fullAt) + "ms render - not much of a head start");
+    ok(readyAtFirst > 1, "the first handover carried less than a second of audio");
+    eq(rr.ready, rr.seconds, "the finished render must report itself fully ready");
+    return "playable at " + Math.round(firstAt) + "ms, whole track at " + Math.round(fullAt) +
+           "ms, " + partials + " handovers";
+  });
+
+  await t("a longer render swaps in without losing the playhead", async function(){
+    var d = W.E.decks().a;
+    var sg = W.CO.compose("techno", 1, "classic");
+    var head = null, full = null;
+    full = await W.OZ.renderSong(sg, null, {raw: true, onPartial: function(p){ if(!head) head = p; }});
+    ok(head, "no partial to test with");
+
+    d.load(head);
+    ok(d.hot && d.hot.length >= 0, "load should seed hot cues");
+    d.stop(); d.pos0 = head.grid[8];
+    var before = d.pos();
+    d.upgrade(full);
+    near(d.pos(), before, 1e-6, "upgrading moved the playhead");
+    eq(d.r, full, "upgrade did not take the longer render");
+    eq(d.readySec(), full.seconds, "the deck still thinks it is half-rendered");
+    /* and the head really was shorter */
+    ok(head.ready < full.ready, "the first handover was not shorter than the finished one");
+    return "head " + head.ready.toFixed(1) + "s -> full " + full.ready.toFixed(1) + "s, playhead held";
+  });
+
   /* ---- the mixer ------------------------------------------------------- */
   await t("the mixer mounts inside #wrap and takes the screen", function(){
     W.CMDS.mode(["deck"]);

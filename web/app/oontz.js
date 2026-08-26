@@ -990,6 +990,11 @@ var CHUNK_TAIL = 2.0;              /* how long a voice may ring past its last hi
    calls the limit of feel. */
 var CHUNK_PRE = 0.05;
 var CHUNK_PRE_N = Math.round(CHUNK_PRE * SR);      /* whole samples, so the sum below is an exact shift */
+/* Handovers double: chunks 1, 2, 4, 8, 16... Fixed intervals do not work. With a
+   handover every 8 chunks the deck holds 7.3s of audio while the next one is 7.7s
+   away - four tenths of a second of margin, and silence if the machine is having a
+   bad day. Doubling means the audio in hand grows faster than the time to the next
+   one, so the gap widens instead of closing. */
 
 /* `frac` carries the sub-sample part of where this chunk really begins. Rounding
    each chunk to the nearest sample would misalign it against the song by up to half
@@ -1023,7 +1028,16 @@ function renderSong(song, onProgress, opts){
     var len = Math.ceil((g0.seconds + 1.5) * SR), buf;
 
     if(raw){
-      var out = new Float32Array(len), at = 0, done = 0;
+      var out = new Float32Array(len), at = 0, done = 0, chunks = 0;
+      /* One context, reused, purely to mint AudioBuffers for the handovers below. */
+      var mint = new C(1, 1, SR);
+      var onPartial = opts && opts.onPartial;
+      function snapshot(ready){
+        var b = mint.createBuffer(1, len, SR);
+        b.copyToChannel(out, 0);
+        return {buf: b, grid: g0.grid, marks: g0.marks, seconds: g0.seconds,
+                bpm: g0.bpm, name: song.name, ready: ready};
+      }
       for(var b0 = 0; b0 < total; b0 += CHUNK_BARS){
         var n = Math.min(CHUNK_BARS, total - b0);
         var startN = Math.round(at * SR);
@@ -1032,11 +1046,17 @@ function renderSong(song, onProgress, opts){
         var src = c.buf.getChannelData(0), base = startN - CHUNK_PRE_N;
         var from = Math.max(0, -base), lim = Math.min(src.length, out.length - base);
         for(var i = from; i < lim; i++) out[base + i] += src[i];   /* sum, so the tail rings on */
-        at += c.seconds; done += n;
+        at += c.seconds; done += n; chunks++;
         if(onProgress) onProgress(done / total);                 /* real progress: a chunk really is done */
+        /* Hand the deck something playable as soon as there IS something playable.
+           Rendering runs about five times faster than realtime, so once the first
+           four bars exist the renderer stays ahead of the playhead for good and the
+           rest arrives underneath. Waiting for the whole track first is what made
+           loading a deck take twelve seconds. */
+        if(onPartial && (chunks & (chunks - 1)) === 0) onPartial(snapshot(at), at);
         await breathe();
       }
-      buf = new C(1, len, SR).createBuffer(1, len, SR);
+      buf = mint.createBuffer(1, len, SR);
       buf.copyToChannel(out, 0);
     } else {
       /* Whole, in one context, for the reason in the comment above. */
@@ -1052,7 +1072,8 @@ function renderSong(song, onProgress, opts){
       if(onProgress) onProgress(1);        /* the graph is built; the render reports nothing */
       buf = await off.startRendering();
     }
-    return {buf: buf, grid: g0.grid, marks: g0.marks, seconds: g0.seconds, bpm: g0.bpm, name: song.name};
+    return {buf: buf, grid: g0.grid, marks: g0.marks, seconds: g0.seconds, bpm: g0.bpm,
+            name: song.name, ready: g0.seconds};
   }, g0.seconds);
 }
 
@@ -1201,6 +1222,21 @@ Deck.prototype.jumpBeats = function(n){
   return k;
 };
 Deck.prototype.load = function(r){ this.stop(); this.r = r; this.pos0 = 0; this.loop = null; this.seedHot(); return this; };
+/* Swap in a longer render of the SAME track without stopping.
+ *
+ * A deck is playable as soon as its first chunk exists; the rest arrives while it
+ * plays. The overlapping audio is identical either way - chunked rendering is
+ * deterministic - so re-starting the source at the position it has already reached
+ * is inaudible. play() with no arguments reads the position at the moment the new
+ * source is scheduled, which is what keeps it sample-continuous across the swap. */
+Deck.prototype.upgrade = function(r){
+  if(!this.r) return this.load(r);
+  this.r = r;                                    /* same grid, same marks, more audio */
+  if(this.playing) this.play();
+  return this;
+};
+/* How much of this deck's track has actually been rendered. */
+Deck.prototype.readySec = function(){ return this.r ? (this.r.ready == null ? this.r.seconds : this.r.ready) : 0; };
 Deck.prototype.posAt = function(t){
   var p = this.anchor == null ? this.pos0 : this.pos0 + (t - this.anchor) * this.rate;
   if(this.loop && p >= this.loop[1]){ var L = this.loop[1] - this.loop[0]; p = this.loop[0] + ((p - this.loop[0]) % L); }

@@ -376,7 +376,9 @@ function refreshList(){
 /* Peaks are computed once per load and cached on the render itself. Redoing this
    every frame is what makes a waveform stutter. */
 function peaksFor(r, w){
-  var key = w + "@" + r.seconds;
+  /* `ready` is in the key because a streaming load hands over the same track with
+     more of it rendered; the peaks have to be recut when the audio grows. */
+  var key = w + "@" + r.seconds + "@" + (r.ready == null ? r.seconds : r.ready);
   if(r._peaks && r._peaks.key === key) return r._peaks;
   var d = r.buf.getChannelData(0), n = Math.max(1, w), step = Math.floor(d.length / n) || 1;
   var mins = new Float32Array(n), maxs = new Float32Array(n);
@@ -440,6 +442,15 @@ function drawWave(name){
     x.fillStyle = "rgba(255,194,71,.20)";
     var l0 = Math.floor(W * (d.loop[0] / d.r.seconds)), l1 = Math.floor(W * (d.loop[1] / d.r.seconds));
     x.fillRect(l0, 0, Math.max(2, l1 - l0), H);
+  }
+  /* What has not been rendered yet, said out loud rather than drawn as silence. */
+  var ready = d.readySec ? d.readySec() : d.r.seconds;
+  if(ready < d.r.seconds - 0.05){
+    var rx = Math.floor(W * (ready / d.r.seconds));
+    x.fillStyle = "rgba(7,9,11,.55)";
+    x.fillRect(rx, 0, W - rx, H);
+    x.fillStyle = dim;
+    x.fillRect(rx, 0, Math.max(1, dpr), H);
   }
   x.fillStyle = "#fff";
   x.fillRect(Math.floor(W * frac), 0, Math.max(1, dpr), H);
