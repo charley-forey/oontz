@@ -21,7 +21,12 @@ class Handler(http.server.SimpleHTTPRequestHandler):
     def __init__(self, *a, **kw):
         super().__init__(*a, directory=ROOT, **kw)
 
+    def send_header(self, key, value):
+        self.__dict__.setdefault("_sent", {})[key.lower()] = str(value)
+        super().send_header(key, value)
+
     def end_headers(self):
+        sent = self.__dict__.pop("_sent", {})        # handlers are reused per request
         self.send_header("X-Content-Type-Options", "nosniff")
         self.send_header("Referrer-Policy", "strict-origin-when-cross-origin")
         self.send_header("Strict-Transport-Security", "max-age=31536000")
@@ -37,7 +42,18 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         self.send_header("Content-Security-Policy",
                          "object-src 'none'; base-uri 'self'; "
                          "frame-ancestors 'self'; form-action 'self'")
-        self.send_header("Cache-Control", "public, max-age=60")
+        # One blanket max-age=60 sat on 220KB of JS that only changes on a deploy,
+        # so every visitor re-downloaded the whole instrument once a minute - and it
+        # capped Railway's CDN at 60s too, since the edge honours the origin's
+        # max-age over its own TTL. stale-while-revalidate is the fix: browser and
+        # edge both serve the cached copy INSTANTLY and refresh behind the reader,
+        # so a stale asset survives exactly one load. The shell stays no-cache
+        # because it names the asset URLs, and skew between the two is what a stale
+        # instrument actually looks like.
+        if "cache-control" not in sent:              # a handler may set its own
+            html = sent.get("content-type", "").startswith("text/html")
+            self.send_header("Cache-Control", "no-cache" if html else
+                             "public, max-age=60, stale-while-revalidate=86400")
         super().end_headers()
 
     def do_GET(self):
