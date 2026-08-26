@@ -21,7 +21,14 @@
 
 var IDLE_MS = 30 * 60 * 1000;   /* a sid older than this much quiet is a new session */
 var MAX_BATCH = 50;             /* the server's cap; take() must agree with it */
-var FLUSH_AT = 20, FLUSH_MS = 5000, HEARTBEAT_MS = 15000, POINTER_MS = 10000;
+/* FLUSH_MS is the capacity ceiling of the whole system, not a tuning knob: every
+   active tab posts to /e on this timer, so N users cost N/FLUSH_MS requests a
+   second, and /e measured 47 req/s on one worker. At 5s that was ~235 concurrent
+   users before the write path saturated - and telemetry would have been the thing
+   that took the instrument down. Events carry their own client timestamp, so a
+   longer timer delivers identical data, just later. FLUSH_AT still sends early
+   when a burst fills the queue. */
+var FLUSH_AT = 20, FLUSH_MS = 30000, HEARTBEAT_MS = 15000, POINTER_MS = 10000;
 var QMAX = 500;                 /* offline ceiling — a dead network must not eat the tab */
 
 /* -- the pure half, tested in node ---------------------------------------- */

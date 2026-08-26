@@ -18,6 +18,7 @@ import sqlite3
 import hashlib
 import secrets
 import functools
+import threading
 import urllib.request
 from contextlib import closing
 
@@ -986,7 +987,14 @@ def remix_tree(sid: str, request: Request = None):
 def charts(request: Request = None):
     """What the source graph knows: only possible because songs are text."""
     limit(request, "get", 60)
-    return _charts(int(time.time() // 60))       # same TTL trick as the OG cards
+    with _CHARTS_LOCK:                           # see the lock, below
+        return _charts(int(time.time() // 60))   # same TTL trick as the OG cards
+
+
+# The cache alone still let every concurrent request past a cold bucket compute
+# the same full scan: 32 at once measured p95 4.2s against p50 0.12s. One lock
+# means one of them does the work and the rest get the answer.
+_CHARTS_LOCK = threading.Lock()
 
 
 @functools.lru_cache(maxsize=2)
