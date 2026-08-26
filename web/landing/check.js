@@ -24,6 +24,12 @@ var rel = (html.match(/(?:src|href)="(?!https?:|\/\/|\/|#|data:|mailto:)[^"]*/g)
   .filter(function(m){ return m.indexOf("${") < 0; });   /* JS template literals, not markup */
 A.ok(!rel.length, "relative asset path(s) in landing/index.html, which 404 at /t/<id>: " + rel.join(", "));
 A.ok(html.indexOf('src="/engine/oontz.js"') >= 0, "index.html must load /engine/oontz.js by absolute path (it is served at /t/<id> too)");
+A.ok(files.indexOf("track.js") >= 0, "engine/track.js is missing - run: cp web/app/track.js web/landing/engine/");
+A.ok(html.indexOf('src="/engine/track.js"') >= 0, "index.html must load /engine/track.js by absolute path");
+A.ok(/function ev\(n, p\)[\s\S]{0,200}OONTZ_TRACK/.test(html), "ev() must bridge to OONTZ_TRACK");
+A.ok(/prompt_submit'[\s\S]{0,120}text:/.test(html), "prompt_submit must carry the typed text");
+["cmd_result", "play", "stop", "audio_blocked"].forEach(function(n){
+  A.ok(html.indexOf("ev('" + n + "'") >= 0, "landing/index.html never fires ev('" + n + "')"); });
 A.ok(html.indexOf("sugPick") >= 0 && html.indexOf("oontz_music_hist") >= 0 && html.indexOf("gobtn") >= 0,
   "the landing prompt has the dropdown, history, and the run chip");
 

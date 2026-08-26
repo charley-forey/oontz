@@ -141,6 +141,9 @@
 <script src="/copy.js"></script>
 <script src="/engine/oontz.js"></script>
 <script src="/engine/viz.js"></script>
+<script src="/engine/legal.js"></script>
+<script>window.OONTZ_SITE = "music";</script>
+<script src="/engine/track.js"></script>
 <script>
 "use strict";
 const OUT = document.getElementById('out'), IN = document.getElementById('in');
@@ -311,6 +314,12 @@ const CMDS = {
     w(`<span class="a">▸ playing.</span> <span class="dim">now change it: <span class="a">kick x...x..x.x...x</span> · <span class="a">hat ..x.x.x...x.x.x.</span> · <span class="a">bpm 150</span></span>`);
     start(); },
   stop(){ stop(); stopTrack(); line("▸ stopped.", 'dim'); },
+  terms(){ block(OONTZ_LEGAL.terms); },
+  privacy(){ block(OONTZ_LEGAL.privacy); },
+  repo(){ line();
+    w('  <span class="dim">every line of this, including the synth:</span>');
+    w('  <a href="https://github.com/charley-forey/oontz" target="_blank" rel="noopener">github.com/charley-forey/oontz →</a>');
+    line(); },
   source(){ showSource();
     if(E && E.song) w('<span class="dim">  that is the entire song. not a recording of it — the recipe. ' +
                       'change a character and you have changed the music.</span>');
@@ -531,7 +540,8 @@ function nudge(){
 function stopTrack(){ if(E) E.stop(); EQ = []; if(EQt){ clearTimeout(EQt); EQt = 0; }
   if(window.OONTZ_VIZ){ OONTZ_VIZ.mode('off');     /* the show ends with the music */
     if(document.body.classList.contains('watching')) OONTZ_VIZ.watch(false); }
-  if(NOWPLAYING){ NOWPLAYING = null; strip(); } }
+  if(NOWPLAYING){ ev('stop', {id: NOWPLAYING.id, played_ms: PLAYAT ? Date.now()-PLAYAT : 0, of_ms: PLAYOF});
+    PLAYAT = 0; NOWPLAYING = null; strip(); } }
 async function playTrack(id, fromQueue){
   stop(); if(!fromQueue) EQ = [];
   if(EQt){ clearTimeout(EQt); EQt = 0; }
@@ -553,6 +563,8 @@ async function playTrack(id, fromQueue){
     E.loadSong(j.data);
     const live = E.play() === 'running';
     NOWPLAYING = {id: id, title: j.title || id}; STRIP_TRIED = true; strip();
+    PLAYAT = Date.now(); PLAYOF = Math.round((j.seconds||0) * 1000);
+    ev('play', {id: id, source: fromQueue ? 'queue' : 'cmd', live: live ? 1 : 0, of_ms: PLAYOF});
     w(`<span class="ok">▸ ${esc(j.title)}</span> <span class="dim">· ${Math.round(j.bpm||0)} BPM · ${esc(j.key||'?')}`+
       ` · by ${esc(j.by||'?')} · \`stop\` ends it</span>`);
     if(j.remix_of) w(`  <span class="dim">↻ a remix of <span class="b">${esc(j.remix_of.title)}</span> by ${esc(j.remix_of.handle||'?')} · play ${esc(j.remix_of.id)}</span>`);
@@ -621,7 +633,17 @@ addEventListener('click', function(e){
   }
 });
 
+/* Every line typed here, plus the ones the tour and the share page run for you.
+   ponytail: `ms` is dispatch time, not completion - the async commands return a
+   promise this does not await. */
 function run(raw){
+  const s0 = (raw||'').trim(); if(!s0) return;
+  const t0 = Date.now(), rv0 = s0.split(/\s+/)[0].toLowerCase(), rv = ALIAS[rv0] || rv0;
+  try{ const r = runCmd(raw); ev('cmd_result', {verb: rv, ok: 1, ms: Date.now()-t0}); return r; }
+  catch(err){ ev('cmd_result', {verb: rv, ok: 0, error: String(err && err.message || err).slice(0,120),
+                                ms: Date.now()-t0}); throw err; }
+}
+function runCmd(raw){
   const s=raw.trim(); if(!s) return;
   w(`<span class="a">oontz &gt;</span> ${esc(s)}`);
   const [v0,...args]=s.split(/\s+/); const v=ALIAS[v0.toLowerCase()]||v0.toLowerCase();
@@ -740,13 +762,14 @@ IN.addEventListener('blur', sugClose);
    lands on whatever moved into that spot. oontz.sh learned this already. */
 document.getElementById('gobtn').addEventListener('pointerdown', function(e){
   e.preventDefault();
-  const v = IN.value; IN.value = ''; if(v.trim()) run(v);
+  const v = IN.value; IN.value = ''; promptEv(v, 'gobtn'); if(v.trim()) run(v);
   try{ IN.focus({preventScroll: true}); }catch(err){ IN.focus(); }
 });
 /* paste a share link, get the command */
 IN.addEventListener('paste', function(e){
   try{
     const txt = (e.clipboardData || window.clipboardData).getData('text') || '';
+    KS.paste = 1;
     const m = txt.match(/\/t\/([A-Za-z0-9_-]{6,40})/);
     if(!IN.value && m){ e.preventDefault(); IN.value = 'play ' + m[1]; }
   }catch(err){}
@@ -761,7 +784,21 @@ function tourNext(){
   if(TOURQ.length) w('<span class="dim">  Enter continues the tour · type anything else to wander off</span>');
   else block(CP.tour_done);
 }
+/* What the line COST to type. The text itself rides on prompt_submit. */
+let KS = {n: 0, back: 0, at: 0, paste: 0};
+function ksReset(){ KS = {n: 0, back: 0, at: 0, paste: 0}; }
+function promptEv(v, how){
+  const t = v.trim(); if(!t) return;
+  const pv0 = t.split(/\s+/)[0].toLowerCase();
+  ev('prompt_submit', {text: t.slice(0,300), verb: ALIAS[pv0]||pv0, len: t.length, site: 'music',
+    think_ms: KS.at ? Date.now()-KS.at : 0, nkeys: KS.n, backspaces: KS.back, paste: KS.paste,
+    from_history: HI < HIST.length ? 1 : 0, how: how});
+  ksReset();
+}
 IN.addEventListener('keydown', e=>{
+  const kk = e.key || '';
+  if(!KS.at) KS.at = Date.now();
+  if(kk === 'Backspace') KS.back++; else if(kk.length === 1) KS.n++;
   if(SUGS.hits.length){
     if(e.key === 'ArrowDown'){ e.preventDefault(); SUGS.i = (SUGS.i + 1) % SUGS.hits.length; sugRender(); return; }
     if(e.key === 'ArrowUp' && SUGS.i >= 0){ e.preventDefault(); SUGS.i--; sugRender(); return; }
@@ -769,6 +806,7 @@ IN.addEventListener('keydown', e=>{
     if(e.key === 'Escape'){ e.preventDefault(); sugClose(); return; }
   }
   if(e.key==='Enter'){ const v=IN.value; IN.value=''; sugClose();
+    promptEv(v, 'enter');
     if(v.trim()){ if(HIST[HIST.length-1] !== v.trim()) HIST.push(v.trim());
       if(HIST.length > 50) HIST.shift();
       try{ localStorage.setItem('oontz_music_hist', JSON.stringify(HIST)); }catch(err){} }
@@ -789,10 +827,19 @@ let STRIP_TRIED = false;
 function tfetch(url){ const c = new AbortController(); setTimeout(function(){ c.abort(); }, 4000);
   return fetch(url, {signal: c.signal}); }
 /* the same eight events the instrument fires, so the funnel is one report */
-function ev(n, p){ try{ if(window.gtag) gtag('event', n, p || {}); }catch(e){} }
+function ev(n, p){ try{ if(window.gtag) gtag('event', n, p || {});
+                        if(window.OONTZ_TRACK) OONTZ_TRACK(n, p); }catch(e){} }
 /* Both contexts on this page: the engine's, and the toy synth's separate one. */
 oontz.armAudio(function(){ return [E && E.ctx, AC]; });
+addEventListener('pointerdown', function ab(){
+  removeEventListener('pointerdown', ab, true);
+  setTimeout(function(){
+    const c = (E && E.ctx) || AC;
+    if(c && c.state !== 'running') ev('audio_blocked', {state: c.state});
+  }, 1500);
+}, true);
 let NOWPLAYING = null;                        /* {id,title} while a track plays here */
+let PLAYAT = 0, PLAYOF = 0;                   /* when it started, how long it runs - listen-through */
 async function strip(){
   await API_READY;                              /* never race the fallback probe */
   HUD.classList.add('loading');
@@ -811,6 +858,7 @@ async function strip(){
   }catch(e){}
   bits.push('<span data-cmd="charts"><span class="a">charts</span></span>');
   /* same continuity: if something is playing, the link takes it along */
+  bits.push('<a href="https://github.com/charley-forey/oontz" target="_blank" rel="noopener">source</a>');
   bits.push('<a href="https://oontz.sh/' +
     (NOWPLAYING && NOWPLAYING.id ? '?song=' + encodeURIComponent(NOWPLAYING.id) : '') +
     '" target="_blank" rel="noopener">open the real one →</a>');

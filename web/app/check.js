@@ -314,8 +314,26 @@ var appServer = fs.readFileSync(require("path").join(here, "server.py"), "utf8")
 A.ok(appServer.indexOf("SONG_Q") >= 0, "the app server must recognise ?song=");
 A.ok(appServer.indexOf("/t/%s") >= 0 && appServer.indexOf("302") >= 0,
   "?song= must 302 to the share page - the app itself carries no social tags");
-A.ok(fs.readFileSync(require("path").join(here, "sw.js"), "utf8").indexOf('oontz-v2') >= 0,
+A.ok(fs.readFileSync(require("path").join(here, "sw.js"), "utf8").indexOf('oontz-v3') >= 0,
   "bump the sw cache when a route changes, or repeat visitors keep the old one");
+
+/* -- the legal pages and the repo must exist and stay reachable ------------ */
+var legal = fs.readFileSync(require("path").join(here, "legal.js"), "utf8");
+A.ok(/OONTZ_LEGAL/.test(legal) && /terms/.test(legal) && /privacy/.test(legal),
+  "legal.js must define both documents");
+/* the notice has to describe what the code ACTUALLY does, or it is worse than none */
+A.ok(/180 days/.test(legal), "the retention period must be stated");
+A.ok(/IP address/i.test(legal), "the notice must say IP addresses are logged");
+A.ok(/Google Analytics/.test(legal), "the notice must disclose Google Analytics");
+A.ok(/Anthropic/.test(legal), "the notice must disclose the AI processor");
+A.ok(!/we (also )?collect nothing|no data/i.test(legal), "the notice must not overclaim");
+var idx = fs.readFileSync(require("path").join(here, "index.html"), "utf8");
+A.ok(idx.indexOf('src="legal.js"') >= 0, "index.html must load legal.js");
+A.ok(idx.indexOf("github.com/charley-forey/oontz") >= 0, "the app must link its source");
+A.ok(/prompts you send to the AI/.test(legal),
+  "api/main.py logs ai_prompt - the notice must say so");
+A.ok(/terms: function/.test(idx) && /privacy: function/.test(idx),
+  "terms and privacy must be commands, not just a file");
 
 /* the live grid belongs in the static rack, never in the scrolling log */
 A.ok(/RACK\.innerHTML = h;/.test(html), "the grid must render into the rack");
@@ -590,4 +608,55 @@ A.strictEqual(TT.shakeStep(40, 5000), "\\", "a hard shake spins back");
 A.strictEqual(TT.shakeStep(40, 6000), null, "spinback has a cooldown");
 TT.tiltState.on = false;
 
-console.log("web checks pass  ·  write-through · pads · viz · touch · midi · voices+4 · viz-auto · themes · stage · pwa · notes · roll · jumps · decks · diff · pat2 · midi · paint · tilt · rooms · theory (" + checked + " plans in window) · legible · ear · " + OZ.KEYS.length + " keys listed");
+/* -- track.js: the tracker must be impossible to turn into a liability ------ */
+var TR = require("./track.js");
+
+/* Opt-out is checked BEFORE anything is queued, or it is not an opt-out. */
+var offQ = [];
+var offDNT = TR.optedOut({doNotTrack: "1"}, null, {});
+A.strictEqual(offDNT, true, "navigator.doNotTrack === '1' must opt out");
+for(var ti = 0; ti < 10; ti++) TR.push(offQ, "click", {tag: "a"}, offDNT);
+A.strictEqual(offQ.length, 0, "doNotTrack='1' left events in the queue");
+A.strictEqual(TR.optedOut({}, null, {doNotTrack: "1"}), true, "window.doNotTrack must opt out too");
+A.strictEqual(TR.optedOut({msDoNotTrack: "1"}, null, {}), true, "navigator.msDoNotTrack must opt out too");
+A.strictEqual(TR.optedOut({}, {getItem: function(k){ return k === "oontz_notrack" ? "1" : null; }}, {}), true,
+  "localStorage.oontz_notrack must opt out");
+A.strictEqual(TR.optedOut({}, {getItem: function(){ return null; }}, {}), false, "no signal, no opt-out");
+var onQ = [];
+TR.push(onQ, "click", {tag: "a"}, false);
+A.strictEqual(onQ.length, 1, "without an opt-out signal the event must be queued");
+
+/* A session is the same session until 30 minutes of quiet. */
+var nowMs = 1700000000000;
+A.strictEqual(TR.stale(nowMs - 31 * 60000, nowMs), true, "31 minutes idle must rotate the sid");
+A.strictEqual(TR.stale(nowMs - 29 * 60000, nowMs), false, "29 minutes idle must NOT rotate the sid");
+A.strictEqual(TR.stale(0, nowMs), true, "no previous session means a new sid");
+
+/* The batch cap is the server's cap. 60 queued go out as 50, and 10 wait. */
+var bigQ = [];
+for(var bi = 0; bi < 60; bi++) TR.push(bigQ, "click", {i: bi}, false);
+A.strictEqual(bigQ.length, 60, "60 valid events should all queue");
+var batch = TR.take(bigQ);
+A.strictEqual(batch.length, TR.MAX_BATCH, "a flush must send at most " + TR.MAX_BATCH);
+A.strictEqual(bigQ.length, 10, "the overflow must stay queued, not be dropped");
+
+/* A name the server would reject never gets queued in the first place. */
+var badQ = [];
+["Click", "1click", "click-me", "", "x".repeat(41), "click me", null].forEach(function(n){
+  TR.push(badQ, n, {}, false); });
+A.strictEqual(badQ.length, 0, "an event name that violates ^[a-z][a-z0-9_]{0,39}$ was queued: " +
+  JSON.stringify(badQ.map(function(e){ return e.n; })));
+A.ok(TR.valid("prompt_submit") && TR.valid("a") && TR.valid("x".repeat(40)), "legal names must pass");
+
+/* The wiring, checked in the markup rather than trusted. */
+A.ok(pageSrc.indexOf('<script src="track.js"></script>') >= 0, "index.html must load track.js");
+A.ok(/function ev\(n, p\)[\s\S]{0,200}OONTZ_TRACK/.test(pageSrc), "ev() must bridge to OONTZ_TRACK");
+A.ok(pageSrc.indexOf("ev('prompt_submit'") >= 0 && /prompt_submit'[\s\S]{0,120}text:/.test(pageSrc),
+  "prompt_submit must carry the typed text - it is the whole point");
+["cmd_result", "ai_ask", "ai_result", "ai_accept", "ai_reject", "ai_undo", "play", "stop",
+ "audio_blocked", "song_save", "song_publish", "signin_request", "signin_done", "claim"].forEach(function(n){
+  A.ok(pageSrc.indexOf("ev('" + n + "'") >= 0, "index.html never fires ev('" + n + "')"); });
+var swSrc = fs2.readFileSync(path2.join(__dirname, "sw.js"), "utf8");
+A.ok(/CORE[\s\S]{0,300}"\/track\.js"/.test(swSrc), "sw.js CORE must cache /track.js, or the PWA loads without it");
+
+console.log("web checks pass  ·  write-through · pads · viz · touch · midi · voices+4 · viz-auto · themes · stage · pwa · notes · roll · jumps · decks · diff · pat2 · midi · paint · tilt · rooms · theory (" + checked + " plans in window) · legible · ear · track · " + OZ.KEYS.length + " keys listed");

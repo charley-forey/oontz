@@ -208,11 +208,13 @@
     autocapitalize="off" spellcheck="false" aria-label="terminal input"><button id="gobtn" aria-label="run">▶</button></div>
 </div>
 <script src="copy.js"></script>
+<script src="legal.js"></script>
 <script src="oontz.js"></script>
 <script src="theory.js"></script>
 <script src="ear.js"></script>
 <script src="compose.js"></script>
 <script src="viz.js"></script>
+<script src="track.js"></script>
 <script>
 "use strict";
 var API = "https://api.oontz.sh";
@@ -255,12 +257,14 @@ function block(rows){ line();
 var E = new OZ.Engine();
 if(window.OONTZ_VIZ) OONTZ_VIZ.start(E);
 var song = null, token = localStorage.getItem('oontz_token') || '';
+var NOWID = '', PLAYAT = 0;      /* which track is loaded, and when it started — for listen-through */
 
 /* Nothing about sharing was observable before this: gtag carried a page view and
    not one custom event, so whether a link was ever minted, opened or played was
    unknowable. share_mint -> share_open -> share_play -> remix_from_share is the
    whole funnel, readable straight off a GA report. */
-function ev(n, p){ try{ if(window.gtag) gtag('event', n, p || {}); }catch(e){} }
+function ev(n, p){ try{ if(window.gtag) gtag('event', n, p || {});
+                        if(window.OONTZ_TRACK) OONTZ_TRACK(n, p); }catch(e){} }
 
 /* Tracks this browser shared before it had an account. The API hands back a claim
    token once, to the browser that made the song; signing in trades them for
@@ -281,6 +285,7 @@ async function claimAll(){
       body:JSON.stringify({claims:a})});
     var j = await r.json();
     localStorage.removeItem('oontz_claims');
+    ev('claim', {n: j.claimed || 0, offered: a.length});
     if(j.claimed) line('▸ '+j.claimed+' track'+(j.claimed>1?'s':'')+' you shared before signing in '+
                        (j.claimed>1?'are':'is')+' now yours','ok');
   }catch(e){}
@@ -347,11 +352,19 @@ function clipRect(vw, vh){
    chance to make sound in its whole life. This one never removes itself. */
 OZ.armAudio(function(){ return [E && E.ctx]; });
 
+/* A gesture happened and the context still is not running: this browser is never
+   going to make a sound for this person. Said once, so the count is people. */
+addEventListener('pointerdown', function ab(){
+  removeEventListener('pointerdown', ab, true);
+  setTimeout(function(){ if(E && E.ctx && E.ctx.state !== 'running') ev('audio_blocked', {state: E.ctx.state}); }, 1500);
+}, true);
+
 /* Arriving from somebody else's link. A browser will not let a page make noise
    without a gesture, so do not pretend: say what it is, then ask for the one tap.
    The alternative - what the share page used to do - is a timer that "plays" into
    a suspended context, and a visitor who concludes it is broken. */
 function armPlay(title, meta, id){
+  NOWID = id || '';
   w('<span class="b">▸ '+esc(title||'a track')+'</span>' +
     (meta ? ' <span class="dim">'+esc(meta)+'</span>' : ''));
   var fired = false;
@@ -641,6 +654,13 @@ var CMDS = {
     }catch(e){ line('could not pack that song','w'); }
   },
   free: function(){ block(CP.free); },
+  terms: function(){ block(OONTZ_LEGAL.terms); },
+  privacy: function(){ block(OONTZ_LEGAL.privacy); },
+  repo: function(){ line();
+    w('<span class="dim">  every line of this, including the synth:</span>');
+    w('  <a href="https://github.com/charley-forey/oontz" target="_blank" rel="noopener">github.com/charley-forey/oontz →</a>');
+    w('<span class="dim">  the format lives in docs/OONTZ-FORMAT.md. take the lot.</span>');
+    line(); },
   go: function(){ CMDS.compose(['hardtechno','5']); },
   compose: function(a){
     var style=(a[0]||'hardtechno').toLowerCase();
@@ -722,8 +742,13 @@ var CMDS = {
     }catch(e){ pr.remove(); line('  could not render: '+(e.message||e),'w'); } },
   play: function(){
     if(!song && !(E.order||[]).length) return line(CP.err_nosong,'w');
-    E.play(); line('▸ playing','dim'); },
-  stop: function(){ E.stop(); line('▸ stopped','dim'); },
+    E.play(); PLAYAT = Date.now();
+    ev('play', {id: NOWID, source: 'cmd', of_ms: Math.round(songSeconds(song) * 1000)});
+    line('▸ playing','dim'); },
+  stop: function(){ E.stop();
+    ev('stop', {id: NOWID, played_ms: PLAYAT ? Date.now() - PLAYAT : 0,
+                of_ms: Math.round(songSeconds(song) * 1000)});
+    PLAYAT = 0; line('▸ stopped','dim'); },
   bpm: function(a){ var v=parseFloat(a[0]);
     if(!isFinite(v)||v<60||v>220) return line(CP.err_bpm,'w');
     E.setBpm(v); if(song) song.bpm=v; line('▸ '+v+' BPM','dim'); },
@@ -756,6 +781,7 @@ var CMDS = {
     try{ var r=await fetch(API+'/auth/request',{method:'POST',
         headers:{'content-type':'application/json'}, body:JSON.stringify({email:em})});
       var j=await r.json();
+      ev('signin_request', {sent: j.sent ? 1 : 0});
       if(j.sent) line('▸ check your email. the link signs you in.','ok');
       else if(j.link){ line('▸ mail is off on this deploy, here is your link:','w');
         w('  <a href="'+j.link+'">'+esc(j.link)+'</a>'); }
@@ -765,6 +791,7 @@ var CMDS = {
      being on it. Both hand the link over the same way. */
   publish: async function(){
     if(!token) return line('`share` works signed out. `publish` puts your name on it — `login you@example.com`','w');
+    ev('song_publish', {bars: song ? OZ.totalBars(song) : 0, remix: REMIX_OF ? 1 : 0});
     return CMDS.share([]);
   },
   clear: function(){ OUT.innerHTML='<div id="slack"></div>'; },
@@ -949,6 +976,8 @@ var CMDS = {
       section: at && at.name, role: at && at.sec.role, bar: E.songbar, tracks: E.tracks, order: E.order,
       commands: Object.keys(CMDS).concat(E.order)};
     var d = w('<span class="dim">  thinking…</span>');
+    var t0 = Date.now();
+    ev('ai_ask', {source: 'ask', prompt_len: q.length, text: q.slice(0,300)});
     try{
       var hdr = {'content-type':'application/json'};
       var myKey = localStorage.getItem('oontz_key');   // linked with `key` — browser-only
@@ -956,6 +985,8 @@ var CMDS = {
       var r = await fetch(API+'/ai/ask', {method:'POST', headers:hdr,
         body: JSON.stringify({prompt: q, state: state})});
       var j = await r.json(); d.remove();
+      ev('ai_result', {source: 'ask', ms: Date.now()-t0, n: (j.commands||[]).length,
+                       ok: (j.commands||[]).length ? 1 : 0});
       if(!j.commands || !j.commands.length) return line('▸ '+(j.error||'no suggestion'),'w');
       PENDING = j.commands; line();
       j.commands.forEach(function(c){
@@ -964,7 +995,9 @@ var CMDS = {
           (okc?'':' style="text-decoration:line-through"')+'>'+esc(c)+'</span>'+
           (okc?'':' <span class="dim">not a musical command — skipped</span>')); });
       w('<span class="dim">  Enter runs these '+j.commands.length+' · type anything else to discard · `undo` takes them back</span>'); line();
-    }catch(e){ d.remove(); line('the AI is unreachable right now','w'); }
+    }catch(e){ d.remove(); ev('ai_result', {source: 'ask', ms: Date.now()-t0, n: 0, ok: 0,
+                                            error: String(e && e.message || e).slice(0,120)});
+      line('the AI is unreachable right now','w'); }
   },
   /* -------------------------------------------------------- the arrangement
      You could compose a song and edit any track inside it, but you could not
@@ -1067,6 +1100,7 @@ var CMDS = {
     var n = Math.max(1, Math.min(20, parseInt(a && a[0], 10) || 1)), last = null, did = 0;
     for(var i = 0; i < n; i++){ var l = undoOne(); if(l === null) break; last = l; did++; }
     if(!did) return line('nothing to undo','w');
+    ev('ai_undo', {verb: String(last||'').slice(0,40), n: did});
     line('▸ undid ' + (did > 1 ? did + ' changes, back past ' : '') + last, 'dim'); },
   /* jam: the AI is a bandmate, not an oracle. Every N bars it makes one small
      move, out loud, and `undo` vetoes it. */
@@ -1175,6 +1209,7 @@ var CMDS = {
                style: (song.meta||{}).style, data: song};
     if(!writeLib(lib)) return line('no room left in this browser — `songs`, then `forget <name>`','w');
     song.name = nm; draw();
+    ev('song_save', {bars: OZ.totalBars(song), bpm: song.bpm, n: Object.keys(lib).length});
     line('▸ saved "'+esc(nm)+'" · '+Object.keys(lib).length+' here','dim');
   },
   songs: function(){
@@ -1527,9 +1562,17 @@ async function askAI(prompt, extraState){
   if(extraState) Object.keys(extraState).forEach(function(k){ state[k] = extraState[k]; });
   var hdr = {'content-type':'application/json'};
   var myKey = localStorage.getItem('oontz_key'); if(myKey) hdr['x-anthropic-key'] = myKey;
-  var r = await fetch(API+'/ai/ask', {method:'POST', headers:hdr,
-    body: JSON.stringify({prompt: prompt, state: state})});
-  return r.json();
+  var src = (extraState && extraState.source) || 'askAI', t0 = Date.now();
+  ev('ai_ask', {source: src, prompt_len: String(prompt||'').length, text: String(prompt||'').slice(0,300)});
+  try{
+    var r = await fetch(API+'/ai/ask', {method:'POST', headers:hdr,
+      body: JSON.stringify({prompt: prompt, state: state})});
+    var j = await r.json();
+    ev('ai_result', {source: src, ms: Date.now()-t0, n: (j.commands||[]).length,
+                     ok: (j.commands||[]).length ? 1 : 0});
+    return j;
+  }catch(e){ ev('ai_result', {source: src, ms: Date.now()-t0, n: 0, ok: 0,
+                              error: String(e && e.message || e).slice(0,120)}); throw e; }
 }
 
 /* The model proposes music, never account actions. It has no business reaching
@@ -1728,6 +1771,7 @@ setInterval(async function(){
       grade: {score: sc, faults: faults}};
     var hdr = {'content-type':'application/json'};
     var myKey = localStorage.getItem('oontz_key'); if(myKey) hdr['x-anthropic-key'] = myKey;
+    ev('ai_ask', {source: 'jam', turn: JAM.turns, style: String(JAM.style||'').slice(0,60)});
     var r = await fetch(API+'/ai/ask', {method:'POST', headers:hdr,
       body: JSON.stringify({prompt: 'JAM TURN '+JAM.turns+': you are playing live alongside a human, currently in the '
         +(at ? at.name : 'song')+'. Make exactly ONE small, tasteful, reversible move that fits this moment - vary a pattern, '
@@ -1736,6 +1780,8 @@ setInterval(async function(){
         +(JAM.style ? 'Mood bias, from the human: '+JAM.style+'. ' : '')
         +'End with one line: "# <six words or fewer on why>".', state: state})});
     var j = await r.json();
+    ev('ai_result', {source: 'jam', turn: JAM.turns, n: (j.commands||[]).length,
+                     ok: (j.commands||[]).length ? 1 : 0});
     if(j.commands && j.commands.length){
       snapshot();
       w('<span class="dim">  ♪ jam'+(j.why ? ': <span class="b">'+esc(j.why)+'</span>' : ':')+'</span>');
@@ -1787,11 +1833,25 @@ function undoOne(){
 }
 var GAL = [];
 var ALIAS = {'?':'help','ls':'help','start':'go','make':'go','song':'go','q':'stop','wav':'export','render':'export','crossfade':'xf',
-  'send':'share','post':'share','video':'clip',
+  'send':'share','post':'share','video':'clip','github':'repo','source-code':'repo',
+  'tos':'terms','legal':'terms',
   'exit':'stop','quit':'stop','cls':'clear','about':'what','dj':'decks','keymap':'keys',
   'critique':'grade','score':'grade','signin':'login','account':'login'};
 
+/* Every typed line, every AI-proposed line and every egg goes through here, so
+   this is the one place that knows which verbs people actually reach for and
+   which ones blow up.
+   ponytail: `ms` is dispatch time, not completion — the async commands return a
+   promise this does not await. Await it if per-command latency ever matters. */
 function run(raw){
+  var t0 = Date.now(), s0 = (raw||'').trim();
+  if(!s0) return;
+  var v0 = s0.split(/\s+/)[0].toLowerCase(), v = ALIAS[v0] || v0;
+  try{ var r = runCmd(raw); ev('cmd_result', {verb: v, ok: 1, ms: Date.now()-t0}); return r; }
+  catch(err){ ev('cmd_result', {verb: v, ok: 0, error: String(err && err.message || err).slice(0,120),
+                                ms: Date.now()-t0}); throw err; }
+}
+function runCmd(raw){
   var s=(raw||'').trim(); if(!s) return;
   w('<span class="a2">oontz.sh &gt;</span> '+esc(s));
   var parts=s.split(/\s+/), v0=parts[0], args=parts.slice(1);
@@ -2004,7 +2064,16 @@ SUG.addEventListener('pointerdown', function(e){
 
 IN.addEventListener('input', function(){ TABS = null; hint(); suggest(); });
 
+/* What the line COST to type - not what was typed. The text itself rides on
+   prompt_submit; the keystroke stream is counted and thrown away. */
+var KS = {n: 0, back: 0, at: 0, paste: 0};
+function ksReset(){ KS = {n: 0, back: 0, at: 0, paste: 0}; }
+IN.addEventListener('paste', function(){ KS.paste = 1; });
+
 IN.addEventListener('keydown', function(e){
+  var kk = e.key || '';
+  if(!KS.at) KS.at = Date.now();
+  if(kk === 'Backspace') KS.back++; else if(kk.length === 1) KS.n++;
   if((e.ctrlKey || e.metaKey) && (e.key === 'k' || e.key === 'K')){ e.preventDefault(); openPal(); return; }
   if(scrollKey(e.key)){ e.preventDefault(); return; }
   if(SUGS.hits.length){
@@ -2014,13 +2083,19 @@ IN.addEventListener('keydown', function(e){
     if(e.key === 'Escape'){ e.preventDefault(); sugClose(); return; }
   }
   if(e.key==='Enter'){ var v=IN.value; IN.value=''; TABS=null; sugClose();
+    if(v.trim()){ var pv0 = v.trim().split(/\s+/)[0].toLowerCase();
+      ev('prompt_submit', {text: v.trim().slice(0,300), verb: ALIAS[pv0]||pv0, len: v.trim().length,
+        site: 'app', think_ms: KS.at ? Date.now()-KS.at : 0, nkeys: KS.n, backspaces: KS.back,
+        paste: KS.paste, from_history: HI < HIST.length ? 1 : 0}); }
+    ksReset();
     if(v.trim()){ if(HIST[HIST.length-1] !== v.trim()) HIST.push(v.trim());
       if(HIST.length > 100) HIST.shift();
       try{ localStorage.setItem('oontz_hist', JSON.stringify(HIST)); }catch(err){} }
     HI = HIST.length; DRAFT = '';
     if(PENDING){ var ps=PENDING; PENDING=null;
-      if(!v.trim()){ snapshot('the ai'); ps.filter(musical).forEach(run); hint(); return; }
-      line('  discarded','dim'); }
+      if(!v.trim()){ ev('ai_accept', {n: ps.length, kept: ps.filter(musical).length});
+        snapshot('the ai'); ps.filter(musical).forEach(run); hint(); return; }
+      ev('ai_reject', {n: ps.length}); line('  discarded','dim'); }
     run(v); hint(); }
   else if(e.key==='Tab'){                       // complete, then cycle
     e.preventDefault();
@@ -2195,6 +2270,7 @@ addEventListener('beforeunload', function(){ try{ if(song) localStorage.setItem(
 /* magic-link return: #token=... */
 (function(){ var m=(location.hash||'').match(/token=([^&]+)/);
   if(m){ token=m[1]; localStorage.setItem('oontz_token',token);
+    ev('signin_done', {});
     history.replaceState(null,'',location.pathname+location.search); } })();
 
 (async function boot(){
