@@ -531,6 +531,14 @@ function build(){
 }
 
 g.OONTZ_MIXER.show = function(){
+  /* One load can land a new mixer.js on top of an engine an old service worker
+     still had cached. Rather than throw on the first control you touch, say so and
+     leave DECK's text HUD and its keys working - they need nothing from this file. */
+  var d0 = deck("a");
+  if(typeof d0.filter !== "function" || typeof d0.fader !== "function"){
+    if(typeof g.line === "function") g.line("the mixer needs a newer engine than this tab has cached — reload once", "w");
+    return;
+  }
   build();
   refreshList();
   if(!RAF) RAF = requestAnimationFrame(frame);

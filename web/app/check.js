@@ -314,8 +314,13 @@ var appServer = fs.readFileSync(require("path").join(here, "server.py"), "utf8")
 A.ok(appServer.indexOf("SONG_Q") >= 0, "the app server must recognise ?song=");
 A.ok(appServer.indexOf("/t/%s") >= 0 && appServer.indexOf("302") >= 0,
   "?song= must 302 to the share page - the app itself carries no social tags");
-A.ok(fs.readFileSync(require("path").join(here, "sw.js"), "utf8").indexOf('oontz-v3') >= 0,
-  "bump the sw cache when a route changes, or repeat visitors keep the old one");
+var swV = fs.readFileSync(require("path").join(here, "sw.js"), "utf8");
+A.ok(/var V = "oontz-v\d+"/.test(swV), "sw.js needs a cache version, and it must be bumped when CORE changes");
+/* The worker calls itself network-first. It only is if it revalidates: the origin
+   serves stale-while-revalidate, so a plain fetch can be answered from the HTTP
+   cache with a day-old file, which the worker then caches and serves again. */
+A.ok(/fetch\(new Request\(e\.request, \{cache: "no-cache"\}\)\)/.test(swV),
+  "sw.js must revalidate, or 'network first' serves whatever the HTTP cache kept");
 
 /* -- the legal pages and the repo must exist and stay reachable ------------ */
 var legal = fs.readFileSync(require("path").join(here, "legal.js"), "utf8");

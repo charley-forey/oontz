@@ -2,7 +2,7 @@
  * slow one — and the cache is the parachute: everything ever fetched from this
  * origin serves offline, which is the whole app, because the engine is
  * client-side and the API was never load-bearing for making music. */
-var V = "oontz-v3";        // v2: ?song= now redirects, so the cached "/" must go
+var V = "oontz-v4";        // v2: ?song= now redirects, so the cached "/" must go; v4: mixer.js joined CORE
 var CORE = ["/", "/copy.js", "/legal.js", "/oontz.js", "/theory.js", "/compose.js",
             "/viz.js", "/account.js", "/touch.js", "/mixer.js", "/midi.js", "/track.js", "/icon.svg",
             "/manifest.webmanifest"];
@@ -21,8 +21,14 @@ self.addEventListener("activate", function (e) {
 self.addEventListener("fetch", function (e) {
   var u = new URL(e.request.url);
   if (e.request.method !== "GET" || u.origin !== location.origin) return;
+  /* `no-cache` means revalidate, not "do not cache" - it sends the conditional
+     request and takes a 304. Without it this "network first" was a lie: the origin
+     serves `max-age=60, stale-while-revalidate=86400`, so the plain fetch below was
+     answered by the HTTP cache with a copy up to a day old, and then this worker
+     wrote that stale copy into its own cache and served it again. A visitor ended up
+     running a NEW mixer.js against an OLD engine, which is worse than either. */
   e.respondWith(
-    fetch(e.request).then(function (r) {
+    fetch(new Request(e.request, {cache: "no-cache"})).then(function (r) {
       if (r.ok) { var cp = r.clone(); caches.open(V).then(function (c) { c.put(e.request, cp); }); }
       return r;
     }).catch(function () {
