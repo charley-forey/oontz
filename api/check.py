@@ -56,12 +56,26 @@ def check_no_email_in_public():
     return "no addresses in public output"
 
 
+class _Req:
+    """Enough of a Request for client_ip: headers and a peer."""
+    def __init__(self, headers, peer="10.0.0.1"):
+        self.headers = headers
+        self.client = type("C", (), {"host": peer})()
+
+
 def check_rate_limit_key():
-    """X-Forwarded-For is written by the caller; only the last hop is the proxy's."""
-    src = open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "main.py"),
-               encoding="utf-8").read()
-    assert 'split(",")[-1]' in src, "the rate limiter trusts a client-supplied hop"
-    return "keyed on the proxy's hop"
+    """X-Forwarded-For is written by the CALLER. If the bucket key comes from it,
+    every limit in main.py is bypassed by rotating one header - so assert the
+    behaviour, not the source line that happens to implement it."""
+    ip = main.client_ip
+    assert ip(_Req({"x-real-ip": "9.9.9.9", "x-forwarded-for": "1.2.3.4"})) == "9.9.9.9", \
+        "a client-supplied X-Forwarded-For beat the edge's X-Real-IP"
+    a = ip(_Req({"x-real-ip": "9.9.9.9", "x-forwarded-for": "1.1.1.1"}))
+    b = ip(_Req({"x-real-ip": "9.9.9.9", "x-forwarded-for": "2.2.2.2"}))
+    assert a == b, "rotating X-Forwarded-For bought a fresh rate-limit bucket"
+    assert ip(_Req({}, peer="10.0.0.7")) == "10.0.0.7", "no header, no peer fallback"
+    assert ip(None) == "?", "client_ip must survive no request at all"
+    return "keyed on X-Real-IP, XFF ignored"
 
 
 def check_clean_batch():

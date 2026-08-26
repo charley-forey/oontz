@@ -53,9 +53,9 @@ You share the recipe, not the cake. Nothing else in music software works this wa
 ## Services
 
 ```
-oontz.music   Vercel, static      the CLI landing page + public gallery
-oontz.sh      Vercel, static      the instrument (WebAudio, all client-side)
-api.oontz.sh  Railway             accounts, song storage, gallery, AI proxy
+oontz.music   Railway, landing    the CLI landing page, public gallery, share pages
+oontz.sh      Railway, app        the instrument (WebAudio, all client-side)
+api.oontz.sh  Railway, api        accounts, song storage, gallery, AI proxy
 ```
 
 The API is small on purpose: email verify, save/load songs, publish/browse, and one

@@ -24,6 +24,19 @@ class Handler(http.server.SimpleHTTPRequestHandler):
     def end_headers(self):
         self.send_header("X-Content-Type-Options", "nosniff")
         self.send_header("Referrer-Policy", "strict-origin-when-cross-origin")
+        self.send_header("Strict-Transport-Security", "max-age=31536000")
+        self.send_header("Permissions-Policy",
+                         "geolocation=(), camera=(), microphone=()")
+        # frame-ancestors, not X-Frame-Options: DENY - browsergate drives this page
+        # inside an iframe, and DENY would fail the gate rather than an attacker.
+        # ponytail: no script-src/connect-src here. pyodide needs unsafe-eval and
+        # jsdelivr, gtag is third-party, and the API has a hardcoded failover host -
+        # a script-src that covers all three protects nothing. Tighten it the day
+        # gtag goes and pyodide is vendored; the escaping in esc() is what actually
+        # closes the injection path.
+        self.send_header("Content-Security-Policy",
+                         "object-src 'none'; base-uri 'self'; "
+                         "frame-ancestors 'self'; form-action 'self'")
         self.send_header("Cache-Control", "public, max-age=60")
         super().end_headers()
 

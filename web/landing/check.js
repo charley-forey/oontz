@@ -33,6 +33,14 @@ A.ok(/prompt_submit'[\s\S]{0,120}text:/.test(html), "prompt_submit must carry th
 A.ok(html.indexOf("sugPick") >= 0 && html.indexOf("oontz_music_hist") >= 0 && html.indexOf("gobtn") >= 0,
   "the landing prompt has the dropdown, history, and the run chip");
 
+/* esc() lands INSIDE double-quoted data-cmd attributes, and a pattern string out
+   of a stranger's published song is the value. Escaping only &<> was a breakout. */
+var escSrc = html.slice(html.indexOf("const esc ="), html.indexOf(");", html.indexOf("const esc =")) + 2);
+var esc = eval("(" + escSrc.replace(/^const esc = /, "").replace(/;$/, "") + ")");
+A.strictEqual(esc('" onmouseover=x'), "&quot; onmouseover=x", "esc() must escape double quotes");
+A.strictEqual(esc("'"), "&#39;", "esc() must escape single quotes");
+A.strictEqual(esc("<&>"), "&lt;&amp;&gt;", "esc() must still escape angle brackets and ampersand");
+
 var r = require("child_process").spawnSync("python", [path.join(here, "server.py"), "check"], {encoding: "utf8"});
 A.strictEqual(r.status, 0, "server.py check failed:\n" + r.stdout + r.stderr);
 

@@ -17,6 +17,7 @@ import base64
 import sqlite3
 import hashlib
 import secrets
+import functools
 import urllib.request
 from contextlib import closing
 
@@ -66,7 +67,9 @@ app = FastAPI(title="oontz", docs_url=None, redoc_url=None)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[APP_URL, SITE_URL, "http://localhost:3000", "http://localhost:5173"],
-    allow_origin_regex=r"https://[a-z0-9-]+\.up\.railway\.app|http://localhost:\d+",  # fallback hosts + local dev
+    # NOT every *.up.railway.app - that is any Railway user's deployment. Ours.
+    allow_origin_regex=r"https://(130v5d2f|g1p1gota|6nb6dlqp|api-production-68c09)\.up\.railway\.app"
+                       r"|http://localhost:\d+",
     allow_credentials=False,
     allow_methods=["GET", "POST", "PATCH", "PUT", "DELETE", "OPTIONS"],
     allow_headers=["*"],
@@ -293,11 +296,12 @@ _HITS = {}
 
 
 def client_ip(request: Request):
-    # the LAST hop, not the first: the proxy appends, and everything before it
-    # is whatever the caller decided to send
+    # X-Real-IP, which Railway's edge SETS - never X-Forwarded-For, which the
+    # caller can send. Reading XFF made every limit below a formality: rotate the
+    # header, get a fresh bucket. There is no hop count you can trust from in here.
     if not request:
         return "?"
-    return request.headers.get("x-forwarded-for", "").split(",")[-1].strip() or \
+    return request.headers.get("x-real-ip", "").strip() or \
         (request.client.host if request.client else "?")
 
 
@@ -314,6 +318,25 @@ def limit(request: Request, bucket, per_min=30):
         for k, v in list(_HITS.items()):
             if not [t for t in v if now - t < 60]:
                 _HITS.pop(k, None)
+
+
+MAIL_COOLDOWN = 60                               # seconds, per email address
+AI_DAY_MAX = int(os.environ.get("OONTZ_AI_DAY_MAX", "500"))
+_AI_DAY = ["", 0]
+
+
+def ai_budget_ok():
+    """The shared key is one bill, and a per-IP limit does nothing about a botnet.
+    A bring-your-own key spends the caller's money, so only the shared key counts.
+    # ponytail: in-process counter, resets on deploy; a DB row if this ever runs
+    # more than one replica."""
+    day = time.strftime("%Y-%m-%d", time.gmtime())
+    if _AI_DAY[0] != day:
+        _AI_DAY[:] = [day, 0]
+    if _AI_DAY[1] >= AI_DAY_MAX:
+        return False
+    _AI_DAY[1] += 1
+    return True
 
 
 # -------------------------------------------------------------- telemetry
@@ -407,7 +430,7 @@ def log_event(name, props, request=None, user_id=None, sid=None):
 @app.post("/e")
 async def ingest(request: Request, user=Depends(optional_user)):
     """Batch ingest. Always {"ok":1} - a 4xx here only buys a retry loop."""
-    limit(request, "e", 240)
+    limit(request, "e", 60)                      # 60 x 50 events is already plenty
     try:
         if int(request.headers.get("content-length") or 0) > MAX_BATCH_BYTES:
             return {"ok": 1}
@@ -574,6 +597,13 @@ def auth_request(body: EmailIn, request: Request):
     token = secrets.token_urlsafe(32)
     with closing(db()) as c:
         c.execute("DELETE FROM links WHERE created < ?", (time.time() - LINK_TTL,))
+        # Per-IP alone let anyone mail a stranger six times a minute from every
+        # address they had. The cooldown is per EMAIL - and the response must not
+        # change shape for it, or this becomes an account-existence oracle.
+        recent = c.execute("SELECT 1 FROM links WHERE email=? AND created > ?",
+                           (email, time.time() - MAIL_COOLDOWN)).fetchone()
+        if recent:
+            return {"sent": True, "email": email}
         c.execute("INSERT INTO links(token,email,created) VALUES(?,?,?)",
                   (token, email, time.time()))
         c.commit()
@@ -954,9 +984,16 @@ def remix_tree(sid: str, request: Request = None):
 
 @app.get("/charts")
 def charts(request: Request = None):
-    """What the source graph knows: only possible because songs are text.
-    ponytail: full scan; an index when the gallery outgrows a few thousand."""
+    """What the source graph knows: only possible because songs are text."""
     limit(request, "get", 60)
+    return _charts(int(time.time() // 60))       # same TTL trick as the OG cards
+
+
+@functools.lru_cache(maxsize=2)
+def _charts(_bucket):
+    """A full scan that parses every public song, so it must not run per request.
+    ponytail: full scan behind a 60s cache; an index when the gallery outgrows a
+    few thousand tracks."""
     from collections import Counter
     most_remixed, pat_count, pat_ex, bpm_bucket, key_count = [], Counter(), {}, Counter(), Counter()
     with closing(db()) as c:
@@ -1013,6 +1050,7 @@ def similar_inline(body: SimilarIn, request: Request = None):
 
 @app.get("/gallery")
 def gallery(sort: str = "new", limit_n: int = 40, request: Request = None):
+    limit(request, "get", 60)
     limit_n = max(1, min(100, limit_n))
     order = {"new": "updated DESC", "played": "plays DESC",
              "long": "seconds DESC"}.get(sort, "updated DESC")
@@ -1054,7 +1092,8 @@ def save_take(body: TakeIn, request: Request, user=Depends(current_user)):
 
 
 @app.get("/takes")
-def my_takes(user=Depends(current_user)):
+def my_takes(request: Request, user=Depends(current_user)):
+    limit(request, "take", 60)
     with closing(db()) as c:
         rows = c.execute("""SELECT id,song_id,name,length(data) bytes,created
                             FROM takes WHERE user_id=? ORDER BY created DESC""",
@@ -1063,7 +1102,8 @@ def my_takes(user=Depends(current_user)):
 
 
 @app.get("/takes/{tid}")
-def get_take(tid: str, user=Depends(current_user)):
+def get_take(tid: str, request: Request, user=Depends(current_user)):
+    limit(request, "take", 60)
     with closing(db()) as c:
         row = c.execute("SELECT * FROM takes WHERE id=? AND user_id=?",
                         (tid, user["id"])).fetchone()
@@ -1112,7 +1152,8 @@ def new_playlist(body: PlaylistIn, request: Request, user=Depends(current_user))
 
 
 @app.get("/playlists/public")
-def public_playlists(limit_n: int = 40):
+def public_playlists(limit_n: int = 40, request: Request = None):
+    limit(request, "get", 60)
     limit_n = max(1, min(100, limit_n))
     with closing(db()) as c:
         rows = c.execute("""SELECT p.id,p.title,p.created,p.updated,u.handle,
@@ -1174,8 +1215,9 @@ def delete_playlist(pid: str, user=Depends(current_user)):
 
 
 @app.put("/playlists/{pid}/items")
-def set_items(pid: str, body: ItemsIn, user=Depends(current_user)):
+def set_items(pid: str, body: ItemsIn, request: Request, user=Depends(current_user)):
     """Replaces the ordered list. Every song must be yours or public."""
+    limit(request, "playlist", 30)
     with closing(db()) as c:
         row = c.execute("SELECT id FROM playlists WHERE id=? AND user_id=?",
                         (pid, user["id"])).fetchone()
@@ -1253,6 +1295,11 @@ def ai_ask(body: AskIn, request: Request, x_anthropic_key: str = Header(default=
                             "state_bytes": len(json.dumps(body.state or {}))}, request)
     own = x_anthropic_key.strip()
     key = own if own.startswith("sk-ant-") else ANTHROPIC_KEY
+    if key and not own and not ai_budget_ok():
+        log_event("ai_result", {"ms": 0, "n_commands": 0, "ok": False,
+                                "error": "budget"}, request)
+        raise HTTPException(503, "the AI helper is resting for today - `key sk-ant-...` "
+                                 "with your own to keep going")
     if not key:
         log_event("ai_result", {"ms": 0, "n_commands": 0, "ok": False,
                                 "error": "not configured"}, request)
@@ -1335,8 +1382,15 @@ async def _room_send(ws, text):
 @app.websocket("/ws/room/{code}")
 async def room_ws(ws: WebSocket, code: str):
     code = code.upper()[:6]
-    members = ROOMS.setdefault(code, [])
-    if len(members) >= ROOM_CAP:
+    # setdefault here meant every made-up code MINTED a room, so dialling random
+    # codes grew the dict forever. A socket joins rooms; POST /rooms makes them.
+    members = ROOMS.get(code)
+    if members is None or len(members) >= ROOM_CAP:
+        await ws.close(code=1008)
+        return
+    try:
+        limit(ws, "room", 30)                    # ws has .headers and .client too
+    except HTTPException:
         await ws.close(code=1008)
         return
     await ws.accept()

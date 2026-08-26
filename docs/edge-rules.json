@@ -1,0 +1,68 @@
+{
+  "_comment": [
+    "Railway edge rules. There is no CLI for these - paste per service in",
+    "Settings -> Edge -> Edge Rules -> Edit as JSON.",
+    "",
+    "Rules 10 and 20 go on ALL THREE services (app, landing, api): they are the",
+    "scanner floor, and today every one of these probes reaches a Python process",
+    "and spawns a thread. Rules 30 and 40 are api only.",
+    "",
+    "For rule 30, replace the placeholder with your own address before saving, or",
+    "drop the rule - OONTZ_ADMIN_KEY is unset, so /admin/* already 404s for",
+    "everyone (api/main.py, _guard). This only stops it being probed.",
+    "",
+    "See docs/runbook-attack.md for what to add during an actual incident."
+  ],
+  "version": 1,
+  "rules": [
+    {
+      "description": "Scanner floor: WordPress, PHP, CGI",
+      "priority": 10,
+      "enabled": true,
+      "if": {
+        "or": [
+          { "attr": "http.path", "op": "matches", "value": "/wp-*" },
+          { "attr": "http.path", "op": "matches", "value": "*.php" },
+          { "attr": "http.path", "op": "matches", "value": "/cgi-bin/*" },
+          { "attr": "http.path", "op": "matches", "value": "/vendor/*" },
+          { "attr": "http.path", "op": "matches", "value": "/phpmyadmin*" }
+        ]
+      },
+      "then": { "action": "block", "params": { "status": 403, "body": "no" } }
+    },
+    {
+      "description": "Scanner floor: secrets and VCS metadata",
+      "priority": 20,
+      "enabled": true,
+      "if": {
+        "or": [
+          { "attr": "http.path", "op": "matches", "value": "/.env*" },
+          { "attr": "http.path", "op": "matches", "value": "/.git*" },
+          { "attr": "http.path", "op": "matches", "value": "/.aws*" },
+          { "attr": "http.path", "op": "matches", "value": "*/config.json" },
+          { "attr": "http.path", "op": "matches", "value": "*.sql" }
+        ]
+      },
+      "then": { "action": "block", "params": { "status": 403, "body": "no" } }
+    },
+    {
+      "description": "api only: /admin is not for the internet",
+      "priority": 30,
+      "enabled": false,
+      "if": {
+        "and": [
+          { "attr": "http.path", "op": "matches", "value": "/admin*" },
+          { "attr": "ipv4.src", "op": "not_in", "value": ["203.0.113.7"] }
+        ]
+      },
+      "then": { "action": "block", "params": { "status": 403, "body": "no" } }
+    },
+    {
+      "description": "api only: docs are off, so is the schema they read from",
+      "priority": 40,
+      "enabled": true,
+      "if": { "attr": "http.path", "op": "eq", "value": "/openapi.json" },
+      "then": { "action": "block", "params": { "status": 404, "body": "Not Found" } }
+    }
+  ]
+}
