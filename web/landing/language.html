@@ -1,0 +1,3142 @@
+<!doctype html>
+<html lang="en">
+<head>
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-FMHLJ4S3VC"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+  gtag('config', 'G-FMHLJ4S3VC');
+</script>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<link rel="icon" href="/icon.svg" type="image/svg+xml">
+<meta name="theme-color" content="#07090b">
+<title>The Song Is the Source — an audio programming language, from first principles</title>
+<meta name="description" content="A long-form research article on designing an audio programming language where a whole song is readable, diffable, forkable text. History, theory, semantics, architecture, metaphors, economics, and a conformance checklist for building your own.">
+<meta property="og:site_name" content="oontz">
+<meta property="og:type" content="article">
+<meta property="og:url" content="https://oontz.music/language">
+<meta property="og:title" content="The Song Is the Source">
+<meta property="og:description" content="An audio programming language, from first principles: history, theory, semantics, architecture, and a conformance checklist for building your own.">
+<meta property="og:image" content="https://oontz.music/og/brand.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="oontz - a track as a 16-step pattern">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="The Song Is the Source">
+<meta name="twitter:description" content="An audio programming language, from first principles.">
+<meta name="twitter:image" content="https://oontz.music/og/brand.png">
+<style>
+  :root{
+    --bg:#07090b; --surface:#0e1216; --line:#18212b; --dim:#6b7b88;
+    --fg:#c6d2dc; --bright:#f4f9fc; --accent:#22e0d0; --accent2:#ff4fa3;
+    --warn:#ffb020; --ok:#4ade80;
+    --plate:rgba(10,14,18,.66);
+    --mono:ui-monospace,"SF Mono",Menlo,Consolas,"DejaVu Sans Mono",monospace;
+    --serif:"Iowan Old Style","Charter","Bitstream Charter","Source Serif Pro",Georgia,"Times New Roman",serif;
+    --measure:34rem;
+  }
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth;scroll-padding-top:2rem;-webkit-text-size-adjust:100%}
+  body{margin:0;background:var(--bg);color:var(--fg);
+       font:17px/1.65 var(--serif);
+       background-image:
+         radial-gradient(ellipse 80% 50% at 50% -10%,rgba(34,224,208,.07),transparent 70%),
+         radial-gradient(ellipse 60% 40% at 90% 20%,rgba(255,79,163,.045),transparent 70%);
+       background-attachment:fixed}
+
+  /* reading progress */
+  #prog{position:fixed;top:0;left:0;height:2px;width:0;z-index:50;
+        background:linear-gradient(90deg,var(--accent),var(--accent2));transition:width .1s linear}
+
+  /* layout: sticky contents rail + one column of prose */
+  #shell{max-width:74rem;margin:0 auto;padding:0 1.4rem 8rem;
+         display:grid;grid-template-columns:minmax(0,1fr);gap:0}
+  @media (min-width:1080px){
+    #shell{grid-template-columns:17rem minmax(0,1fr);gap:3.5rem;padding-left:2rem}
+    #toc{position:sticky;top:0;max-height:100vh;overflow-y:auto;padding:3rem 0 4rem;
+         scrollbar-width:thin;scrollbar-color:var(--line) transparent;font-size:13px}
+    #toc::-webkit-scrollbar{width:6px}
+    #toc::-webkit-scrollbar-thumb{background:var(--line);border-radius:4px}
+  }
+  @media (max-width:1079px){
+    #toc{border:1px solid var(--line);border-radius:8px;background:var(--plate);
+         padding:0 1rem;margin:2rem 0;font-size:14px}
+    #toc>h2{cursor:pointer;display:flex;justify-content:space-between;
+            align-items:center;padding:.5rem 0;margin:.7rem 0}
+    #toc>h2::after{content:"▾";color:var(--accent);font-size:14px}
+    #toc.folded>h2::after{content:"▸"}
+    #toc.folded ol{display:none}
+    #toc a{padding:.5rem 0 .5rem .7rem}        /* a real tap target */
+  }
+
+  /* contents rail */
+  #toc h2{font:600 11px/1 var(--mono);letter-spacing:.18em;text-transform:uppercase;
+          color:var(--dim);margin:1.6rem 0 .8rem}
+  #toc ol{list-style:none;margin:0;padding:0 0 1rem}
+  #toc li{margin:0}
+  #toc a{display:block;padding:.28rem 0 .28rem .7rem;color:var(--dim);
+         text-decoration:none;border-left:1px solid var(--line);line-height:1.35;
+         font-family:var(--mono);font-size:12px}
+  #toc a:hover{color:var(--bright);border-left-color:var(--accent)}
+  #toc a.part{color:var(--fg);margin-top:.9rem;border-left-color:transparent;
+              letter-spacing:.08em;text-transform:uppercase;font-size:10.5px;font-weight:600}
+  #toc a.here{color:var(--accent);border-left-color:var(--accent)}
+
+  main{padding:3rem 0 0;min-width:0}
+  main > *{max-width:var(--measure)}
+  main > figure, main > .wide, main > table, main > .tbl{max-width:none}
+
+  /* headings */
+  h1{font:600 clamp(2rem,5.2vw,3.1rem)/1.08 var(--serif);color:var(--bright);
+     margin:.4rem 0 .6rem;letter-spacing:-.02em;max-width:26rem}
+  .deck{font-size:1.18rem;line-height:1.5;color:var(--fg);opacity:.92;margin:0 0 2rem}
+  h2{font:600 1.75rem/1.2 var(--serif);color:var(--bright);margin:4.2rem 0 1rem;
+     letter-spacing:-.01em;scroll-margin-top:2rem}
+  h3{font:600 1.24rem/1.3 var(--serif);color:var(--bright);margin:2.6rem 0 .7rem;
+     scroll-margin-top:2rem}
+  h4{font:600 .82rem/1.3 var(--mono);color:var(--accent);margin:1.9rem 0 .5rem;
+     letter-spacing:.1em;text-transform:uppercase}
+  .part{margin:6rem 0 0;padding:2.2rem 0 0;border-top:1px solid var(--line);max-width:none}
+  .part .n{font:600 11px/1 var(--mono);letter-spacing:.24em;color:var(--accent);
+           text-transform:uppercase;display:block;margin-bottom:.7rem}
+  .part h2{margin:0 0 .5rem;font-size:2.1rem}
+  .part p{color:var(--dim);max-width:var(--measure);font-size:1.03rem;margin:.4rem 0 0}
+  h2 .num,h3 .num{font:600 .62em/1 var(--mono);color:var(--dim);margin-right:.6em;
+                  letter-spacing:.05em;vertical-align:.12em}
+
+  p{margin:0 0 1.15rem}
+  a{color:var(--accent);text-decoration:none;border-bottom:1px solid rgba(34,224,208,.28)}
+  a:hover{color:var(--bright);border-color:var(--bright)}
+  strong{color:var(--bright);font-weight:600}
+  em{color:var(--fg)}
+  ul,ol{margin:0 0 1.2rem;padding-left:1.3rem}
+  li{margin:0 0 .45rem}
+  ul.tight li,ol.tight li{margin:0 0 .2rem}
+  hr{border:0;border-top:1px solid var(--line);margin:3rem 0;max-width:none}
+
+  code{font:.86em/1.5 var(--mono);color:var(--accent);
+       background:rgba(34,224,208,.07);padding:.1em .38em;border-radius:3px;
+       word-break:break-word}
+  pre{font:13px/1.62 var(--mono);background:var(--surface);border:1px solid var(--line);
+      border-radius:8px;padding:1rem 1.1rem;overflow-x:auto;margin:0 0 1.4rem;
+      color:var(--fg);-webkit-overflow-scrolling:touch}
+  pre code{background:none;padding:0;color:inherit;font-size:inherit}
+  pre .c{color:var(--dim)}
+  pre .k{color:var(--accent)}
+  pre .s{color:var(--accent2)}
+  pre .o{color:var(--ok)}
+
+  figure{margin:2rem 0 2.2rem}
+  figcaption{font:12px/1.5 var(--mono);color:var(--dim);margin-top:.7rem;
+             max-width:var(--measure)}
+  /* A diagram scaled to a phone is a diagram with 5px labels. Scroll it instead,
+     the way the tables do - the caption stays put outside the scroller. */
+  .plot{overflow-x:auto;-webkit-overflow-scrolling:touch;
+        scrollbar-width:thin;scrollbar-color:var(--line) transparent}
+  .plot::-webkit-scrollbar{height:8px}
+  .plot::-webkit-scrollbar-thumb{background:var(--line);border-radius:5px}
+  figure svg{max-width:100%;height:auto;display:block;min-width:38rem}
+
+  .tbl{overflow-x:auto;margin:0 0 1.6rem;-webkit-overflow-scrolling:touch;
+       border:1px solid var(--line);border-radius:8px}
+  table{border-collapse:collapse;width:100%;font:13px/1.5 var(--mono);min-width:32rem}
+  th{text-align:left;padding:.65rem .85rem;color:var(--dim);font-weight:600;
+     border-bottom:1px solid var(--line);font-size:11px;letter-spacing:.1em;
+     text-transform:uppercase;white-space:nowrap;background:rgba(255,255,255,.015)}
+  td{padding:.6rem .85rem;border-bottom:1px solid rgba(24,33,43,.6);vertical-align:top}
+  tr:last-child td{border-bottom:0}
+  td strong{color:var(--bright)}
+
+  blockquote{margin:2rem 0;padding:0 0 0 1.3rem;border-left:2px solid var(--accent);
+             color:var(--bright);font-size:1.14rem;line-height:1.5}
+  blockquote p:last-child{margin:0}
+  blockquote cite{display:block;margin-top:.6rem;font:12px/1.4 var(--mono);
+                  color:var(--dim);font-style:normal}
+
+  .note{border:1px solid var(--line);border-radius:8px;background:var(--plate);
+        padding:1.1rem 1.2rem;margin:0 0 1.6rem;font-size:.94rem}
+  .note p:last-child{margin:0}
+  .note .lbl{font:600 10px/1 var(--mono);letter-spacing:.16em;text-transform:uppercase;
+             color:var(--accent);display:block;margin-bottom:.6rem}
+  .note.law{border-color:rgba(34,224,208,.3)}
+  .note.law .lbl{color:var(--accent)}
+  .note.warn .lbl{color:var(--warn)}
+  .note.warn{border-color:rgba(255,176,32,.25)}
+
+  .lede::first-letter{float:left;font:600 3.4rem/.82 var(--serif);color:var(--accent);
+                      margin:.28rem .55rem 0 0}
+
+  .meta{font:12px/1.7 var(--mono);color:var(--dim);border-top:1px solid var(--line);
+        border-bottom:1px solid var(--line);padding:1rem 0;margin:0 0 2.6rem}
+  .meta b{color:var(--fg);font-weight:400}
+
+  .kicker{font:600 11px/1 var(--mono);letter-spacing:.22em;text-transform:uppercase;
+          color:var(--accent);margin:0 0 1.2rem}
+
+  .abstract{border-left:2px solid var(--line);padding-left:1.4rem;margin:0 0 2.4rem}
+  .abstract p{font-size:1.02rem}
+
+  footer{max-width:var(--measure);margin:6rem 0 0;padding-top:2rem;
+         border-top:1px solid var(--line);font:13px/1.7 var(--mono);color:var(--dim)}
+  footer a{border:0}
+
+  .sig{font:12px/1.6 var(--mono);color:var(--dim);margin:3rem 0 0}
+  ::selection{background:rgba(34,224,208,.28);color:var(--bright)}
+</style>
+</head>
+<body>
+<div id="prog"></div>
+<div id="shell">
+
+<nav id="toc" class="folded">
+  <h2 id="toctoggle" tabindex="0" role="button" aria-expanded="false">Contents</h2>
+  <ol>
+    <li><a href="#abstract">Abstract</a></li>
+    <li><a href="#preface">0 · How to read this</a></li>
+
+    <li><a class="part" href="#part1">I · The problem</a></li>
+    <li><a href="#s1">1 · The artifact gap</a></li>
+    <li><a href="#s2">2 · Six thousand years of text</a></li>
+    <li><a href="#s3">3 · The computer-music lineage</a></li>
+    <li><a href="#s4">4 · The hole in the middle</a></li>
+
+    <li><a class="part" href="#part2">II · The theory</a></li>
+    <li><a href="#s5">5 · Nine laws</a></li>
+    <li><a href="#s6">6 · A song is a pure function</a></li>
+    <li><a href="#s7">7 · Models of musical time</a></li>
+    <li><a href="#s8">8 · Determinism and the human</a></li>
+    <li><a href="#s9">9 · Notation as interface</a></li>
+    <li><a href="#s10">10 · Totality and failing open</a></li>
+    <li><a href="#s11">11 · Metaphors and analogies</a></li>
+
+    <li><a class="part" href="#part3">III · The architecture</a></li>
+    <li><a href="#s12">12 · The layer cake</a></li>
+    <li><a href="#s13">13 · One bar ahead</a></li>
+    <li><a href="#s14">14 · Voices that ask</a></li>
+    <li><a href="#s15">15 · Effects and the duck</a></li>
+    <li><a href="#s16">16 · Two runtimes, one theory</a></li>
+    <li><a href="#s17">17 · Generation over the IR</a></li>
+    <li><a href="#s18">18 · The proof obligations</a></li>
+
+    <li><a class="part" href="#part4">IV · The consequences</a></li>
+    <li><a href="#s19">19 · Version control for music</a></li>
+    <li><a href="#s20">20 · The economics of kilobytes</a></li>
+    <li><a href="#s21">21 · Searching the music itself</a></li>
+    <li><a href="#s22">22 · Why machines read this well</a></li>
+    <li><a href="#s23">23 · Teaching and reading</a></li>
+    <li><a href="#s24">24 · Preservation</a></li>
+    <li><a href="#s25">25 · Access</a></li>
+
+    <li><a class="part" href="#part5">V · Build your own</a></li>
+    <li><a href="#s26">26 · Twelve decisions</a></li>
+    <li><a href="#s27">27 · A conformance checklist</a></li>
+    <li><a href="#s28">28 · Anti-patterns</a></li>
+    <li><a href="#s29">29 · Open problems</a></li>
+
+    <li><a class="part" href="#part6">VI · Appendices</a></li>
+    <li><a href="#a1">A · Grammar</a></li>
+    <li><a href="#a2">B · The document schema</a></li>
+    <li><a href="#a3">C · The determinism hash</a></li>
+    <li><a href="#a4">D · Glossary</a></li>
+    <li><a href="#a5">E · Bibliography</a></li>
+    <li><a href="#a6">F · Reuse and citation</a></li>
+  </ol>
+</nav>
+
+<main>
+
+<p class="kicker">oontz · research</p>
+<h1>The Song Is the Source</h1>
+<p class="deck">Notes toward an audio programming language in which a whole
+five-minute track is a few kilobytes of text you can read, grep, diff, fork,
+review, and commit — and which renders to the same audio, every time, on any
+machine.</p>
+
+<div class="meta">
+<b>Canonical URL</b> https://oontz.music/language<br>
+<b>Repository</b> <a href="https://github.com/charley-forey/oontz">github.com/charley-forey/oontz</a> · outline in <code>docs/THE-LANGUAGE.md</code><br>
+<b>Reference implementation</b> oontz — two independent engines, one format (<code>oontz-song-1</code>)<br>
+<b>Status</b> Living document. Written to be forked, argued with, and superseded.
+</div>
+
+<h2 id="abstract"><span class="num">§</span>Abstract</h2>
+<div class="abstract">
+<p>Software acquired version control, code review, package registries, forks,
+diffs, issue trackers, and a culture of reading each other's work. Music
+acquired the WAV file. This asymmetry is not a matter of taste or tooling
+maturity; it is a direct consequence of the artifact each field chose to
+exchange. Programmers exchange <em>source</em>. Musicians exchange
+<em>renders</em>. Every downstream capability follows from that one choice.</p>
+
+<p>This article argues that a specific, narrow, and achievable class of
+language — a <strong>declarative, deterministic, whole-song source format with
+independent runtimes</strong> — closes the gap, and that the design space for
+such languages has been repeatedly half-explored for sixty-five years without
+anyone landing squarely in the middle of it. We give the history, the
+semantics, the architecture, the metaphors, the economics, the failure modes,
+and a conformance checklist precise enough that a reader can build a rival
+implementation, or a successor language, without asking us anything.</p>
+
+<p>The reference implementation is <a href="https://oontz.sh">oontz</a>: an
+instrument in which <code>kick x...x...x...x...</code> is four on the floor,
+one character changes the song, and the entire track — arrangement, notes,
+automation, sound design, even its visuals — is a text document that two
+independently written engines are held to render identically. It exists to
+prove that none of what follows is speculative.</p>
+</div>
+
+<h2 id="preface"><span class="num">0</span>How to read this</h2>
+
+<p class="lede">This is long on purpose. It is not a manual, a tutorial, or a
+marketing page; those exist elsewhere and are shorter. It is the document we
+wanted when we started and could not find: the complete reasoning behind a
+category of language, written down while the reasons are still fresh, in the
+hope that whoever builds the next one starts from here instead of from
+scratch.</p>
+
+<p>Six parts, each readable alone.</p>
+
+<ul>
+<li><strong>Part I — The problem.</strong> What is actually broken, why six
+thousand years of musical notation is the relevant precedent, what sixty-five
+years of computer music got right, and the specific hole none of it fills.</li>
+<li><strong>Part II — The theory.</strong> The laws, the semantics, the models
+of time, the notation theory, and the metaphors. This is the part that
+transfers to a language that shares none of our syntax.</li>
+<li><strong>Part III — The architecture.</strong> How it is actually built,
+with the numbers: the layer cake, the scheduler, the extension mechanism, the
+two-runtime parity discipline.</li>
+<li><strong>Part IV — The consequences.</strong> What the design buys — version
+control, near-zero hosting economics, structural search, machine
+collaboration, pedagogy, preservation, accessibility.</li>
+<li><strong>Part V — Build your own.</strong> Twelve decisions with tradeoffs,
+a conformance checklist, the anti-patterns, and the open research
+problems.</li>
+<li><strong>Part VI — Appendices.</strong> Grammar, schema, the hash, glossary,
+bibliography, licence to reuse.</li>
+</ul>
+
+<p>If you have thirty seconds, read the nine laws in <a href="#s5">§5</a>. If
+you have ten minutes, read Part II. If you are here to build something, Part V
+is the payload and everything before it is the justification.</p>
+
+<div class="note">
+<span class="lbl">A note on the word "language"</span>
+<p>Calling this a programming language invites a fight about whether it is one.
+It is not Turing-complete, has no user-defined functions, no recursion, and no
+variables. We use the word anyway, in the sense that HTML, SQL, regular
+expressions, Makefiles, and chess notation are languages: a formal grammar with
+a defined meaning, written by humans, executed by machines, and argued about by
+both. <a href="#s26">§26</a> explains why declining Turing-completeness is a
+feature and not a shortfall — and what it costs.</p>
+</div>
+
+<div class="part" id="part1">
+<span class="n">Part I</span>
+<h2>The problem</h2>
+<p>Why the artifact you exchange determines everything you can do, and why
+music picked the wrong one twice.</p>
+</div>
+
+<h2 id="s1"><span class="num">1</span>The artifact gap</h2>
+
+<p>Consider what you can do with a program you have been given, and what you
+can do with a song you have been given.</p>
+
+<div class="tbl">
+<table>
+<tr><th>You want to</th><th>Program</th><th>Recording</th></tr>
+<tr><td>See how it was made</td><td>Read the source</td><td><strong>Impossible</strong></td></tr>
+<tr><td>Change one detail</td><td>Edit a line</td><td><strong>Re-record it</strong></td></tr>
+<tr><td>Compare two versions</td><td><code>diff</code></td><td>Listen twice, guess</td></tr>
+<tr><td>Take one part</td><td>Copy the function</td><td>Stem separation, badly</td></tr>
+<tr><td>Find all examples of X</td><td><code>grep</code></td><td><strong>Impossible</strong></td></tr>
+<tr><td>Suggest a change to someone</td><td>Pull request</td><td>Send an email describing it</td></tr>
+<tr><td>Know who wrote which part</td><td><code>git blame</code></td><td>Liner notes, if lucky</td></tr>
+<tr><td>Have a machine improve it</td><td>Edit the text</td><td>Regenerate the whole thing</td></tr>
+<tr><td>Store 10,000 of them</td><td>Megabytes</td><td>Gigabytes, and a bandwidth bill</td></tr>
+</table>
+</div>
+
+<p>The right column is not a failure of effort. Producers are not less
+collaborative than programmers, and DAW vendors are not lazy. The right column
+is what falls out of exchanging a <strong>render</strong> instead of a
+<strong>source</strong>. A WAV file is the output of a process from which the
+process itself has been discarded. It is a photograph of a building, offered in
+place of the plans.</p>
+
+<blockquote>
+<p>You cannot diff two mixes. You cannot fork someone's bassline. You cannot
+grep a record for "every track that goes into a breakdown at bar 64." You
+cannot open a song and see how it was made, because the thing that was shared
+with you was the cake, not the recipe.</p>
+</blockquote>
+
+<h3>1.1 The project file is not a source format</h3>
+
+<p>An obvious objection: DAWs <em>do</em> keep the process. An Ableton
+<code>.als</code>, a Logic project, a Reaper <code>.rpp</code> — these describe
+how the track was made. Why is that not source?</p>
+
+<p>Because a source format has properties beyond "contains the information,"
+and project files have almost none of them:</p>
+
+<ul>
+<li><strong>Not portable.</strong> A project opens in one application, often
+one version of it. Source that requires a specific vendor's binary is not
+source; it is a save file.</li>
+<li><strong>Not self-contained.</strong> It references samples, plugins, and
+licences that live elsewhere and rot. Open a ten-year-old project and you get a
+dialog listing what is missing. The song is gone even though the file is
+there.</li>
+<li><strong>Not readable.</strong> Even the XML-based ones are machine records,
+not human documents: thousands of lines of GUID-keyed device state per track,
+none of it composed by a person or meant to be read by one.</li>
+<li><strong>Not diffable.</strong> Two versions of a project differ in
+thousands of lines of positional noise. A diff is technically produced and
+tells you nothing.</li>
+<li><strong>Not small.</strong> With its samples, a project is hundreds of
+megabytes. It cannot ride in a chat message, a git repo, a URL, or a model's
+context window.</li>
+<li><strong>Not deterministic.</strong> Same project, different machine,
+different plugin versions, different render. Sometimes subtly, which is
+worse.</li>
+</ul>
+
+<p>The distinction is old and well understood in software. A source file and a
+memory dump can encode the same computation; only one of them is source. The
+test is not "does the information survive" but <em>"can a human read it, a
+machine execute it, and a third party reproduce it without your
+computer."</em></p>
+
+<h3>1.2 Why this matters more than it sounds</h3>
+
+<p>Consider what version control did to programming — not to the mechanics, but
+to the culture. Before it was universal, code was something you had; after, it
+became something you <em>shared, reviewed, blamed, bisected, reverted, and
+learned from by reading</em>. The tooling did not merely make existing
+practices convenient. It created practices that had not existed: the pull
+request, code review as a norm, the public portfolio of commits, the ability to
+learn a craft by reading thousands of examples of it done well.</p>
+
+<p>None of that is available to musicians, and the reason is not cultural. It
+is that the artifact they exchange does not support it. Change the artifact and
+the practices become <em>possible</em>; whether they emerge is then a cultural
+question, which is a much better problem to have.</p>
+
+<div class="note">
+<span class="lbl">The claim, stated precisely</span>
+<p>We are not claiming that text is better than audio, that producers should
+learn to program, or that DAWs are bad. We are claiming something narrower: for
+a large and growing class of electronic music, <strong>a complete song can be
+represented as a small, readable, deterministic text document</strong>, and
+doing so unlocks an entire category of capability that is otherwise
+unreachable. The recording still exists. It is now a build artifact.</p>
+</div>
+
+<h2 id="s2"><span class="num">2</span>Six thousand years of text</h2>
+
+<p>Music-as-text is not a new idea; it is the default state of music for most
+of recorded history, briefly interrupted by the twentieth century. Understanding
+that interruption explains the shape of the problem.</p>
+
+<h3>2.1 Notation as lossy compression with a purpose</h3>
+
+<p>The oldest known written music is a Hurrian hymn on a clay tablet from
+Ugarit, roughly 1400 BCE: cuneiform naming intervals and, apparently,
+performance instructions. What matters is not its antiquity but its
+<em>strategy</em>. It does not attempt to record the sound. It records the
+decisions that produce the sound, in a notation that assumes an informed
+performer.</p>
+
+<p>Every notation since has made the same trade, tuned differently:</p>
+
+<div class="tbl">
+<table>
+<tr><th>System</th><th>Era</th><th>Records</th><th>Assumes</th></tr>
+<tr><td>Hurrian tablets</td><td>c. 1400 BCE</td><td>Intervals, tuning</td><td>A living tradition</td></tr>
+<tr><td>Neumes</td><td>c. 9th c.</td><td>Melodic contour, direction</td><td>You know the chant already</td></tr>
+<tr><td>Guidonian staff</td><td>c. 1025</td><td>Absolute pitch on lines</td><td>You can read; rhythm is loose</td></tr>
+<tr><td>Mensural notation</td><td>13th–16th c.</td><td>Pitch <em>and</em> duration</td><td>A shared rhythmic vocabulary</td></tr>
+<tr><td>Common practice staff</td><td>17th c.–</td><td>Pitch, rhythm, dynamics, articulation</td><td>Trained performers, instrument conventions</td></tr>
+<tr><td>Tablature</td><td>16th c.–</td><td>Finger positions, not pitches</td><td>A specific instrument</td></tr>
+<tr><td>Graphic / text scores</td><td>20th c.</td><td>Intent, constraints, prose</td><td>An interpreting artist</td></tr>
+</table>
+</div>
+
+<p>Two lessons transfer directly to language design.</p>
+
+<p><strong>First: notation is compression against an assumed decoder.</strong>
+Neumes are tiny because the singers already knew the melodies; they encode only
+the delta. Tablature is precise because it targets one instrument and refuses
+to be general. Every notation buys concision by assuming context, and the
+notation's reach is exactly the reach of that assumption. A language for
+techno can be dramatically smaller than a general music language because it may
+assume a kick drum, a 4/4 grid, and a sixteenth-note resolution. That is not a
+limitation smuggled in; it is the source of the concision.</p>
+
+<p><strong>Second: notation shapes what gets composed.</strong> Mensural
+notation made rhythmic polyphony <em>thinkable</em>: once durations were
+writable, composers wrote music that required them. The staff's five lines
+biased Western music toward pitch-set thinking. Tablature produced idiomatic
+guitar figures nobody would derive from a staff. This is the musical case of a
+general principle — the Sapir–Whorf question is contested for natural language
+and obviously true for notations, because a notation is not a description of
+thought but a workspace for it.</p>
+
+<div class="note law">
+<span class="lbl">Consequence for designers</span>
+<p>Whatever your notation makes cheap will get made. If probability is one
+character, people will write probabilistic music. If polymeter requires a
+declaration, almost nobody will use polymeter; if it falls out of writing a
+five-character pattern next to a sixteen-character one, it will appear
+everywhere. <strong>You are not designing a way to write music. You are
+designing which music is easy to think.</strong></p>
+</div>
+
+<h3>2.2 The interruption</h3>
+
+<p>In 1877 the phonograph made it possible, for the first time, to exchange the
+<em>sound</em> rather than the instructions. Within a century that became the
+default: the artifact of music was a recording, the score demoted to
+professional infrastructure, and — critically — an entire genre of music grew
+up that <em>had no score at all</em>. Electronic and sample-based music is
+composed in the studio, in the act of recording. There is no prior document. The
+render is the original and the only.</p>
+
+<p>This is why the gap is worst precisely where the tooling is most digital.
+Classical music kept a portable text format for four hundred years. Techno, born
+digital, has never had one — the most computational music in history is the
+least readable.</p>
+
+<h3>2.3 The plain-text survivors</h3>
+
+<p>Three text formats from the pre-web era are worth studying closely, because
+they solved preservation problems that any new format will face.</p>
+
+<p><strong>ABC notation</strong> (Chris Walshaw, 1991) encodes folk tunes in
+ASCII: a header of metadata, then melody as letters with modifiers. It was
+designed to be emailable and typeable, and it has outlived nearly every
+application that ever read it. There are thousands of tools, hundreds of
+thousands of tunes, and a spec that has changed slowly and compatibly for three
+decades. Its lesson is not syntactic — its syntax is wrong for anything but
+monophonic folk melody — it is <em>institutional</em>: a versioned formal spec,
+a canonical corpus, and multiple independent implementations produce a format
+that outlives its authors' careers.</p>
+
+<p><strong>MML</strong> (Music Macro Language, from late-1970s Microsoft BASIC
+and then a generation of Japanese home computers and chiptune trackers) encoded
+notes as terse command strings: <code>cdefgab</code> for pitches, numbers for
+lengths, <code>o</code> for octave, <code>t</code> for tempo. It is the direct
+ancestor of every "pattern as string" system, and it demonstrated that a
+notation optimized for <em>typing speed</em> develops a different aesthetic from
+one optimized for reading — a tension we return to in <a href="#s9">§9</a>.</p>
+
+<p><strong>Tracker formats</strong> (Ultimate Soundtracker, 1987, and the
+MOD/XM/IT lineage after it) are the most underrated ancestor of this work. A
+tracker module is a <em>complete song in one file</em>: patterns as a grid of
+rows and channels, an order list sequencing those patterns, instruments, and
+effects columns — plus the samples. That was a genuinely whole-song format two
+decades before anyone used the phrase "music as code." Two properties are worth
+stealing outright: <strong>the grid is the interface</strong> (a pattern is
+spatially legible; you see the groove), and <strong>an order list separates
+material from arrangement</strong> (write the drop once, play it four times).
+Two properties are worth refusing: the samples make it big and unportable, and
+the effect columns are a hex-coded per-vendor mess that only an expert can
+read.</p>
+
+<h2 id="s3"><span class="num">3</span>The computer-music lineage</h2>
+
+<p>Sixty-five years of research languages, each of which solved something real.
+A designer who has not read this history will re-derive its mistakes. What
+follows is deliberately opinionated: for each, what it proved and what it costs.</p>
+
+<h3>3.1 Music-N and the unit generator (1957)</h3>
+
+<p>Max Mathews wrote MUSIC at Bell Labs in 1957 and it played seventeen seconds
+of sound on an IBM 704. By MUSIC III (1960) he had invented the idea that still
+organizes the entire field: the <strong>unit generator</strong>. An oscillator,
+an envelope, a filter are boxes with inputs and outputs; a sound is a graph of
+them. And the second idea, equally durable: the split between the
+<strong>orchestra</strong> (instrument definitions) and the
+<strong>score</strong> (a list of timed events that play them).</p>
+
+<p>Nearly every system since is a variation. Csound (Barry Vercoe, 1986) is
+Music-N with a bigger opcode library and forty years of momentum. Its
+orchestra/score split is exactly Mathews'. The unit generator survives in
+SuperCollider's UGens, in Max/MSP's objects, in Web Audio's nodes, in every
+modular synthesizer ever built.</p>
+
+<p><strong>What it proved:</strong> a signal graph is the right model for
+synthesis, and separating "how it sounds" from "when it happens" is the right
+first cut.</p>
+
+<p><strong>What it costs:</strong> the score is a list of events, so a song is
+long. Csound scores are generated, not written. The orchestra is a full
+programming problem, so the beginner's first sound is far away. The format
+describes <em>signal flow</em> superbly and <em>song structure</em> not at
+all.</p>
+
+<h3>3.2 MIDI (1983) — the standard that made the wrong thing standard</h3>
+
+<p>MIDI is the most successful music interchange format in history and a
+cautionary tale in equal measure. It standardized <em>performance events</em>:
+note on, note off, velocity, controller changes, on sixteen channels. It is
+universal, forty years old, still shipping, and it made the modern studio
+possible.</p>
+
+<p>But a Standard MIDI File is a <em>tape of gestures</em>, not a document of
+decisions. It records that a note began at tick 1920 with velocity 96; it does
+not record that this is the second bar of the drop, that the bassline is the
+motif transposed, that the filter sweep is a build. It has no notion of
+sections, of song structure, of why. And crucially it says nothing about
+timbre: the same file is a piano on one machine and a marimba on another, which
+is the entire reason General MIDI existed and the entire reason it sounded bad.</p>
+
+<p><strong>What it proved:</strong> a small, stable, boring interchange format
+beats a beautiful one, and it wins for decades. Also: it is worth supporting.
+oontz emits Standard MIDI Files because a format that cannot leave for a DAW is
+a trap, however elegant.</p>
+
+<p><strong>What it costs:</strong> everything above the event layer. MIDI is the
+assembly language of music, and forty years of the industry treating it as the
+interchange layer is a large part of why no higher-level interchange layer
+exists.</p>
+
+<h3>3.3 The live-coding generation</h3>
+
+<p>From the mid-1990s, a distinct tradition: languages designed so that
+<em>editing the program while it runs is the performance</em>.</p>
+
+<p><strong>SuperCollider</strong> (James McCartney, 1996) made the decisive
+architectural move: split the <em>language</em> (sclang, where you write
+patterns and logic) from the <em>audio server</em> (scsynth, which knows only
+about synth graphs and messages). They talk over OSC. The consequence is that
+the language can crash, be replaced, or be driven by something else entirely
+without the audio stopping. This separation is correct and we adopt it in a
+different form (<a href="#s16">§16</a>).</p>
+
+<p><strong>ChucK</strong> (Ge Wang and Perry Cook, 2003) contributed
+<em>strongly-timed</em> programming: time is a first-class type, the program
+advances it explicitly (<code>1::second => now;</code>), and concurrency is
+sample-accurate. It is the cleanest treatment of time as a language construct
+anyone has produced, and it deserves more influence than it has.</p>
+
+<p><strong>TidalCycles</strong> (Alex McLean, from 2009) is the most important
+recent contribution to <em>notation</em>. Its pattern is not a list but a
+function from a span of time to a set of events — a genuinely functional-reactive
+model in which a cycle is the unit and patterns compose algebraically. Its
+"mini-notation" packs rests, subdivision, repetition, alternation, polymeter and
+probability into a few characters. Tidal is embedded in Haskell, which is both
+its power (real function composition over patterns) and its ceiling (the
+audience is people who will learn Haskell).</p>
+
+<p><strong>Sonic Pi</strong> (Sam Aaron, 2012) is the philosophical outlier and,
+by reach, the most successful: it was designed to teach programming to children
+in classrooms, and it is ruthless about the first ten seconds. Two lines make a
+sound. It is joyful on purpose. Its lesson is not technical at all — it is that
+<em>time-to-first-sound is a design parameter with more impact than any feature
+in your feature list.</em></p>
+
+<p><strong>Strudel</strong> (2022–) ports Tidal's semantics to JavaScript in the
+browser, with a strict parser → AST → interchangeable outputs pipeline. It
+proves the browser is a serious runtime for this work, and its architectural
+discipline — text parses to structure, structure feeds multiple outputs
+(WebAudio, MIDI, OSC) — is the correct shape.</p>
+
+<p><strong>Others worth knowing:</strong> <em>Extempore</em> and
+<em>Impromptu</em> (Andrew Sorensen) for live-coded systems programming with
+temporal recursion; <em>Overtone</em> (Clojure over SuperCollider);
+<em>Gibber</em> (browser, live-coded, notated visually); <em>ORCA</em> (Devine
+Lu Linvega) — a two-dimensional esolang where operators are letters on a grid
+and the program is visibly alive, the most radical rethink of the
+music-notation surface in twenty years; <em>Alda</em> (text-first score
+language, deliberately unglamorous); <em>Faust</em> (functional DSP that
+compiles to C++/WASM, the right answer for <em>writing the DSP</em> layer);
+<em>Nyquist</em> (Roger Dannenberg — functional, behavioural abstraction, sound
+as a first-class value); <em>bytebeat</em> (Viznut, 2011 — a single C
+expression over a sample counter produces music, the extreme point of the
+compression axis and a genuinely useful thought experiment about how little
+text a song requires).</p>
+
+<h3>3.4 The algorave context</h3>
+
+<p>Live coding grew a performance culture — TOPLAP (2004) and its manifesto's
+famous demand to "show us your screens," then the algorave movement from 2012 —
+in which the projected source code is part of the show. This matters here for a
+non-obvious reason: it established, in front of real audiences, that
+<strong>an audience will look at code while dancing to it</strong> and that the
+code being legible is part of the aesthetic. That is empirical evidence for a
+readability-first notation, gathered in the least academic setting imaginable.</p>
+
+<h2 id="s4"><span class="num">4</span>The hole in the middle</h2>
+
+<p>Place the prior art on two axes. The first: <strong>how much of a song does
+the artifact contain?</strong> — from a single sound, through a loop, to a whole
+arranged track. The second: <strong>who can read it?</strong> — from
+"specialist programmer" to "anyone."</p>
+
+<figure class="wide">
+<div class="plot">
+<svg viewBox="0 0 720 420" role="img" aria-label="A scatter plot: how much of a song each prior system represents, against how readable it is. The top-right region, whole song and readable by anyone, is empty.">
+  <defs>
+    <marker id="arrowPink" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto">
+      <path d="M0,0 L7,3.5 L0,7 z" fill="#46545f"/>
+    </marker>
+  </defs>
+  <rect x="440" y="40" width="250" height="130" fill="rgba(34,224,208,.07)" stroke="#22e0d0" stroke-dasharray="4 4" stroke-width="1"/>
+  <text x="565" y="95" text-anchor="middle" fill="#22e0d0" font-family="ui-monospace,monospace" font-size="13">the hole</text>
+  <text x="565" y="115" text-anchor="middle" fill="#6b7b88" font-family="ui-monospace,monospace" font-size="11">whole song · anyone can read</text>
+  <text x="565" y="133" text-anchor="middle" fill="#6b7b88" font-family="ui-monospace,monospace" font-size="11">· portable · deterministic</text>
+
+  <line x1="60" y1="380" x2="700" y2="380" stroke="#46545f" marker-end="url(#arrowPink)"/>
+  <line x1="60" y1="380" x2="60" y2="30" stroke="#46545f" marker-end="url(#arrowPink)"/>
+  <text x="380" y="408" text-anchor="middle" fill="#6b7b88" font-family="ui-monospace,monospace" font-size="11">readability  →  anyone can read it</text>
+  <text x="20" y="210" text-anchor="middle" fill="#6b7b88" font-family="ui-monospace,monospace" font-size="11" transform="rotate(-90 20 210)">scope  →  the whole song</text>
+
+  <g font-family="ui-monospace,monospace" font-size="11.5">
+    <circle cx="120" cy="330" r="4" fill="#ff4fa3"/><text x="132" y="334" fill="#c6d2dc">Faust</text>
+    <circle cx="105" cy="300" r="4" fill="#ff4fa3"/><text x="117" y="304" fill="#c6d2dc">Csound orchestra</text>
+    <circle cx="150" cy="255" r="4" fill="#ff4fa3"/><text x="162" y="259" fill="#c6d2dc">SuperCollider</text>
+    <circle cx="205" cy="240" r="4" fill="#ff4fa3"/><text x="217" y="244" fill="#c6d2dc">ChucK</text>
+    <circle cx="235" cy="215" r="4" fill="#ff4fa3"/><text x="247" y="219" fill="#c6d2dc">TidalCycles</text>
+    <circle cx="300" cy="225" r="4" fill="#ff4fa3"/><text x="312" y="229" fill="#c6d2dc">Strudel</text>
+    <circle cx="330" cy="270" r="4" fill="#ff4fa3"/><text x="342" y="274" fill="#c6d2dc">Sonic Pi</text>
+    <circle cx="200" cy="345" r="4" fill="#ff4fa3"/><text x="212" y="349" fill="#c6d2dc">bytebeat</text>
+    <circle cx="150" cy="180" r="4" fill="#ff4fa3"/><text x="162" y="184" fill="#c6d2dc">Csound score</text>
+    <circle cx="255" cy="120" r="4" fill="#ff4fa3"/><text x="267" y="124" fill="#c6d2dc">tracker module</text>
+    <circle cx="215" cy="150" r="4" fill="#ff4fa3"/><text x="227" y="154" fill="#c6d2dc">MIDI file</text>
+    <circle cx="420" cy="300" r="4" fill="#ff4fa3"/><text x="432" y="304" fill="#c6d2dc">MML</text>
+    <circle cx="470" cy="250" r="4" fill="#ff4fa3"/><text x="482" y="254" fill="#c6d2dc">ABC notation</text>
+    <circle cx="430" cy="205" r="4" fill="#ff4fa3"/><text x="442" y="209" fill="#c6d2dc">staff score</text>
+    <circle cx="120" cy="70" r="4" fill="#ff4fa3"/><text x="132" y="74" fill="#c6d2dc">DAW project file</text>
+    <circle cx="600" cy="70" r="5" fill="#22e0d0"/><text x="614" y="74" fill="#f4f9fc">oontz</text>
+  </g>
+</svg>
+</div>
+<figcaption>The axes are impressionistic, the conclusion is not: the systems
+that describe a whole song are unreadable, and the systems that are readable
+describe a fragment or the wrong genre. Positions are arguable; the empty
+quadrant is not.</figcaption>
+</figure>
+
+<p>Systems cluster in three corners and avoid the fourth.</p>
+
+<ul>
+<li><strong>Deep but narrow.</strong> Csound, SuperCollider, Faust, ChucK
+describe <em>sound</em> with enormous precision and say nothing about song
+structure. A five-minute arranged track in any of them is a program you
+generate, not a document you read.</li>
+<li><strong>Whole but unreadable.</strong> DAW projects, MIDI files, tracker
+modules contain the whole song and are machine records, vendor-locked, or
+sample-dependent.</li>
+<li><strong>Readable but wrong genre.</strong> ABC and staff notation are
+beautifully readable and model an idiom — melody, harmony, an assumed acoustic
+performer — that has no vocabulary for a sidechained reese bass or a
+twenty-four-bar filter sweep.</li>
+<li><strong>Live-coding notation</strong> — Tidal and Strudel — is the closest
+thing to the right notation, and its systems are explicitly designed around the
+<em>performance</em> rather than the <em>document</em>. A Tidal set is a
+session, not a track you can hand someone as a finished, arranged, five-minute
+piece of music.</li>
+</ul>
+
+<p>The unoccupied quadrant has a precise specification:</p>
+
+<div class="note law">
+<span class="lbl">The thesis</span>
+<p><strong>A complete modern song as canonical text: human- and machine-editable,
+versionable, diffable, searchable, forkable with provenance, small enough to
+paste anywhere, and rendered identically by independent runtimes.</strong></p>
+<p>Every clause is load-bearing. Drop "complete" and you have Tidal. Drop
+"readable" and you have MIDI. Drop "identical runtimes" and you have a DAW
+project. Drop "small" and you have stems.</p>
+</div>
+
+<p>The rest of this document is what it takes to build in that quadrant.</p>
+
+<div class="part" id="part2">
+<span class="n">Part II</span>
+<h2>The theory</h2>
+<p>The laws, the semantics, the models of time, and the notation theory. This is
+the part that transfers to a language sharing none of our syntax.</p>
+</div>
+
+<h2 id="s5"><span class="num">5</span>Nine laws</h2>
+
+<p>Every non-trivial decision in the reference implementation traces to one of
+these. They are stated as laws rather than principles because in practice they
+function as constraints that veto designs, not as values that inspire them.</p>
+
+<div class="note law">
+<span class="lbl">Law 1 — The source is the song</span>
+<p>The text is not a description of the music, a project file for it, or a
+recipe you follow to recreate it. It <em>is</em> the music, in the same sense
+that an HTML file is the web page. Audio is a build artifact, produced on
+demand, discarded without loss. If your format needs the render to be kept
+alongside it, the format is incomplete.</p>
+</div>
+
+<div class="note law">
+<span class="lbl">Law 2 — Determinism is non-negotiable</span>
+<p>The same source produces the same audio: on any machine, in any year, in any
+conforming runtime. Not "similar," not "musically equivalent" —
+sample-identical, up to the float behaviour of the host. Determinism is what
+makes the source authoritative; without it the render creeps back to being the
+real artifact, and every other property in this list quietly dies with it.</p>
+</div>
+
+<div class="note law">
+<span class="lbl">Law 3 — Legibility beats expressiveness</span>
+<p>Any notation extension must pass the <strong>guessability test</strong>:
+someone who has never programmed, shown one example, can guess what it does.
+<code>x... *4</code> passes. <code>x?</code> passes — "that hit… maybe."
+Nested polymetric alternation with a Euclidean modifier does not, and stays
+out. This law costs real expressive power and is worth it, because the audience
+for a music language is not the audience for a programming language.</p>
+</div>
+
+<div class="note law">
+<span class="lbl">Law 4 — The whole song or nothing</span>
+<p>A loop is not a song. The format must carry arrangement, sections,
+transitions, automation, sound design and metadata, because the difference
+between a sketch and a track is exactly the material a loop-shaped format
+discards. This is the clause that separates this class of language from the
+entire live-coding tradition.</p>
+</div>
+
+<div class="note law">
+<span class="lbl">Law 5 — One source, many runtimes</span>
+<p>At least two independent implementations, held to identical musical output
+by an automated gate. Not for redundancy — as <strong>proof that the spec is
+the spec and not a description of one program's behaviour.</strong> A format
+with one implementation is that implementation's save file wearing a
+costume.</p>
+</div>
+
+<div class="note law">
+<span class="lbl">Law 6 — No hidden state</span>
+<p>Everything that affects the sound is in the document. No preferences, no
+machine-local config, no "you had to have the plugin," no random seed living
+outside the text. If a knob matters, it is written down; if it is not written
+down, it does not matter.</p>
+</div>
+
+<div class="note law">
+<span class="lbl">Law 7 — Ten seconds to the first sound</span>
+<p>From arriving to hearing something you made: ten seconds, no install, no
+account, no signup wall, no sample pack download. This is not marketing. It is
+the single highest-leverage design constraint in the entire system, and it
+kills entire architectures — see <a href="#s13">§13</a>, where it eliminates
+server-side rendering outright.</p>
+</div>
+
+<div class="note law">
+<span class="lbl">Law 8 — Fail open, never fail silent</span>
+<p>A creative tool must not crash, and must not lie. An unknown effect is
+skipped and reported, not fatal. An unreachable API degrades to the offline
+page rather than a spinner. A pattern with a typo plays what it can. Losing
+someone's work is the one unforgivable outcome; a wrong sound is recoverable, a
+lost session is not.</p>
+</div>
+
+<div class="note law">
+<span class="lbl">Law 9 — Text is the API</span>
+<p>Every capability — editing, generating, sharing, AI collaboration, testing,
+export — operates on the same document. There is no privileged internal
+representation that some features get and others do not. A feature that needs a
+side channel is a design error, discovered early and cheaply.</p>
+</div>
+
+<h3>5.1 What the laws forbid</h3>
+
+<p>Laws are useful mainly for what they exclude. In our case they killed, at
+various points, all of the following — each of which was proposed, sounded
+reasonable, and is incompatible with the list above:</p>
+
+<div class="tbl">
+<table>
+<tr><th>Proposal</th><th>Killed by</th><th>Why</th></tr>
+<tr><td>Sample library</td><td>1, 2, 6</td><td>The song stops being self-contained; the render depends on files</td></tr>
+<tr><td>Server-side audio rendering</td><td>7</td><td>200&nbsp;ms round trip; you cannot play an instrument through it</td></tr>
+<tr><td>VST/plugin hosting</td><td>2, 5, 6</td><td>Non-deterministic, non-portable, unimplementable in a second runtime</td></tr>
+<tr><td>Global random seed</td><td>2, 6</td><td>Same source, different audio — the one thing that cannot happen</td></tr>
+<tr><td>Live-coding evaluation semantics</td><td>4</td><td>Optimizes for the session; leaves no finished document</td></tr>
+<tr><td>Turing-complete scripting</td><td>2, 3</td><td>Halting, unbounded cost in an audio callback, unreadable songs</td></tr>
+<tr><td>Binary "compiled song" format</td><td>1, 9</td><td>Undiffable, ungreppable — the entire value proposition inverted</td></tr>
+<tr><td>Account required to play</td><td>7</td><td>Ten seconds becomes ninety and most people never arrive</td></tr>
+</table>
+</div>
+
+<h2 id="s6"><span class="num">6</span>A song is a pure function</h2>
+
+<p>Here is the whole semantic model, and everything else in the architecture is
+a consequence of it.</p>
+
+<pre><code><span class="k">state_at</span>(bar) → the fully resolved state of every track at that absolute bar
+<span class="k">render</span>(state)  → the samples for one bar</code></pre>
+
+<p>A song is a function from bar index to state, composed with a function from
+state to audio. Both are pure. That is the entire model.</p>
+
+<h3>6.1 Why purity is the right frame</h3>
+
+<p>The obvious way to build a sequencer is as a state machine: a playhead
+advances, events fire, handlers mutate a global mixer. Every DAW works this way
+internally, and it is the wrong model for a <em>document</em>, for four
+reasons that all follow from the same root.</p>
+
+<ul>
+<li><strong>Scrubbing becomes a replay problem.</strong> With mutation, "what
+does bar 96 sound like" is only answerable by simulating bars 0–95, because the
+state at 96 is the accumulated result of everything before. With a pure
+<code>state_at</code>, it is a function call. Scrubbing is setting an
+index.</li>
+<li><strong>Offline render can drift from live playback.</strong> Two code
+paths — a real-time path and a bounce path — will differ. With one pure
+function feeding both, they cannot: the offline render is
+<code>state_at</code> asked for every bar in turn, through the identical
+renderer. This is a correctness property you get for free and can otherwise
+never fully test.</li>
+<li><strong>Automation stops being spooky.</strong> A filter sweep is not an
+agent that mutates a global cutoff over time; it is <em>interpolation inside
+the answer</em> to <code>state_at</code>. Ask for bar 40 and the cutoff is
+already what it should be at bar 40. There is no ordering hazard, no "did the
+automation run before or after the section change," no residue.</li>
+<li><strong>Testing becomes trivial.</strong> Pure functions are testable by
+inspection. You can assert that bar 64 has a kick, that energy rises
+monotonically across a build, that two versions of a song differ in exactly one
+section — all without producing a single sample of audio.</li>
+</ul>
+
+<p>This is denotational semantics applied to music: define what a program
+<em>means</em> as a mathematical object, and let the implementation be any
+machinery that computes it. The meaning of a song is a function from time to
+sound. Everything an engine does is an optimization of that function, and every
+optimization is checkable against it.</p>
+
+<h3>6.2 Sections hold snapshots, not diffs</h3>
+
+<p>Given a song made of sections — intro, build, drop, break — there are two
+ways to represent them. As <strong>diffs</strong>: "the drop is the build plus a
+second bass and minus the reverb." Or as <strong>full snapshots</strong>: each
+section carries the complete state of every track.</p>
+
+<p>Diffs are tempting. They are smaller, they express the way sections are
+often <em>made</em> ("copy the build, add stuff"), and they feel more elegant.
+They are the wrong choice, and the reasoning generalizes far beyond music:</p>
+
+<ul>
+<li><strong>Spooky action.</strong> With diffs, editing the build silently
+changes the drop. That is correct dependency tracking and it is <em>not how
+anyone thinks about a song</em>. A person who fixes the intro's hi-hat does not
+expect the outro to move.</li>
+<li><strong>Resolution cost on every read.</strong> <code>state_at</code> would
+have to walk the chain from the beginning, which is exactly the replay problem
+purity was supposed to eliminate.</li>
+<li><strong>Reordering breaks.</strong> Move the break before the drop and a
+diff chain either becomes meaningless or requires a rebase. With snapshots,
+reordering is reordering a list.</li>
+<li><strong>Diffs of diffs are unreadable.</strong> The <em>version-control</em>
+diff between two versions of a song is the feature. A textual diff of a
+delta-encoded structure is noise.</li>
+</ul>
+
+<p>The cost is redundancy: eight sections that share a kick pattern store it
+eight times. At the scale of a song — kilobytes — that is free. This is a
+recurring theme: <strong>when the artifact is small, prefer the representation
+that matches how people think, not the one that saves bytes.</strong> The
+compression argument that would have won in 1987 loses now, and designers
+carrying instincts from the era of scarce storage will make this call
+wrong.</p>
+
+<h3>6.3 Referential transparency in music</h3>
+
+<p>One consequence deserves its own name. Because <code>state_at</code> is
+pure, a section is a <em>value</em>. It can be copied, named, transposed,
+compared for equality, hashed. Two sections are the same section if their
+snapshots are equal — which gives you, for free:</p>
+
+<ul class="tight">
+<li>a <strong>fingerprint</strong> for a song (hash the resolved states) and
+therefore duplicate detection, similarity search, and cache keys;</li>
+<li><strong>structural equality</strong> between arrangements, so "these two
+tracks share a drop" is a computation, not an opinion;</li>
+<li><strong>memoization</strong> of rendering: identical bars render once;</li>
+<li><strong>diffing at the level of meaning</strong> — "the break grew eight
+bars, the bass filter opened by 200&nbsp;Hz" — rather than at the level of
+text.</li>
+</ul>
+
+<h2 id="s7"><span class="num">7</span>Models of musical time</h2>
+
+<p>The deepest design decision in an audio language, and the one most often made
+by accident, is <em>what kind of thing time is</em>. There are four viable
+answers and they produce completely different languages.</p>
+
+<div class="tbl">
+<table>
+<tr><th>Model</th><th>Time is</th><th>Exemplars</th><th>Strength</th><th>Cost</th></tr>
+<tr><td><strong>Event list</strong></td><td>A sorted list of timestamped events</td><td>MIDI, Csound score</td><td>Universal, simple, exact</td><td>No structure; huge; unreadable</td></tr>
+<tr><td><strong>Cycle / pattern function</strong></td><td>A function from a time span to the events in it</td><td>TidalCycles, Strudel</td><td>Composes algebraically; infinite; elegant</td><td>Cycles are eternal — arrangement is an afterthought</td></tr>
+<tr><td><strong>Imperative clock</strong></td><td>A variable the program advances</td><td>ChucK, Sonic Pi, Extempore</td><td>Intuitive; sample-accurate; concurrent</td><td>Program state is not a document; not a portable artifact</td></tr>
+<tr><td><strong>Timeline of snapshots</strong></td><td>An ordered list of sections, each a full state</td><td>Trackers, DAWs, <strong>oontz</strong></td><td>Arrangement is native; scrub is O(1); readable</td><td>Less algebraic; sub-bar structure needs its own layer</td></tr>
+</table>
+</div>
+
+<h3>7.1 Why the timeline wins for whole songs</h3>
+
+<p>The cycle model is intellectually the most beautiful. A Tidal pattern is a
+function from a time span to events; patterns compose with combinators;
+everything is infinite and everything is algebra. If your goal is
+<em>live-coded performance</em>, it is the correct model and nothing else comes
+close.</p>
+
+<p>But a song is not eternal. A song is 5 minutes 12 seconds long, has an
+intro, drops at 1:04, breaks at 2:30, and ends. The cycle model can express
+that — with conditionals on the cycle number, or by sequencing patterns — but it
+expresses it <em>awkwardly</em>, because arrangement is not what the model is
+about. Ask a Tidal user for the file that <em>is</em> their finished five-minute
+track and the question does not quite parse; that is not a criticism of Tidal,
+it is evidence about what its time model is for.</p>
+
+<p>Conversely, the timeline model makes arrangement the primitive and makes
+sub-bar structure a secondary concern — which is precisely the right trade for
+a document format, because <strong>arrangement is what distinguishes a song
+from a loop</strong>, and the loop is the easy part.</p>
+
+<h3>7.2 The hybrid, and where the seam goes</h3>
+
+<p>The honest resolution is that you need both, at different scales, and the
+design question is <em>where the seam goes</em>. In our reference
+implementation:</p>
+
+<pre><code><span class="c">macro time  (bars, sections, arrangement)</span>   → timeline of snapshots
+<span class="c">meso time   (one bar, the pattern grid)</span>     → positional string, index = time
+<span class="c">micro time  (swing, humanize, slides)</span>       → offsets computed at render</code></pre>
+
+<p>Three scales, three representations, each chosen for what that scale needs:
+the timeline gives you O(1) scrubbing and legible arrangement; the pattern
+string gives you a groove you can <em>see</em>; the micro layer gives you the
+difference between a machine and a musician. Getting these boundaries right is
+the whole game. A language that uses one representation for all three either
+cannot express arrangement (cycles all the way up) or cannot express groove
+(snapshots all the way down).</p>
+
+<h3>7.3 Bars, not seconds</h3>
+
+<p>A subtle corollary: all internal time is measured in <strong>bars and
+steps</strong>, never seconds. Seconds are derived at render time from BPM.
+This means a tempo change is a one-token edit that re-times the entire song
+correctly and instantly, automation stays musically anchored, and the whole
+document is tempo-independent. Formats that bake absolute time — MIDI ticks
+with a tempo map, audio stems — pay for it forever.</p>
+
+<h2 id="s8"><span class="num">8</span>Determinism and the human</h2>
+
+<p>Law 2 demands identical output from identical source. Music demands
+variation, or it sounds like a machine. These look contradictory. Resolving the
+apparent contradiction is one of the more satisfying results in this design, and
+it generalizes to any deterministic system that needs to feel alive.</p>
+
+<h3>8.1 The trap: a global random seed</h3>
+
+<p>The obvious approach is a seeded PRNG: store the seed in the document, and
+the "random" variation is reproducible. This fails, and the failure is
+instructive. A PRNG is a <em>stream</em>: its <em>n</em>th value depends on how
+many times it has been called. So the moment anything upstream changes — a
+track is added, a section is reordered, one voice consumes one extra sample of
+noise, the render order changes — every subsequent draw shifts. The document is
+technically deterministic and practically chaotic: <strong>editing the intro
+changes the hi-hats in the outro.</strong> That violates the same principle
+that killed diff-encoded sections in <a href="#s6">§6.2</a>, and for the same
+underlying reason: <em>order-dependence is spooky action.</em></p>
+
+<h3>8.2 The fix: hash the coordinates</h3>
+
+<p>Replace the stream with a pure function of position. Each probabilistic
+decision is keyed by exactly the coordinates that identify it — which track,
+which bar, which step — and hashed:</p>
+
+<pre><code><span class="k">maybe</span>(track, bar, step):
+    s = "track|bar|step"
+    h = 0
+    <span class="k">for</span> ch <span class="k">in</span> s: h = (h * 31 + ord(ch)) &amp; 0xFFFFFFFF
+    h ^= h &gt;&gt; 15
+    <span class="k">return</span> (h % 1000) &lt; 700          <span class="c"># a 70% chance</span></code></pre>
+
+<p>The properties this buys are worth enumerating, because each solves a
+specific real problem:</p>
+
+<ul>
+<li><strong>Position-independent.</strong> No call ordering, no stream state.
+Adding a track cannot disturb another track's decisions, because the other
+track's key does not mention it.</li>
+<li><strong>Random-access.</strong> Bar 400's hits are computable without
+computing bars 0–399. This is what makes <code>state_at</code> genuinely O(1)
+even with probability in the patterns.</li>
+<li><strong>Locally varying, globally stable.</strong> The groove differs bar to
+bar — a <code>?</code> hat lands in bar 3 and not in bar 4 — while the song as a
+whole is byte-identical on every render. The listener hears a human; the
+diff sees a constant.</li>
+<li><strong>Portable across languages.</strong> The hash is deliberately the
+dumbest possible construction: multiply-add-xor over character codes, all in
+32-bit integer arithmetic. No floats, no library, no locale, no
+platform-specific behaviour. Ten lines in any language, identical results —
+which is exactly why the JavaScript engine and the Python engine agree
+decision for decision.</li>
+</ul>
+
+<div class="note">
+<span class="lbl">Design rule, generalized</span>
+<p><strong>Never use a stream where you can use a function of coordinates.</strong>
+This applies to procedural terrain, to sharded ID generation, to test fixtures,
+to any generated content that must be stable under edits elsewhere. The
+seeded-PRNG habit is one of the most common sources of "why did this unrelated
+thing change" in generative systems, and the fix is always the same: hash the
+address, do not advance a stream.</p>
+</div>
+
+<h3>8.3 The three layers of "human"</h3>
+
+<p>Groove is not one thing. Three mechanisms, deliberately separate:</p>
+
+<ul>
+<li><strong>Swing</strong> — a systematic delay on odd steps, expressed as a
+percentage of the step. Deterministic, global, musical, and the single most
+recognizable feel parameter in dance music. Not random at all.</li>
+<li><strong>Humanize</strong> — a per-track jitter in milliseconds, drawn from a
+per-track generator, applied to hit positions. Small (single-digit
+milliseconds), and the thing that separates a drum machine from a drummer.</li>
+<li><strong>Probability</strong> — the <code>?</code> step: a hit that happens
+70% of the time, decided by the coordinate hash. This is <em>structural</em>
+variation rather than <em>timing</em> variation, and it is why a sixteen-bar hat
+pattern does not become wallpaper.</li>
+</ul>
+
+<p>Keeping them separate matters because they answer different musical
+questions ("what feel," "how tight," "how varied") and because a single
+"humanize" knob that mixes them is unusable — the reason so many drum machines
+have one and nobody turns it up.</p>
+
+<h3>8.4 Determinism has limits, and you should state them</h3>
+
+<p>Honesty about the boundary is part of the spec. Two engines, one written in
+Python with NumPy and one in JavaScript over Web Audio, will make
+<em>identical musical decisions</em> — every hit, every probabilistic step,
+every automation value — but floating-point scheduling in a browser audio graph
+may differ in the last bit. So the guarantee is stated in two tiers:</p>
+
+<ul class="tight">
+<li><strong>Musical determinism</strong> (required of every conforming runtime):
+identical events, identical parameter values, identical structure.</li>
+<li><strong>Bit determinism</strong> (required within a runtime): golden renders
+are byte-identical across changes, enforced by hashing the output of a fixed
+corpus.</li>
+</ul>
+
+<p>Claiming bit-identity across runtimes would be a lie, and a spec that lies
+about its guarantees is worse than one with weaker guarantees. Say what you
+enforce; enforce what you say.</p>
+
+<h2 id="s9"><span class="num">9</span>Notation as interface</h2>
+
+<p>The pattern language is four characters and it is the most consequential
+design decision in the system.</p>
+
+<pre><code>kick <span class="k">X...x...X...x..x</span>
+hat  <span class="k">..x...x...x.x.x.</span>
+oh   <span class="k">......x.......x.</span>
+clap <span class="k">....x.......x...</span></code></pre>
+
+<p><code>x</code> is a hit. <code>X</code> is an accented hit. <code>.</code> is
+a rest. <code>-</code> is a tie. <code>?</code> is a maybe. That is the entire
+core notation, and a person who has never seen it can read that block.</p>
+
+<h3>9.1 Iconicity: the notation looks like the thing</h3>
+
+<p>Peirce distinguished <em>icons</em> — signs that resemble what they denote —
+from <em>symbols</em>, which are related to their object only by convention.
+Most programming notation is symbolic: <code>euclid(5, 16)</code> means a
+five-in-sixteen Euclidean rhythm only if you know the convention.
+<code>x..x..x..x..x...</code> is <em>iconic</em>: the spacing on the page is the
+spacing in time. The visual rhythm of the characters is the rhythm.</p>
+
+<p>This has consequences beyond charm.</p>
+
+<ul>
+<li><strong>You can see the groove without decoding it.</strong> Reading is a
+perceptual act, not an interpretive one. Sixteen characters is within the span
+of foveal vision at normal text size, so a bar is taken in with one fixation —
+the same reason a tracker grid works.</li>
+<li><strong>Errors are visible.</strong> A pattern one character too long is
+obvious the way a misaligned column is obvious. Compare finding an off-by-one
+in a list of tuples.</li>
+<li><strong>Alignment across tracks is free.</strong> Four patterns stacked in a
+monospace font form a grid; the relationship between the kick and the hat is
+<em>spatial</em>. This is a tracker's core insight, preserved without the
+tracker.</li>
+<li><strong>Editing is direct manipulation.</strong> Changing a rest to a hit is
+typing one character in the position where you hear the change. The gulf
+between intention and action, in Norman's terms, is one keystroke wide.</li>
+</ul>
+
+<h3>9.2 The guessability test, applied</h3>
+
+<p>Law 3 says an extension must be guessable from one example. In practice this
+is a hard filter and it has rejected more proposals than it has passed. The
+scoreboard:</p>
+
+<div class="tbl">
+<table>
+<tr><th>Notation</th><th>Means</th><th>Verdict</th></tr>
+<tr><td><code>x . X -</code></td><td>hit, rest, accent, tie</td><td><strong>In.</strong> Guessable from the shape</td></tr>
+<tr><td><code>x?</code></td><td>a hit, most of the time</td><td><strong>In.</strong> "That hit… maybe"</td></tr>
+<tr><td><code>x..x *4</code></td><td>that pattern, four times</td><td><strong>In.</strong> Multiplication is universal</td></tr>
+<tr><td>Uneven pattern lengths</td><td>polymeter, automatically</td><td><strong>In.</strong> No syntax at all — 5 against 16 just works</td></tr>
+<tr><td><code>a1~ c2!</code></td><td>slide into a1, accent c2</td><td><strong>In.</strong> One glance plus one example</td></tr>
+<tr><td><code>[xx][x.]</code></td><td>subdivision groups</td><td><strong>Deferred.</strong> Guessable, but interacts with length rules</td></tr>
+<tr><td><code>&lt;x .&gt;</code></td><td>alternate between cycles</td><td><strong>Out.</strong> Requires knowing "cycle" is a concept</td></tr>
+<tr><td><code>x(3,8,2)</code></td><td>Euclidean with rotation</td><td><strong>Out.</strong> Three unlabelled numbers; not guessable</td></tr>
+<tr><td><code>every 4 (fast 2)</code></td><td>conditional transformation</td><td><strong>Out.</strong> This is programming, and that is a different product</td></tr>
+</table>
+</div>
+
+<p>Note what the rejections have in common: each is <em>more powerful</em> than
+what was accepted. The test is not "is this good," it is "does this cost a
+reader more than it gives them." A language that accepts every good idea becomes
+a language that only its designers can read — a fate that has claimed a
+remarkable number of otherwise excellent music languages.</p>
+
+<h3>9.3 Polymeter for free — the case study in good design</h3>
+
+<p>The single most elegant thing in the notation is something nobody designed.
+Patterns may be any length, and each is divided evenly across the bar. Write a
+16-step kick and a 5-step hat, and the hat cycles against the kick with a
+period of 80 steps — genuine polymeter, the device behind a great deal of the
+most interesting rhythmic music on earth, and it required <em>zero syntax</em>.
+It is not a feature; it is the <em>absence</em> of a restriction that a lazier
+implementation would have imposed by hardcoding sixteen.</p>
+
+<p>Generalize the lesson: <strong>the best features are the constraints you
+declined to add.</strong> Before designing syntax for a capability, check
+whether removing an assumption gives it to you for nothing. This is the
+design-space equivalent of deleting code, and it has the same superior payoff
+profile.</p>
+
+<h3>9.4 Two representations, one document</h3>
+
+<p>The song exists in two forms, exactly as a program exists as source text and
+as an abstract syntax tree, and both are text.</p>
+
+<p><strong>The command log</strong> (<code>.oontz</code>) — the canonical
+human source. The exact commands that make the instrument produce the song, one
+per line, comments with <code>#</code>. This is what you type, what a recording
+session records, and what git diffs beautifully:</p>
+
+<pre><code><span class="c"># warehouse — driving techno, the default starting point</span>
+<span class="k">bpm</span> 132
+<span class="k">swing</span> 6
+<span class="k">kick</span> X...x...X...x..x
+<span class="k">hat</span>  ..x...x...x.x.x.
+<span class="k">oh</span>   ......x.......x.
+<span class="k">clap</span> ....x.......x...
+<span class="k">bass</span> a1! . a1~ . c2 . a1 . g1! . a1~ . c2 . d2 .
+<span class="k">filter</span> bass lp 420 res 0.8
+<span class="k">sidechain</span> bass 0.7</code></pre>
+
+<p>Ten lines. 232 bytes. A complete driving techno loop.</p>
+
+<p><strong>The compiled timeline</strong> (<code>.song</code>, JSON) — the
+intermediate representation: the whole arrangement as data, which the composer
+emits and the players consume. Sections, orders, per-track state, automation,
+metadata, provenance. A full five-minute composed track is 15–40&nbsp;KB.</p>
+
+<p>Why both? Because they serve different readers and neither can serve both.
+The log is for humans and for diffs — it is <em>sequential, imperative, and
+minimal</em>. The IR is for machines and for structure — it is
+<em>declarative, complete, and addressable</em>. Attempting one representation
+for both produces either a JSON blob nobody can hand-write or a command log
+that tools must re-simulate to understand. Keeping the seam explicit is the
+same discipline as source-versus-AST in a compiler, and it pays the same
+dividends.</p>
+
+<h3>9.5 Naming, and the cost of cleverness</h3>
+
+<p>A final notational point that is easy to underrate: the command names are
+the words a musician already uses. <code>bpm</code>, <code>swing</code>,
+<code>kick</code>, <code>hat</code>, <code>clap</code>, <code>filter</code>,
+<code>sidechain</code>, <code>reverb</code>. Not <code>tempo_set</code>, not
+<code>sc.amount</code>, not <code>track[0].pattern =</code>. The vocabulary of
+the domain, used directly, with the argument order that reads as English:
+<code>filter bass lp 420 res 0.8</code>.</p>
+
+<p>This costs generality — <code>kick</code> is a track name and a voice name
+and a word — and buys the thing that matters more: <strong>a person can write
+the language before they have read the manual</strong>, because they are typing
+words they already know in the order they already say them.</p>
+
+<h2 id="s10"><span class="num">10</span>Totality and failing open</h2>
+
+<p>A compiler that rejects a bad program is doing its job. An instrument that
+refuses to make a sound is broken. This difference is more profound than it
+first appears and it should change how you write nearly every error path.</p>
+
+<h3>10.1 The instrument is not a compiler</h3>
+
+<p>When a programmer's build fails, the programmer fixes it — the feedback loop
+is intact and the error message is the most valuable output. When a musician's
+instrument goes silent mid-idea, the idea is gone. Musical work is not
+recoverable state; it lives in a person's short-term memory and evaporates in
+seconds. A tool that interrupts to complain has destroyed something that a
+correct error message does not replace.</p>
+
+<p>So the reference implementation is <em>total</em> in the mathematical sense
+wherever it can be: every input maps to some output, and there are almost no
+error paths that stop the music.</p>
+
+<div class="tbl">
+<table>
+<tr><th>Input</th><th>A compiler would</th><th>An instrument does</th></tr>
+<tr><td>Unknown effect name</td><td>Error, halt</td><td>Skip that effect, keep the chain</td></tr>
+<tr><td>Pattern with a stray character</td><td>Syntax error</td><td>Treat it as a rest; play the rest of the bar</td></tr>
+<tr><td>BPM of 0, NaN, or 10<sup>9</sup></td><td>Reject</td><td>Clamp to the legal range at assignment</td></tr>
+<tr><td>Note token that is not a note</td><td>Error</td><td>Silence for that step; everything else plays</td></tr>
+<tr><td>A voice that throws</td><td>Crash</td><td>Zero samples for that hit; the bar continues</td></tr>
+<tr><td>Automation hook raising</td><td>Stop the clock</td><td>Reuse the previous bar; count a drop</td></tr>
+<tr><td>API unreachable</td><td>Spinner forever</td><td>Local mode, with a line saying so</td></tr>
+<tr><td>Unknown field in a document</td><td>Reject the file</td><td>Ignore it — forward compatibility</td></tr>
+<tr><td>Unknown <em>format version</em></td><td>—</td><td><strong>Refuse loudly.</strong> The one hard error</td></tr>
+</table>
+</div>
+
+<h3>10.2 Failing open is not failing silent</h3>
+
+<p>The critical qualifier in Law 8. "Fail open" means the music continues;
+it does not mean the problem is concealed. A skipped effect prints a line. A
+clamped BPM shows the clamped value. Dropped bars are counted and the counter is
+visible. The distinction:</p>
+
+<ul class="tight">
+<li><strong>Fail closed</strong> — stop everything. Correct for a compiler,
+catastrophic for an instrument.</li>
+<li><strong>Fail silent</strong> — continue, say nothing. The worst of all
+worlds: the user's mental model diverges from reality and they debug the wrong
+thing for an hour.</li>
+<li><strong>Fail open</strong> — continue, say what happened, let the human
+decide when to care. Correct for creative tools.</li>
+</ul>
+
+<h3>10.3 Clamp at the assignment, not at the use</h3>
+
+<p>One implementation detail worth stealing verbatim. Tempo is assigned from a
+dozen places: typed commands, keyboard shortcuts, song sections, the composer,
+automation, a loaded file, a shared URL. One bad value makes a bar zero samples
+long, which the audio callback then divides by.</p>
+
+<p>The lazy-but-wrong fix is to validate at each of the dozen call sites. The
+right fix is to make the field a property that clamps on write. One guard,
+enforced by the type, unbypassable, and any future thirteenth caller inherits
+it. <strong>Push validation to the narrowest point through which every path
+flows.</strong> That point is nearly always an assignment, not a use, and
+finding it is usually the whole work of the bug fix.</p>
+
+<h3>10.4 Forward compatibility as a contract</h3>
+
+<p>The document carries <code>format: "oontz-song-1"</code>. The rules, stated
+as obligations on readers rather than as hopes:</p>
+
+<ul class="tight">
+<li>A reader <strong>must</strong> accept unknown extra fields and preserve
+them when re-serializing where it can. This is what lets the format grow
+without a flag day.</li>
+<li>A reader <strong>must</strong> refuse an unknown format identifier loudly.
+Guessing at a format you do not know is how silent corruption happens.</li>
+<li>A writer <strong>must not</strong> require fields that did not exist in the
+version it names. Defaults are part of the spec, not part of the
+implementation.</li>
+</ul>
+
+<p>This is the discipline that let ABC notation survive thirty years and a
+hundred applications, and it costs nothing to adopt on day one and is nearly
+impossible to retrofit on day one thousand.</p>
+
+<h2 id="s11"><span class="num">11</span>Metaphors and analogies</h2>
+
+<p>Metaphors are not decoration in system design; they are compression for
+reasoning. The right one lets you predict how the system should behave in a
+case you have not considered. The wrong one makes you build the wrong thing
+confidently. Here are the ones we use, what each explains, and — importantly —
+where each breaks.</p>
+
+<h3>11.1 The primary metaphor: HTML</h3>
+
+<p>A web page is not a screenshot of a web page. It is source, rendered by
+anything that speaks the format, differently on every screen, identical in
+meaning. This is the closest honest analogy to a song as source, and it is the
+one to reason from.</p>
+
+<div class="tbl">
+<table>
+<tr><th>The web</th><th>This language</th></tr>
+<tr><td>HTML document</td><td>The song source</td></tr>
+<tr><td>Browser</td><td>The engine / runtime</td></tr>
+<tr><td>Rendered pixels</td><td>Rendered audio</td></tr>
+<tr><td>"View source"</td><td><code>source</code> — the song prints itself</td></tr>
+<tr><td>Multiple browsers, one spec</td><td>Two engines, one format</td></tr>
+<tr><td>The page is kilobytes; images are not</td><td>The song is kilobytes; the WAV is not</td></tr>
+<tr><td>Anyone can save, edit, re-host</td><td>Anyone can fork, edit, republish</td></tr>
+<tr><td>CSS cascade, DOM, progressive enhancement</td><td>Sections, tracks, fail-open rendering</td></tr>
+</table>
+</div>
+
+<p><strong>Where it breaks:</strong> HTML is rendered to a static frame; audio
+is rendered to a timeline under a hard real-time deadline. The browser can
+reflow when a font loads. An audio engine that "reflows" produces a click, and
+a click is unforgivable. Everything about the scheduler in <a href="#s13">§13</a>
+exists because of this asymmetry.</p>
+
+<h3>11.2 The recipe and the cake</h3>
+
+<p>The most useful metaphor for non-technical audiences, and it survives
+pressure better than most. A recording is a cake: delicious, finished,
+un-uningredient-able. The source is the recipe: smaller, teachable, adaptable,
+scalable, and it makes the cake on demand. You can halve a recipe. You can
+substitute an ingredient. You can see that the previous baker used too much
+salt. You can hand it to someone in another country and they will produce the
+same cake.</p>
+
+<p><strong>Where it breaks:</strong> recipes are famously under-specified —
+"season to taste," "bake until golden" — and depend on a skilled human. Our
+source is not; it is executable, and the determinism law is precisely the
+promise a recipe does not make. The metaphor sells the value and understates
+the rigor.</p>
+
+<h3>11.3 The seed and the tree</h3>
+
+<p>A seed is small, carries the whole plan, and unfolds into something vastly
+larger. 232 bytes becomes five minutes of stereo audio — a compression ratio of
+roughly 200,000:1 against the WAV. Useful for explaining <em>why</em> the
+economics change (<a href="#s20">§20</a>) and why the format can ride in a URL,
+a chat message, or a model's context window.</p>
+
+<p><strong>Where it breaks:</strong> a seed's unfolding depends on soil and
+weather; ours must not depend on anything. Growth is generative and variable —
+determinism is the opposite. Use for the size argument only.</p>
+
+<h3>11.4 Source and build artifact</h3>
+
+<p>The precise engineering framing, and the one that generates the correct
+answer to almost any question about what to store. You do not commit binaries.
+You do not email a colleague your <code>node_modules</code>. You do not archive
+a PDF and delete the document it was typeset from. The build artifact is
+reproducible, therefore disposable, therefore not the thing of record.</p>
+
+<p>Applied here: <em>a WAV is a build artifact.</em> A "recording" is a
+compiled output, the way a PDF is compiled from a document. Storing audio is
+unnecessary, and a take is simply the text that reproduces it.</p>
+
+<p><strong>Where it breaks:</strong> people have feelings about recordings that
+they do not have about binaries. A specific render, at a specific moment, on
+specific speakers, is sometimes the artistic object — a live take with a mistake
+in it that is better than the correct version. The framing is right about
+storage and wrong about sentiment, and a mature system should let you keep an
+audio render when you want to, without pretending that is where the value
+is.</p>
+
+<h3>11.5 Chess notation</h3>
+
+<p>The most exact analogy in the entire list, and the most underused.
+<code>1. e4 e5 2. Nf3 Nc6</code> is a complete, unambiguous game in a few dozen
+bytes. It is human-readable to anyone who plays, machine-readable to every
+engine, searchable across millions of games, diffable, and it has produced an
+entire literature of annotation, an industry of databases, and a culture in
+which studying other people's games is how you learn.</p>
+
+<p>Chess got that culture because it had a portable notation for four hundred
+years. Music, for electronic genres, has not. The analogy predicts what happens
+if the notation arrives: not "people make music differently," but
+<strong>people start learning from each other's music the way chess players
+learn from each other's games</strong> — by reading it, move by move, at
+leisure, with the reasoning visible.</p>
+
+<p><strong>Where it breaks:</strong> chess notation records only legal moves in
+a closed, discrete system with no timbre, no continuous parameters and no
+aesthetics. Ours must encode continuous values and sound design. The analogy is
+about the <em>cultural consequences of a portable notation</em>, not its
+structure.</p>
+
+<h3>11.6 Knitting patterns, architectural plans, DNA</h3>
+
+<p>Three more, each carrying one specific insight:</p>
+
+<ul>
+<li><strong>Knitting patterns.</strong> <code>K2, P2, rep from * to end</code>
+is a compact, iterated, domain-specific notation that non-programmers have used
+fluently for centuries, and which nobody considers "technical." It is the
+counter-example to "ordinary people cannot read code": they can, when the
+notation is about something they care about and uses their vocabulary. This is
+the single best rebuttal to the objection that a text interface is elitist.</li>
+<li><strong>Architectural plans.</strong> Plans are not a picture of a building;
+they are a buildable specification, plus a professional culture of review,
+annotation, revision numbers, and standards. Blueprints made buildings
+<em>reviewable before they exist</em>. That is exactly what a song source does
+for arrangement, and it suggests the missing practice: musical plan review.</li>
+<li><strong>Genotype and phenotype.</strong> DNA is a compact, discrete,
+copyable, mutable encoding; the organism is the expressed result. Mutation,
+inheritance, lineage and recombination all operate on the genotype. Our
+<code>remix_of</code> field is literally a parent pointer, and a remix tree is a
+phylogeny. The metaphor predicts the feature: if you have genotypes, you get
+inheritance, and if you get inheritance you should record lineage. We did,
+because of this metaphor.</li>
+</ul>
+
+<h3>11.7 Two metaphors to avoid</h3>
+
+<p>Equally important, and rarely written down.</p>
+
+<p><strong>"It's like sheet music."</strong> Superficially apt and actively
+harmful. Sheet music is <em>instructions for a performer</em> and is deliberately
+under-specified — it does not determine the sound, and its incompleteness is the
+point, because interpretation is where the art lives. Our source is
+<em>executable and complete</em>. Reaching for this metaphor leads people to
+propose expressive-marking features ("play it warmly") that have no meaning in a
+deterministic system, and to expect a human in the loop who is not there.</p>
+
+<p><strong>"It's a DSL."</strong> Technically true, rhetorically fatal. The
+moment you describe it as a domain-specific language you have told your actual
+audience — musicians — that this is a programming product, and you have told
+programmers to evaluate it as a language rather than as an instrument. It is an
+<em>instrument whose interface is text</em>. The distinction determines who
+tries it, and therefore whether it works.</p>
+
+<div class="part" id="part3">
+<span class="n">Part III</span>
+<h2>The architecture</h2>
+<p>How it is actually built, with the numbers. The layer cake, the scheduler,
+the extension mechanism, and the parity discipline that makes the format real.</p>
+</div>
+
+<h2 id="s12"><span class="num">12</span>The layer cake</h2>
+
+<p>Six layers, each with one job, each replaceable without touching the others.
+The seams are where the value is; the layers themselves are unremarkable.</p>
+
+<figure class="wide">
+<div class="plot">
+<svg viewBox="0 0 760 470" role="img" aria-label="A pipeline diagram: command log parses to a document IR, which a timeline resolves per bar into state, which a renderer turns into a bar of samples, which feed outputs: speakers, WAV, MIDI, visuals.">
+  <defs>
+    <marker id="arrowAccent" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto">
+      <path d="M0,0 L8,4 L0,8 z" fill="#22e0d0"/>
+    </marker>
+    <marker id="arrowDim" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto">
+      <path d="M0,0 L8,4 L0,8 z" fill="#46545f"/>
+    </marker>
+  </defs>
+  <g font-family="ui-monospace,monospace">
+    <g>
+      <rect x="30" y="20" width="300" height="66" rx="8" fill="#0e1216" stroke="#22e0d0"/>
+      <text x="46" y="44" fill="#22e0d0" font-size="13">1 · SOURCE</text>
+      <text x="46" y="64" fill="#c6d2dc" font-size="11.5">the command log — what a person types</text>
+      <text x="46" y="79" fill="#6b7b88" font-size="11">kick x...x...x...x...</text>
+    </g>
+    <line x1="180" y1="86" x2="180" y2="112" stroke="#22e0d0" marker-end="url(#arrowAccent)"/>
+    <text x="196" y="105" fill="#6b7b88" font-size="10.5">parse</text>
+
+    <g>
+      <rect x="30" y="116" width="300" height="66" rx="8" fill="#0e1216" stroke="#22e0d0"/>
+      <text x="46" y="140" fill="#22e0d0" font-size="13">2 · DOCUMENT (IR)</text>
+      <text x="46" y="160" fill="#c6d2dc" font-size="11.5">sections · tracks · automation · meta</text>
+      <text x="46" y="175" fill="#6b7b88" font-size="11">format: "oontz-song-1"</text>
+    </g>
+    <line x1="180" y1="182" x2="180" y2="208" stroke="#22e0d0" marker-end="url(#arrowAccent)"/>
+    <text x="196" y="201" fill="#6b7b88" font-size="10.5">state_at(bar)</text>
+
+    <g>
+      <rect x="30" y="212" width="300" height="66" rx="8" fill="#0e1216" stroke="#22e0d0"/>
+      <text x="46" y="236" fill="#22e0d0" font-size="13">3 · RESOLVED STATE</text>
+      <text x="46" y="256" fill="#c6d2dc" font-size="11.5">one bar, every parameter settled</text>
+      <text x="46" y="271" fill="#6b7b88" font-size="11">pure · random-access · O(1)</text>
+    </g>
+    <line x1="180" y1="278" x2="180" y2="304" stroke="#22e0d0" marker-end="url(#arrowAccent)"/>
+    <text x="196" y="297" fill="#6b7b88" font-size="10.5">render</text>
+
+    <g>
+      <rect x="30" y="308" width="300" height="66" rx="8" fill="#0e1216" stroke="#22e0d0"/>
+      <text x="46" y="332" fill="#22e0d0" font-size="13">4 · SAMPLES</text>
+      <text x="46" y="352" fill="#c6d2dc" font-size="11.5">one bar of stereo float, soft-limited</text>
+      <text x="46" y="367" fill="#6b7b88" font-size="11">voices → fx → sidechain → mix</text>
+    </g>
+    <line x1="180" y1="374" x2="180" y2="400" stroke="#22e0d0" marker-end="url(#arrowAccent)"/>
+
+    <g>
+      <rect x="30" y="404" width="300" height="46" rx="8" fill="#0e1216" stroke="#18212b"/>
+      <text x="46" y="424" fill="#c6d2dc" font-size="12">5 · SCHEDULER — slice the bar, one bar ahead</text>
+      <text x="46" y="440" fill="#6b7b88" font-size="11">the audio callback does nothing else</text>
+    </g>
+
+    <g>
+      <rect x="420" y="116" width="310" height="250" rx="8" fill="none" stroke="#18212b" stroke-dasharray="3 3"/>
+      <text x="436" y="140" fill="#6b7b88" font-size="11">6 · OUTPUTS — all fed by the same IR</text>
+      <g font-size="12">
+        <rect x="440" y="156" width="270" height="34" rx="6" fill="#0e1216" stroke="#18212b"/>
+        <text x="456" y="178" fill="#c6d2dc">speakers (live)</text>
+        <rect x="440" y="198" width="270" height="34" rx="6" fill="#0e1216" stroke="#18212b"/>
+        <text x="456" y="220" fill="#c6d2dc">WAV / video (offline render)</text>
+        <rect x="440" y="240" width="270" height="34" rx="6" fill="#0e1216" stroke="#18212b"/>
+        <text x="456" y="262" fill="#c6d2dc">Standard MIDI File (leaves for a DAW)</text>
+        <rect x="440" y="282" width="270" height="34" rx="6" fill="#0e1216" stroke="#18212b"/>
+        <text x="456" y="304" fill="#c6d2dc">visuals (band energy per track)</text>
+        <rect x="440" y="324" width="270" height="34" rx="6" fill="#0e1216" stroke="#18212b"/>
+        <text x="456" y="346" fill="#c6d2dc">analysis · diff · search · AI</text>
+      </g>
+    </g>
+    <path d="M334,149 C380,149 390,180 420,200" fill="none" stroke="#46545f" marker-end="url(#arrowDim)"/>
+    <path d="M334,340 C380,340 396,320 420,300" fill="none" stroke="#46545f" marker-end="url(#arrowDim)"/>
+  </g>
+</svg>
+</div>
+<figcaption>The critical property is that outputs hang off the IR, not off the
+audio path. MIDI export, structural search, diffing and AI collaboration all
+read layer 2 and never touch a sample.</figcaption>
+</figure>
+
+<h3>12.1 Why the IR is the load-bearing layer</h3>
+
+<p>New designers reach for the parser or the DSP. Both are the easy parts. The
+document IR is where the design is decided, because every capability you will
+ever add reads it:</p>
+
+<ul class="tight">
+<li>Playback reads it and produces samples.</li>
+<li>Offline render reads it and produces a file.</li>
+<li>MIDI export reads it and produces events — no audio involved.</li>
+<li>Diff reads two of them and produces English.</li>
+<li>Search reads a million of them and produces results.</li>
+<li>The composer <em>writes</em> it — generation is a function that emits an
+IR, not a function that plays notes.</li>
+<li>An AI reads it and writes commands that edit it.</li>
+<li>The visualizer reads per-track band energy that the renderer parked
+there.</li>
+</ul>
+
+<p>If the IR is right, adding an output is a day. If it is wrong — if, say, it
+represents drums as pre-baked audio offsets rather than as patterns — then MIDI
+export is impossible, structural search is impossible, and diffing is
+meaningless, and you will not discover this until you try the third feature.</p>
+
+<div class="note law">
+<span class="lbl">Test for a candidate IR</span>
+<p>Before writing a line of engine code, write down five outputs you do not
+intend to build yet — MIDI, notation rendering, a similarity search, a
+karaoke-style visualiser, a hardware sequencer driver — and check that each is
+<em>obviously implementable</em> from the IR alone. If any requires information
+that only exists inside the renderer, the IR is under-specified, and that is
+much cheaper to learn now than in eighteen months.</p>
+</div>
+
+<h2 id="s13"><span class="num">13</span>One bar ahead</h2>
+
+<p>The hardest engineering constraint in the system is not synthesis. It is the
+real-time deadline: an audio callback runs every few milliseconds, must return
+in less time than the buffer it fills represents, and must never allocate, block,
+take a lock, or garbage-collect. Miss once, and the listener hears a click —
+and a click is not a bug report, it is the moment somebody decides your software
+is cheap.</p>
+
+<h3>13.1 The three architectures, and why two are dead</h3>
+
+<div class="tbl">
+<table>
+<tr><th>Approach</th><th>Latency</th><th>Cost at scale</th><th>Verdict</th></tr>
+<tr><td>Render server-side, stream audio</td><td>200&nbsp;ms+ round trip</td><td>CPU per listener per second</td><td><strong>Dead.</strong> You cannot play an instrument through it, and free is impossible</td></tr>
+<tr><td>Run the Python engine in WASM (Pyodide)</td><td>10&nbsp;MB download; GC pauses in the audio path</td><td>Free</td><td><strong>Dead for live.</strong> Fine for offline render</td></tr>
+<tr><td><strong>Port the DSP to Web Audio</strong></td><td>Sub-10&nbsp;ms, native</td><td><strong>Free — it runs on the visitor's machine</strong></td><td>This one</td></tr>
+</table>
+</div>
+
+<p>Note how Law 7 — ten seconds to first sound — does the killing. Server
+rendering is not rejected on cost grounds first; it is rejected because a
+200&nbsp;ms round trip is not an instrument. The economics only confirm the
+verdict. When a law is well chosen, it decides architecture questions before you
+have finished asking them.</p>
+
+<h3>13.2 The bar-ahead scheduler</h3>
+
+<p>The design that makes real-time safety almost trivial:</p>
+
+<pre><code><span class="c"># The audio callback slices a pre-rendered bar and does nothing else.</span>
+callback(out, frames):
+    out[:] = current_bar[pos : pos+frames]
+    pos += frames
+    <span class="k">if</span> pos &gt;= len(current_bar):
+        bar_done()          <span class="c"># swap in the bar rendered ahead; pos = 0</span></code></pre>
+
+<p>Everything expensive — synthesis, filtering, effects, automation, the whole
+arrangement engine — happens on another thread, one bar early, into a buffer.
+The callback is a memory copy and a pointer increment. It cannot glitch because
+there is nothing in it to be slow.</p>
+
+<p>The numbers that make this work: a cold render of one bar takes roughly
+0.2&nbsp;s; at 132&nbsp;BPM a bar lasts about 1.8&nbsp;s. That is a 9× margin.
+And if a render ever overruns anyway — a pathological effect chain, a busy
+machine — the callback reuses the current bar and increments a drop counter.
+The listener hears a repeated bar instead of a click, which is musically almost
+invisible, and the drop count is displayed rather than hidden (Law 8 again).</p>
+
+<h3>13.3 What a bar-quantized world costs</h3>
+
+<p>Being honest about the trade, because it is a real one. Edits take effect at
+the next bar line, not instantly. Type a new hi-hat pattern and you hear it in
+up to 1.8&nbsp;s.</p>
+
+<p>Three reasons this is the right call anyway, and one caveat:</p>
+
+<ul>
+<li><strong>It is musically correct.</strong> Changes landing on the bar line is
+what a human DJ does and what every hardware sequencer with pattern-change
+quantization does. Instant, mid-bar changes sound like mistakes even when they
+are intentional.</li>
+<li><strong>It makes the engine simple enough to be right.</strong> No partial
+re-render, no crossfade logic, no state that is half-old and half-new. A live
+edit is: render a whole new bar off-thread, swap the pointer at the boundary.
+Correctness by construction beats cleverness with edge cases.</li>
+<li><strong>It makes the two engines agree.</strong> A bar is an atomic unit in
+both runtimes. Sub-bar mutation semantics would be the single hardest thing to
+keep identical across languages, and it would be the first thing to
+diverge.</li>
+<li><strong>The caveat:</strong> live performance effects — filter sweeps,
+stutters, tape stops — must be immediate or they are useless. These are handled
+as <em>pointer math over the already-rendered bar</em>, not as re-renders: a
+stutter re-reads a slice, a spinback advances the read pointer non-linearly, a
+tape stop scales the rate. Performance effects operate on the buffer, not on
+the document. That distinction — <strong>document edits are quantized,
+performance gestures are immediate</strong> — is the seam that lets both be
+true at once, and it is worth stealing.</li>
+</ul>
+
+<h2 id="s14"><span class="num">14</span>Voices that ask</h2>
+
+<p>How do you add a new sound to a language like this without the core knowing
+anything about it?</p>
+
+<p>The usual answers are a plugin interface (every voice implements
+<code>ISynthVoice</code>) or a registry (every voice declares a parameter
+schema). Both work. Both are ceremony, and both mean the core has an opinion
+about what a voice is.</p>
+
+<p>The mechanism here is smaller: <strong>a voice declares what it wants by
+naming its parameters, and the core supplies whatever the track has.</strong></p>
+
+<pre><code><span class="k">def</span> v_bass303(hz, accent, cutoff, res, slide_from): ...
+<span class="k">def</span> v_hat(accent, tune, decay): ...
+<span class="k">def</span> v_kick(accent): ...</code></pre>
+
+<p>At render time, the core inspects the function's signature and passes the
+track's values for exactly the names that appear. A voice that asks for
+<code>hz</code> is by definition pitched, so the pitch machinery engages
+automatically. A voice that asks for <code>cutoff</code> gets the track's filter
+frequency. A voice that asks for nothing gets an accent flag and plays.</p>
+
+<p>Consequences:</p>
+
+<ul>
+<li><strong>Adding a voice is writing a function.</strong> No registration, no
+schema, no interface, no core edit. Import it and it is playable.</li>
+<li><strong>"Is this track pitched?" is derived, not declared.</strong> It is
+computed from whether the voice's signature mentions a frequency, which means
+that property can never fall out of sync with reality — a whole class of bug
+deleted rather than fixed.</li>
+<li><strong>Parameters cannot be silently misrouted.</strong> Names are the
+contract. There is no positional argument order to get wrong.</li>
+<li><strong>The cost is one reflection call</strong>, memoized because
+signatures are static.</li>
+</ul>
+
+<div class="note">
+<span class="lbl">The general pattern</span>
+<p>This is dependency injection by parameter name — the same trick behind
+pytest fixtures and Angular's original DI. It is worth reaching for whenever
+you have <em>many small plugins with heterogeneous needs and one caller that
+holds all the data</em>. The alternative — a uniform interface — forces every
+plugin to accept a context object and dig through it, which is more code in
+every plugin so that the core can have less.</p>
+<p><strong>Where it stops working:</strong> across a language boundary, and in a
+minified JavaScript bundle where parameter names do not survive. The browser
+engine therefore uses an explicit small table instead. When a technique does not
+port, do not port it — port the <em>property</em> (voices declare their needs;
+the core supplies them) and let each runtime achieve it idiomatically.</p>
+</div>
+
+<h2 id="s15"><span class="num">15</span>Effects, and the duck</h2>
+
+<p>Two details of the audio path that carry design lessons well beyond audio.</p>
+
+<h3>15.1 Sidechain is a first-class citizen</h3>
+
+<p>In most audio software, sidechain compression — the pumping that makes the
+bass duck out of the kick's way, the single most characteristic sound in
+electronic dance music since the 1990s — is assembled from primitives: insert a
+compressor, route a send, configure a key input, tune four knobs. Perhaps
+fifteen minutes and some expertise.</p>
+
+<p>Here it is one token: <code>sidechain bass 0.7</code>.</p>
+
+<p>The implementation is a ducking envelope computed once per bar from the kick
+positions and multiplied into every track that asked for it. It is not a
+compressor at all — it is the <em>effect</em> a compressor is used to produce,
+implemented directly, deterministically, and in one line of source.</p>
+
+<p>This is a general principle for domain languages, and possibly the most
+transferable idea in this document: <strong>make the genre's signature move a
+primitive.</strong> A language for techno in which sidechain requires five steps
+has mis-ranked its vocabulary. A language for the web that made forms hard would
+be absurd. Look at what practitioners of your domain do every single time, and
+check that it is one token. If it is three, you have built a general system and
+called it a domain one.</p>
+
+<p>The corollary is the harder discipline: <em>ranking</em> means demoting
+things too. Reverb, delay and chorus are ordinary here, expressed the same way
+as everything else, because they are ordinary in this genre. Generality is the
+default; primitives are earned by frequency.</p>
+
+<h3>15.2 The effect chain that cannot break the song</h3>
+
+<pre><code><span class="k">for</span> name, params <span class="k">in</span> chain:
+    fn = FX.get(name)
+    <span class="k">if</span> fn <span class="k">is</span> <span class="k">None</span>: <span class="k">continue</span>       <span class="c"># unknown effect: skip, do not crash</span>
+    <span class="k">try</span>: x = fn(x, **params)
+    <span class="k">except</span> Exception: <span class="k">pass</span>       <span class="c"># a broken effect is skipped, not fatal</span></code></pre>
+
+<p>Six lines, and they encode Law 8 for the entire effects system. A song using
+an effect from a newer version of the format plays on an older engine, minus
+that effect. A malformed parameter costs you one effect, not the track. The
+alternative — validate the chain up front and refuse — is more "correct" and
+strictly worse: it converts a partially working song into no song at all, in a
+context where partial is enormously more useful than nothing.</p>
+
+<h3>15.3 Analysis rides along</h3>
+
+<p>One more small thing with outsized consequences: while rendering each track,
+the engine records that track's RMS level and its energy in a handful of
+frequency bands. It is nearly free — the buffer is already in cache — and it
+means the visualiser does not need its own FFT of the mixed output. It gets
+<em>per-track</em> data the mix cannot provide, so a visual can respond to the
+bass and the hats separately rather than to a single lump of loudness.</p>
+
+<p>The lesson: <strong>the renderer knows things nobody else can recover.</strong>
+Analysis performed downstream of the mix is strictly less informative than
+analysis performed during it. If a later stage will want a measurement, take it
+where the information still exists.</p>
+
+<h2 id="s16"><span class="num">16</span>Two runtimes, one theory</h2>
+
+<p>Law 5 requires at least two independent implementations. This is the most
+expensive law and the one that most directly determines whether you have built a
+format or a program.</p>
+
+<h3>16.1 What actually ports, and what gets rewritten</h3>
+
+<p>The codebase splits cleanly, which is not luck — it is what falls out of
+keeping the seams pure, and the split is a good diagnostic for whether your own
+architecture is sound:</p>
+
+<div class="tbl">
+<table>
+<tr><th>Layer</th><th>Ports?</th><th>Why</th></tr>
+<tr><td>Song model, <code>state_at</code>, automation</td><td><strong>Mechanically</strong></td><td>Pure logic, no I/O, no numerics library</td></tr>
+<tr><td>Music theory: scales, chords, motifs</td><td><strong>Mechanically</strong></td><td>Tables and arithmetic; derived from one shared file</td></tr>
+<tr><td>Arrangement grammar, energy curves</td><td><strong>Mechanically</strong></td><td>Pure functions over the IR</td></tr>
+<tr><td>Layout, key tables, string-building UI</td><td><strong>Mechanically</strong></td><td>Pure</td></tr>
+<tr><td>Oscillators and envelopes</td><td>Rewritten</td><td>Formulas, not libraries — straightforward, just not shared</td></tr>
+<tr><td>Filters, delay, reverb</td><td>Rewritten</td><td>Web Audio has BiquadFilter, DelayNode, ConvolverNode natively</td></tr>
+<tr><td>The bar renderer</td><td>Rewritten</td><td>Becomes a worklet that renders a bar into a buffer</td></tr>
+</table>
+</div>
+
+<p>The proportion is the point: <strong>most of a music language is not
+DSP.</strong> The parts that are hard to port are the parts that are also small,
+formula-shaped, and well-defined. If you find that porting your engine means
+porting everything, your logic and your numerics are entangled, and the format
+you think you have is actually an implementation.</p>
+
+<h3>16.2 The parity gate</h3>
+
+<p>Two implementations that agree in spirit are two implementations. Two
+implementations held to identical output by an automated test are a
+<em>specification</em>. The gate:</p>
+
+<ul class="tight">
+<li>Generate <strong>360 arrangements</strong> across styles, tempos, seeds and
+lengths.</li>
+<li>Run both engines over each.</li>
+<li>Compare every musical decision — every hit, every probabilistic step, every
+resolved parameter, every section boundary.</li>
+<li>Any divergence fails the build.</li>
+</ul>
+
+<p>Plus <strong>golden renders</strong> within the Python engine: hash the
+output of a fixed corpus and assert byte-identity across changes. That catches
+"a refactor changed the sound by 0.001%," which no listening test would ever
+find and which is exactly how determinism dies — not in one dramatic break but
+in a slow drift nobody notices until two versions no longer agree.</p>
+
+<blockquote>
+<p>A format with one implementation is a save file. A format with two
+implementations that agree by accident is a coincidence. A format with two
+implementations held identical by a gate is a specification.</p>
+</blockquote>
+
+<h3>16.3 One source of truth for the theory</h3>
+
+<p>Both engines derive their music theory — scales, chord tables, Camelot
+wheel adjacencies, motif transformations — from one file. Not "kept in sync,"
+not "documented in both": generated from one artifact, with a check that fails
+the moment a copy drifts. The same discipline covers the shared engine file
+served by two different sites: a byte-comparison test fails if the copies
+differ.</p>
+
+<p><strong>Duplication you cannot avoid must be duplication you cannot
+forget.</strong> If two copies of something must exist for deployment reasons,
+the check that they are identical is not optional hygiene; it is the only thing
+standing between you and a bug that appears on one site and not the other, six
+months later, with no obvious cause.</p>
+
+<h2 id="s17"><span class="num">17</span>Generation over the IR</h2>
+
+<p>The composer — the thing that writes a five-minute arranged track from a
+genre name and a seed — is not a separate system. It is a pure function that
+emits the same IR a human edits.</p>
+
+<pre><code>compose(style, minutes, seed) → document</code></pre>
+
+<p>That single design choice has consequences worth spelling out, because the
+alternative (a generator that plays notes, or that drives the engine directly)
+is the more obvious build and forecloses all of them:</p>
+
+<ul>
+<li><strong>Generated music is editable.</strong> The output is a document, so
+every command works on it. There is no "generated" mode that behaves
+differently from "made" mode.</li>
+<li><strong>Generation is testable without listening.</strong> Assert that the
+energy curve rises into the drop, that the break is quieter, that section
+lengths are powers of two, that the bass stays in key. All structural, all fast,
+all in a normal test suite.</li>
+<li><strong>Generation is deterministic.</strong> Same style and seed, same
+song. A seed becomes a shareable, memorable, tiny address for a specific
+track.</li>
+<li><strong>Human and machine work is indistinguishable in the
+document.</strong> There is no metadata partition, no "AI-generated" branch of
+the schema. A person can generate a skeleton, rewrite half of it, and the result
+is one coherent song.</li>
+</ul>
+
+<h3>17.1 Arrangement as grammar</h3>
+
+<p>Song structure is remarkably regular within a genre, and that regularity is
+expressible as a grammar over section roles:</p>
+
+<pre><code>song    → intro build drop break drop2 outro
+role    → energy target ∈ [0,1]
+section → role × bars × the track state that reaches that energy</code></pre>
+
+<p>Each role carries a nominal energy — intro 0.25, build 0.60, drop 1.00,
+break 0.30, outro 0.20 — and generation is a walk along a curve through those
+targets, choosing tracks, densities, filter positions and effects that land near
+each one. Curves themselves are named and swappable: linear, exponential,
+logarithmic, eased, stepped.</p>
+
+<p>This is the same insight as the arrangement grammar in generative-music
+research and the same insight as a tracker's order list: <strong>separate what
+the material is from where it goes</strong>. It also makes a song
+<em>critiqueable</em> — you can score an arrangement against its own declared
+curve and say "the build does not build," which is a genuinely useful thing to
+tell a beginner and a completely mechanical computation.</p>
+
+<h3>17.2 Where a language model fits</h3>
+
+<p>Because the document is text with a small vocabulary, a language model is
+unusually well suited to editing it — see <a href="#s22">§22</a> for why. The
+architectural point here is narrower: <strong>the model's output is commands,
+not audio.</strong> It writes lines you can read, that apply to your song, that
+you can undo, and that appear in the diff like any other edit.</p>
+
+<p>This is the difference between a collaborator and an oracle. An oracle
+returns a finished render and you either accept it or ask again — you learn
+nothing, you cannot take half of it, and your taste never enters the loop. A
+collaborator hands you source. The posture is a design constraint, not a
+politeness: <em>the model may only produce artifacts the human can read,
+partially accept, and edit.</em></p>
+
+<h2 id="s18"><span class="num">18</span>The proof obligations</h2>
+
+<p>A format that claims determinism must prove it continuously, or the claim
+decays into folklore. Four gates run before anything ships, and their shape is
+more interesting than their contents.</p>
+
+<div class="tbl">
+<table>
+<tr><th>Gate</th><th>Covers</th><th>Answers the question</th></tr>
+<tr><td>Engine self-test</td><td>Every module, in-process</td><td>Does each part still do what it says?</td></tr>
+<tr><td>Cross-engine parity + golden renders</td><td>360 arrangements, byte-hashed output</td><td>Do both runtimes still agree, and did the sound change?</td></tr>
+<tr><td>Browser gate</td><td>The real page, driven in a real headless browser</td><td>Does it work where people actually use it?</td></tr>
+<tr><td>Site gate</td><td>The real server, every asset, share routes, one-tap audio</td><td>Does the deployed thing serve what it claims?</td></tr>
+</table>
+</div>
+
+<h3>18.1 Why "the real thing" is the only useful gate</h3>
+
+<p>Two of these four exist because of specific, humbling failures, and the
+pattern is worth internalising.</p>
+
+<p>A relative script path — <code>src="copy.js"</code> — shipped to production.
+On the home page it worked. On a share page served at <code>/t/&lt;id&gt;</code>
+it resolved to <code>/t/copy.js</code> and 404'd, so every shared link anyone
+opened loaded a page with no words on it. Forty-three green browser tests never
+saw it, because they tested the app directory statically and the share route
+lived in a server nothing exercised.</p>
+
+<p>The fix was not a fix for that bug. It was a gate that boots the real server
+and asserts that <em>every same-origin response is 200</em>, plus a check that
+<em>no asset path in the page is relative</em>. Both assertions are about the
+class, not the instance.</p>
+
+<div class="note warn">
+<span class="lbl">The rule this teaches</span>
+<p>When a bug escapes to production, the question is never "how do I fix this
+bug." It is <strong>"what assertion, had it existed, would have made this class
+of bug impossible"</strong> — and then, is that assertion cheap enough to run
+every time. A test that catches one instance is worth little. A test that
+catches the category is worth the whole incident.</p>
+</div>
+
+<h3>18.2 Golden renders as a cultural device</h3>
+
+<p>Byte-hashing the audio output of a fixed corpus is technically a regression
+test and culturally something more useful: it makes <em>every</em> change to the
+DSP an explicit, reviewed decision. You cannot casually "improve" the kick. You
+must change it, see the gate fail, and consciously bless the new hashes with a
+note about why.</p>
+
+<p>That friction is the point. It converts the sound of the instrument from an
+emergent property of whoever touched it last into a versioned decision with a
+paper trail — which is exactly the property Law 2 promises and would otherwise
+quietly lose, one well-meaning refactor at a time.</p>
+
+<div class="part" id="part4">
+<span class="n">Part IV</span>
+<h2>The consequences</h2>
+<p>What the design actually buys. Every item here is a capability that is
+unreachable without a source format and nearly free with one.</p>
+</div>
+
+<h2 id="s19"><span class="num">19</span>Version control for music</h2>
+
+<p>The headline consequence, and the one whose implications are most
+underestimated, because people evaluate it as a feature rather than as an
+infrastructure change.</p>
+
+<h3>19.1 The diff</h3>
+
+<p>Two versions of a song produce a diff that means something:</p>
+
+<pre><code><span class="c">--- warehouse.oontz</span>
+<span class="c">+++ warehouse.oontz</span>
+ bpm 132
+<span class="s">-swing 6</span>
+<span class="o">+swing 12</span>
+<span class="s">-kick X...x...X...x...</span>
+<span class="o">+kick X...x...X...x..x</span>
+ hat  ..x...x...x.x.x.
+<span class="s">-filter bass lp 420 res 0.8</span>
+<span class="o">+filter bass lp 280 res 0.94</span></code></pre>
+
+<p>You can read that. The swing doubled, the kick gained a pickup on the last
+sixteenth, the bass filter closed and got more resonant — it got darker and more
+acid. That is a legible account of a musical decision, produced by
+<code>diff</code>, a program from 1974 that knows nothing about music.</p>
+
+<p>Then, at the structural level, a diff of two IRs is a diff of meaning: "the
+break grew from 8 to 16 bars," "drop2 lost the open hat," "the filter automation
+now starts 4 bars earlier." No audio comparison can produce those sentences, and
+no listener can produce them reliably either.</p>
+
+<h3>19.2 The practices that follow</h3>
+
+<p>Git provides the mechanics; what matters is which human practices become
+possible. Each of these is standard in software, unavailable in music, and
+becomes available the moment the artifact is text:</p>
+
+<ul>
+<li><strong>Blame.</strong> Who changed the bassline, when, and — because commit
+messages exist — why. Attribution at the level of the musical decision rather
+than the credit list.</li>
+<li><strong>Bisect.</strong> "It stopped hitting somewhere in the last thirty
+commits." Binary search the history, listening to each. This is a genuinely new
+capability: <em>debugging a song</em>.</li>
+<li><strong>Branch.</strong> Try the hardstyle version without endangering the
+one that works. Not "save as v7 final FINAL2," but a first-class alternative
+with a name and a merge path.</li>
+<li><strong>Pull request.</strong> Someone hears your track, changes eight
+characters, and opens a proposal you can read, discuss, and accept with a click.
+Collaboration without a shared session, a shared DAW, or a shared timezone.</li>
+<li><strong>Review.</strong> Line comments on a song. "This build is four bars
+too long." Attached to the line that does it.</li>
+<li><strong>Fork with provenance.</strong> The document carries a parent
+pointer, so remix lineage is data, not etiquette. Credit travels with the file,
+and a remix tree is a queryable phylogeny.</li>
+<li><strong>Tags and releases.</strong> This is the version that got played out.
+That one is the radio edit. Both reproducible forever from a few kilobytes.</li>
+</ul>
+
+<h3>19.3 The hard part: merge</h3>
+
+<p>Honesty demands the limitation. Text merge works on a song when two people
+edit different lines — different tracks, different sections — which is the
+common case and merges cleanly with no special tooling.</p>
+
+<p>It fails where it fails everywhere: two people editing the same pattern.
+Line-based merge will produce a conflict, and resolving it by picking one side
+is musically crude — the two edits may be combinable in a way no text tool can
+see. <em>Semantic merge for music is an open problem</em>, and a genuinely
+interesting one: a hit at step 3 and a hit at step 11 added by two people are
+trivially unifiable, but a pattern rewritten in a different length by both is
+not. See <a href="#s29">§29</a>, where this is the first item on the research
+agenda.</p>
+
+<h2 id="s20"><span class="num">20</span>The economics of kilobytes</h2>
+
+<p>The least romantic section and possibly the most consequential, because
+economics decides who gets to publish.</p>
+
+<h3>20.1 The numbers</h3>
+
+<div class="tbl">
+<table>
+<tr><th>Artifact</th><th>Size</th><th>Ratio</th></tr>
+<tr><td>A loop as source</td><td>~232 bytes</td><td>1×</td></tr>
+<tr><td>A five-minute arranged track as source</td><td>15–40 KB</td><td>~100×</td></tr>
+<tr><td>The same track as a 320 kbps MP3</td><td>~12 MB</td><td>~50,000×</td></tr>
+<tr><td>The same track as 44.1/16 stereo WAV</td><td>~52 MB</td><td>~220,000×</td></tr>
+<tr><td>The same track as a DAW project with samples</td><td>200 MB – 2 GB</td><td>~10<sup>6</sup>×</td></tr>
+</table>
+</div>
+
+<p>A five-order-of-magnitude difference is not an optimization. It is a change
+in what kind of thing the object is, and things change category at that
+scale.</p>
+
+<h3>20.2 What becomes possible below a megabyte</h3>
+
+<ul>
+<li><strong>The whole song fits in a URL.</strong> Not a link to a song — the
+song. Packed into the fragment, it never touches a server, so there is nothing
+to store, nothing to lose, nothing to take down, and no account required to
+share. A link that works forever with no infrastructure behind it.</li>
+<li><strong>Hosting a gallery is free.</strong> No object storage, no CDN
+bandwidth, no transcoding pipeline, no per-play cost. A million songs is a
+modest database. This is why the service can be free without a business model
+that eventually requires it not to be — and "free" that depends on future
+monetization is a countdown, not a policy.</li>
+<li><strong>Every track in the gallery is editable.</strong> Because you store
+source, every published song is automatically a playable, forkable preset. The
+gallery is not a jukebox; it is a library in the software sense.</li>
+<li><strong>It fits in a chat message, a gist, a commit, a QR code, a
+tweet.</strong> Distribution channels designed for text carry it natively.</li>
+<li><strong>It fits in a model's context window.</strong> Fifty songs is a
+handful of tokens by the standards of a modern model, which makes
+few-shot musical reasoning practical (<a href="#s22">§22</a>).</li>
+<li><strong>Archiving is trivial.</strong> Every song ever made on the platform
+fits on a phone. Preservation stops being a budget line.</li>
+</ul>
+
+<h3>20.3 Why the economics are a moral argument</h3>
+
+<p>Under an audio-hosting model, each additional listener costs money, so
+someone must eventually pay: ads, subscriptions, an upload cap, a rights
+regime, or a shutdown. Every free music-hosting service in history has faced
+this and resolved it the same way. Under a source-hosting model, the marginal
+cost of a listener is <em>the listener's own CPU</em>, because rendering happens
+on their machine. The service serves kilobytes of text.</p>
+
+<p>That is why the free tier is credible rather than promotional — and why the
+architectural decision in <a href="#s13">§13.1</a> (client-side rendering) and
+the access decision are the same decision. <strong>Sustainable free is an
+architecture, not a pricing page.</strong></p>
+
+<h2 id="s21"><span class="num">21</span>Searching the music itself</h2>
+
+<p>Music search today is search over <em>metadata</em>: title, artist, genre
+tag, and whatever an audio-fingerprinting model inferred. Search over
+<em>structure</em> is essentially unavailable outside research corpora, because
+the structure was thrown away when the recording was made.</p>
+
+<p>With a source corpus, these are ordinary database queries:</p>
+
+<ul class="tight">
+<li>every track between 128 and 134 BPM in A minor with a break longer than 16
+bars;</li>
+<li>every track whose kick pattern contains a sixteenth-note pickup before the
+downbeat;</li>
+<li>every track that uses a reese bass with resonance above 0.9;</li>
+<li>every track descended from this one — the remix tree, to any depth;</li>
+<li>the tempo distribution of everything published this month;</li>
+<li>the most-forked eight-bar pattern on the platform;</li>
+<li>tracks structurally similar to this one, by comparing resolved section
+states rather than audio embeddings.</li>
+</ul>
+
+<h3>21.1 Why this is a research instrument</h3>
+
+<p>Musicology of electronic music is bottlenecked on data. Studying how, say,
+hi-hat density relates to perceived energy across a genre currently means
+either hand-annotating recordings or trusting a signal-processing pipeline that
+infers structure with unknown error. Both are expensive, and both introduce a
+measurement layer between the researcher and the object.</p>
+
+<p>A corpus of source documents removes the inference step entirely. The
+hi-hat density is not estimated; it is <em>read</em>. Section boundaries are not
+detected; they are <em>declared</em>. The provenance of a remix is not inferred
+from similarity; it is <em>recorded</em>.</p>
+
+<p>This makes a class of study cheap that is currently rare: large-N,
+exact-measurement, longitudinal studies of how a genre's structural conventions
+actually change, with a ground truth that does not depend on a model. If such a
+corpus reaches meaningful scale, it is a more valuable research artifact than
+the instrument that produced it.</p>
+
+<h3>21.2 The corpus as a teaching object</h3>
+
+<p>The same property makes the corpus pedagogically potent. "Show me twenty
+builds that work" is a query. So is "show me how this producer's kick patterns
+changed over two years." Learning from examples requires examples you can read,
+and this is the first form in which electronic music has them at scale.</p>
+
+<h2 id="s22"><span class="num">22</span>Why machines read this well</h2>
+
+<p>Large language models are extraordinarily well suited to this format, and
+the reasons are structural rather than lucky. Understanding them tells you how
+to design a format that machines can collaborate on — which is now a
+first-class design goal rather than a nice-to-have.</p>
+
+<h3>22.1 Five structural reasons</h3>
+
+<ul>
+<li><strong>It is text.</strong> No modality gap, no encoder, no tokenizer
+surprise. The song is in the model's native representation, which means every
+capability the model has over text applies to music without adaptation.</li>
+<li><strong>It is small.</strong> A whole track is 15–40 KB. A model can hold
+the entire song, plus a dozen reference songs, plus the full command
+documentation, and still have room to reason. Compare the impossibility of
+"read this five-minute WAV and change the third bar of the break."</li>
+<li><strong>The vocabulary is tiny and domain-shaped.</strong> A few dozen
+commands, all named after musical concepts the model has read millions of words
+about. It does not need to learn an API; it needs to map words it knows to a
+grammar it can see in two examples.</li>
+<li><strong>Output is verifiable.</strong> The model emits commands. They either
+parse or they do not; they either produce a structurally valid song or they do
+not; the arrangement either scores well against its energy curve or it does
+not. Every one of those is a machine-checkable signal, which means the loop can
+be closed automatically — the model can be told it was wrong, precisely, without
+a human listening.</li>
+<li><strong>Edits are local and reviewable.</strong> The model changes three
+lines. You see three lines. You keep two. This is the interaction pattern that
+makes code assistants useful and image generators frustrating, and it is
+available here for the same reason: <em>the artifact is composed of independently
+meaningful parts.</em></li>
+</ul>
+
+<h3>22.2 The ladder of collaboration</h3>
+
+<p>Four postures, increasing in autonomy, all producing source:</p>
+
+<div class="tbl">
+<table>
+<tr><th>Mode</th><th>The model</th><th>You</th></tr>
+<tr><td><strong>ask</strong></td><td>Explains what is there, in musical terms</td><td>Learn something</td></tr>
+<tr><td><strong>jam</strong></td><td>Proposes small edits to what you have</td><td>Accept, reject, tweak</td></tr>
+<tr><td><strong>produce</strong></td><td>Restructures — arrangement, transitions, mix</td><td>Review a diff</td></tr>
+<tr><td><strong>dream</strong></td><td>Writes a whole track from a description</td><td>Take it apart and make it yours</td></tr>
+</table>
+</div>
+
+<p>Every rung returns <em>editable source you watch apply</em>, never a
+black-box render. That constraint is what keeps the human's taste in the loop:
+you are always looking at the decisions, so you are always able to disagree with
+one of them specifically rather than rejecting the whole output.</p>
+
+<h3>22.3 The general lesson for AI-era formats</h3>
+
+<div class="note law">
+<span class="lbl">Design for the reader you did not expect</span>
+<p>A format that is small, textual, structured, domain-named and verifiable is a
+format a machine can collaborate on. Every one of those properties was chosen
+here for a <em>human</em> reason — readability, diffability, portability,
+determinism — and each turns out to be exactly what a model needs. This is not a
+coincidence. <strong>The properties that make an artifact legible to people are
+the properties that make it tractable to machines.</strong> Optimizing for
+either gets you most of the other; optimizing for neither gets you a WAV
+file.</p>
+</div>
+
+<h2 id="s23"><span class="num">23</span>Teaching and reading</h2>
+
+<p>How does anyone learn to produce electronic music today? Watch videos of
+someone else's screen, in real time, in a tool you must own, and try to
+replicate mouse movements. It is apprenticeship by shoulder-surfing — the least
+efficient knowledge transfer humans have.</p>
+
+<p>Compare how programmers learn: by reading enormous quantities of other
+people's source, at their own pace, with the ability to change a line and see
+what happens. The difference in throughput is not marginal.</p>
+
+<h3>23.1 What a readable song format changes</h3>
+
+<ul>
+<li><strong>Every published track is a lesson.</strong> Ten lines you can read,
+change, and hear. The distance between "I wonder why that works" and "now I
+know" is one keystroke.</li>
+<li><strong>Technique becomes quotable.</strong> "Here is the four-line
+sidechain trick" can be pasted into a message. Currently the equivalent is a
+twelve-minute video.</li>
+<li><strong>The feedback loop collapses to seconds.</strong> Change a character,
+hear it on the next bar. Compare loading a project, finding the right device,
+adjusting a control, and re-rendering.</li>
+<li><strong>Concepts get names you can grep.</strong> Sidechain, swing, reese,
+energy curve — vocabulary that is written down and searchable rather than
+demonstrated and forgotten.</li>
+<li><strong>Progress is visible.</strong> Your history of commits is a record of
+what you learned and when, which is both motivating and — for a teacher —
+assessable.</li>
+</ul>
+
+<h3>23.2 The ten-second rule, defended</h3>
+
+<p>Law 7 deserves a defence, because it looks like a marketing constraint
+smuggled into an engineering document.</p>
+
+<p>The reason it is load-bearing: <strong>the first sound is the only moment at
+which a new person decides whether this is for them</strong>, and that decision
+is nearly irreversible. Every second before it is spent on faith, and most
+people have very little faith available for software. An install step, an
+account wall, a sample pack download, a "choose your plan" screen — each one
+loses a large fraction of arrivals, and the fractions multiply.</p>
+
+<p>Sonic Pi's real contribution to the field is demonstrating this in
+classrooms at scale: children make a sound in the first minute, and that is why
+it works where more powerful systems did not. It is the most reliably ignored
+finding in music-language design, because it is not a technical result and
+therefore does not feel like one.</p>
+
+<h2 id="s24"><span class="num">24</span>Preservation</h2>
+
+<p>A question worth asking of anything you build: <em>will this be readable in
+fifty years?</em></p>
+
+<h3>24.1 The rot rates</h3>
+
+<div class="tbl">
+<table>
+<tr><th>Artifact</th><th>Fails when</th><th>Realistic lifespan</th></tr>
+<tr><td>DAW project</td><td>Any plugin, sample, licence, or app version is missing</td><td>5–10 years</td></tr>
+<tr><td>Proprietary audio format</td><td>The decoder is abandoned</td><td>10–20 years</td></tr>
+<tr><td>WAV file</td><td>Media rots; the format itself is fine</td><td>Media-bound</td></tr>
+<tr><td>MIDI file</td><td>Plays, but sounds like a different song</td><td>Indefinite, lossy</td></tr>
+<tr><td>ABC notation</td><td>Nothing; it is text with a spec</td><td>30+ years, demonstrated</td></tr>
+<tr><td><strong>A source song</strong></td><td>Only if no conforming engine exists</td><td>As long as the spec is implementable</td></tr>
+</table>
+</div>
+
+<p>The last row has a condition attached, and the condition is the whole
+discipline. Text plus a versioned spec plus multiple independent
+implementations is the configuration that has actually survived — demonstrated
+by ABC, by TeX, by PostScript, by HTML itself. Text alone is not enough: an
+undocumented text format with one implementation rots exactly as fast as a
+binary one, just more legibly.</p>
+
+<h3>24.2 What a preservation-grade format requires</h3>
+
+<ul class="tight">
+<li><strong>A versioned identifier in every document</strong>
+(<code>oontz-song-1</code>), so a future reader knows what it is holding.</li>
+<li><strong>A written spec independent of the implementation</strong> — field by
+field, with defaults, so the format can be re-implemented from the document
+alone.</li>
+<li><strong>Multiple independent implementations</strong>, which is the only
+real proof the spec is complete (Law 5).</li>
+<li><strong>Self-containment.</strong> No external samples, no plugin
+references, nothing to go missing.</li>
+<li><strong>An open licence on the spec and a public corpus</strong>, so the
+format survives the disappearance of its author.</li>
+<li><strong>Forward-compatible reader rules</strong> (<a href="#s10">§10.4</a>),
+so old readers survive new writers.</li>
+</ul>
+
+<p>The cost of all six is close to zero at the start and effectively infinite
+later. This is the single cheapest form of insurance in software design and
+almost nobody buys it.</p>
+
+<h2 id="s25"><span class="num">25</span>Access</h2>
+
+<p>A text-first instrument has accessibility properties that graphical music
+software mostly does not, and they are consequences of the architecture rather
+than features bolted on.</p>
+
+<ul>
+<li><strong>Screen readers work.</strong> The interface is text and commands.
+Compare a DAW: a canvas of unlabelled draggable rectangles, historically among
+the least accessible categories of software in existence.</li>
+<li><strong>No mouse required.</strong> Everything is typed. For anyone for whom
+precise pointing is difficult or impossible, the difference is not
+convenience — it is whether the activity is available at all.</li>
+<li><strong>No hardware requirement.</strong> No MIDI controller, no audio
+interface, no sample library, no plugin budget. A browser and a keyboard.</li>
+<li><strong>Low bandwidth.</strong> The instrument is a page; songs are
+kilobytes. It works on connections where streaming a preview would not.</li>
+<li><strong>Old machines are fine.</strong> Synthesis from arithmetic with a
+one-bar lookahead is cheap. There is no sample streaming and no plugin
+overhead.</li>
+<li><strong>Language-independent core.</strong> <code>x...x...</code> is the
+same in every writing system. The command words are English, which is a real
+limitation, but the notation — the part you look at most — is not
+language-bound at all.</li>
+</ul>
+
+<p>Worth stating plainly: a text interface is <em>also</em> a barrier for
+people who think spatially, who cannot type comfortably, or who find a blinking
+cursor intimidating. The honest claim is not that text is universally more
+accessible; it is that <strong>text is accessible along axes where graphical
+music software is catastrophically bad</strong>, and that those axes have been
+under-served for decades. The right long-term answer is both — a grid you can
+paint on and a text form that is the source of truth, which is exactly the
+tracker's arrangement and remains the correct one.</p>
+
+<div class="part" id="part5">
+<span class="n">Part V</span>
+<h2>Build your own</h2>
+<p>The payload. Twelve decisions with their tradeoffs, a conformance checklist,
+the anti-patterns, and the problems we have not solved.</p>
+</div>
+
+<h2 id="s26"><span class="num">26</span>Twelve decisions</h2>
+
+<p>Every audio language makes these choices. Most make several by accident. For
+each we give the options, our answer, and — more usefully — <em>when the other
+answer is right</em>, because these are genuine trade-offs and not a list of
+correct opinions.</p>
+
+<h3>26.1 — Scope: fragment, loop, or song?</h3>
+<p><strong>Options:</strong> a sound · a loop · a whole arranged track.<br>
+<strong>Ours:</strong> the whole track. It is the entire thesis.<br>
+<strong>Choose otherwise if:</strong> you are building a performance instrument,
+where the session is the artifact and arrangement is improvised. Loop scope is
+correct for live coding and much simpler.<br>
+<strong>Consequence:</strong> whole-song scope forces you to design sections,
+automation, and transitions on day one. Retrofitting arrangement onto a loop
+language is the single hardest migration in this space, because the time model
+has to change underneath everything.</p>
+
+<h3>26.2 — Time model</h3>
+<p><strong>Options:</strong> event list · cycle function · imperative clock ·
+timeline of snapshots. (<a href="#s7">§7</a>)<br>
+<strong>Ours:</strong> timeline of snapshots, with a positional pattern grid
+inside the bar.<br>
+<strong>Choose otherwise if:</strong> composability of patterns matters more to
+you than arrangement — take the cycle model, and take Tidal's semantics
+seriously rather than approximating them.<br>
+<strong>Consequence:</strong> this decision is effectively irreversible. Decide
+it first, deliberately, in writing.</p>
+
+<h3>26.3 — Turing-complete, or not?</h3>
+<p><strong>Ours:</strong> not. No user functions, no recursion, no
+variables.<br>
+<strong>Why:</strong> three reasons, each sufficient. A song must render in
+bounded time — an audio callback cannot wait for a fixed point. A readable
+document cannot contain arbitrary computation, because reading it then requires
+executing it in your head. And every conforming runtime must implement the whole
+language, so each construct you add multiplies across implementations
+forever.<br>
+<strong>Choose otherwise if:</strong> your users are programmers and generation
+is the point. Extempore and SuperCollider are right to be full languages.<br>
+<strong>The cost, honestly:</strong> some things become verbose. A 64-bar
+evolving pattern that a loop would express in three lines is written out. We pay
+it, and mitigate with generation (<a href="#s17">§17</a>) — <em>a program writes
+the document; the document stays declarative.</em> That split is the
+recommendation: keep the computation outside the artifact.</p>
+
+<h3>26.4 — Where does randomness live?</h3>
+<p><strong>Options:</strong> global seed · per-object streams · hash of
+coordinates.<br>
+<strong>Ours:</strong> hash of coordinates. (<a href="#s8">§8.2</a>)<br>
+<strong>Choose otherwise:</strong> essentially never, for anything that must be
+stable under unrelated edits. This is the closest thing to a universal
+recommendation in this document.</p>
+
+<h3>26.5 — Samples, or synthesis?</h3>
+<p><strong>Ours:</strong> synthesis only. Not a single sample; the kick is
+math.<br>
+<strong>Why:</strong> self-containment. A sample-based format needs a sample
+library, and a song that references files is not portable, not small, not
+deterministic across machines, and not legally simple.<br>
+<strong>Choose otherwise if:</strong> your genre is sample-defined — hip-hop,
+breakcore, plunderphonics — where refusing samples refuses the music. Then
+design the reference mechanism carefully: content-addressed hashes, an embedded
+tiny-sample option, and a documented resolution order.<br>
+<strong>Consequence:</strong> synthesis-only bounds your timbral range. We
+accept it because techno is a synthesis genre; that is exactly the "notation
+assumes a decoder" trade from <a href="#s2">§2.1</a>.</p>
+
+<h3>26.6 — One representation, or source plus IR?</h3>
+<p><strong>Ours:</strong> both. A command log for humans, a JSON document for
+machines. (<a href="#s9">§9.4</a>)<br>
+<strong>Choose otherwise if:</strong> your language is small enough that the
+source <em>is</em> the structure. A pure pattern language may not need an IR at
+all.<br>
+<strong>Warning:</strong> if you have two, you must decide which is canonical
+and never blur it. Ours is the log; the IR is derived. A system where both are
+authoritative will drift, and the bug will be "the song sounds different after a
+round trip."</p>
+
+<h3>26.7 — Text-only, or a GUI too?</h3>
+<p><strong>Ours:</strong> text is the source of truth; visual surfaces edit the
+text.<br>
+<strong>The rule:</strong> any GUI must be a <em>view</em> over the document,
+producing edits to it. The moment a control can change something the text cannot
+express, the format has stopped being the source of truth and every downstream
+property dies quietly.<br>
+<strong>Choose otherwise if:</strong> never, if you want the properties in Part
+IV.</p>
+
+<h3>26.8 — What is the extension mechanism?</h3>
+<p><strong>Options:</strong> plugin interface · registry with schemas ·
+parameter-name injection · no extension at all.<br>
+<strong>Ours:</strong> parameter-name injection. (<a href="#s14">§14</a>)<br>
+<strong>Choose otherwise if:</strong> extensions must be sandboxed, or written
+in another language, or loaded at runtime by untrusted users — then you need a
+real interface and a real ABI, and you should expect it to cost you
+determinism.<br>
+<strong>Consider:</strong> no extension mechanism at all is a legitimate and
+underrated answer for v1. Every voice in the reference implementation is written
+by the same people who wrote the core; the mechanism exists to keep the core
+ignorant, not to support third parties who do not yet exist.</p>
+
+<h3>26.9 — How immediate are edits?</h3>
+<p><strong>Options:</strong> instant · quantized to a bar · quantized to a
+phrase.<br>
+<strong>Ours:</strong> quantized to the bar for document edits; instant for
+performance gestures. (<a href="#s13">§13.3</a>)<br>
+<strong>Choose otherwise if:</strong> your users are sound designers rather than
+composers — twiddling a filter and hearing it now is the whole activity, and
+then you need parameter smoothing and a fundamentally different scheduler.</p>
+
+<h3>26.10 — How many runtimes?</h3>
+<p><strong>Ours:</strong> two, gated for parity. (<a href="#s16">§16</a>)<br>
+<strong>Cost:</strong> real. Every DSP change happens twice, and the gate must
+be written and maintained.<br>
+<strong>Why pay it:</strong> it is the difference between a format and a
+program, and — less obviously — the second implementation is where you discover
+what your spec actually says. Ambiguities that survive one implementation
+indefinitely surface within days of a second.<br>
+<strong>Choose otherwise if:</strong> you are prototyping. But write the spec as
+though a second implementation is coming, or you will find that your "spec" is a
+description of your code.</p>
+
+<h3>26.11 — What is the unit of sharing?</h3>
+<p><strong>Options:</strong> a file · a link · a database row · a URL fragment
+containing the whole song.<br>
+<strong>Ours:</strong> all four, deliberately. A file for git, a short link for
+chat, a row for the gallery, and the whole song packed into a URL fragment for
+sharing with no account and no server.<br>
+<strong>The insight:</strong> the fragment form is only possible because the
+artifact is kilobytes. Small size is not an efficiency property; it is a
+distribution property, and it unlocks channels that are otherwise closed.</p>
+
+<h3>26.12 — Who is this for?</h3>
+<p><strong>Ours:</strong> anyone who can type. Not programmers. Not
+live-coders.<br>
+<strong>Consequence:</strong> this is the decision that generated Law 3 and the
+guessability test, and therefore most of the notation. It is the decision that
+most reliably gets made implicitly — by the designers' own comfort — and it
+determines everything about the surface. Write it down before you write
+syntax.</p>
+
+<h2 id="s27"><span class="num">27</span>A conformance checklist</h2>
+
+<p>If you are building a language in this class, here is the checklist. It is
+ordered: each item depends on the ones above it. Anything you skip, you will
+retrofit at ten times the cost.</p>
+
+<h4>The format</h4>
+<ul class="tight">
+<li>A versioned format identifier in every document.</li>
+<li>A written field-by-field spec with defaults, independent of any
+implementation.</li>
+<li>Reader rules: accept unknown fields; refuse unknown format versions
+loudly.</li>
+<li>Self-contained — no external file, plugin, or licence references.</li>
+<li>Small enough to paste into a chat message.</li>
+<li>Human-readable without a tool, and hand-writable in an emergency.</li>
+</ul>
+
+<h4>The semantics</h4>
+<ul class="tight">
+<li>A pure function from position to state. Random-access, not
+replay-dependent.</li>
+<li>All time in musical units — bars, steps — not seconds.</li>
+<li>No hidden state: everything affecting the sound is in the document.</li>
+<li>Randomness derived from coordinates, never from a stream.</li>
+<li>Automation is interpolation inside a state query, not mutation over
+time.</li>
+<li>Sections as complete snapshots, not deltas.</li>
+</ul>
+
+<h4>The notation</h4>
+<ul class="tight">
+<li>A guessability test, written down, applied to every proposed
+extension.</li>
+<li>Iconic where possible: the notation should look like what it does.</li>
+<li>The domain's vocabulary as command names, in the domain's word order.</li>
+<li>The genre's signature move as a single token.</li>
+<li>Comments. Songs need explanation as much as programs do.</li>
+<li>A rejection log: what you declined and why. It is the most useful document
+you will write and the one nobody writes.</li>
+</ul>
+
+<h4>The engine</h4>
+<ul class="tight">
+<li>The real-time path does no work — pre-render, then slice.</li>
+<li>One renderer shared by live playback and offline render. Two paths will
+diverge.</li>
+<li>Fail open on everything except an unknown format version.</li>
+<li>Clamp invalid values at assignment, not at use.</li>
+<li>Analysis captured during rendering, where the information still
+exists.</li>
+</ul>
+
+<h4>The proof</h4>
+<ul class="tight">
+<li>A second independent implementation.</li>
+<li>An automated parity gate over a large generated corpus.</li>
+<li>Golden renders, byte-hashed, blessed deliberately.</li>
+<li>A gate that drives the real, deployed thing — not a mock of it.</li>
+<li>For every escaped bug, an assertion that kills the class.</li>
+</ul>
+
+<h4>The product</h4>
+<ul class="tight">
+<li>Ten seconds from arrival to a sound the visitor made.</li>
+<li>No account required to make, play, or share.</li>
+<li>The song prints itself — a "view source" command.</li>
+<li>An escape hatch to a standard format (MIDI, at minimum). A format that
+cannot leave is a trap.</li>
+<li>Provenance: a parent pointer, so forks carry credit.</li>
+<li>An open licence on the spec, and a public corpus.</li>
+</ul>
+
+<h2 id="s28"><span class="num">28</span>Anti-patterns</h2>
+
+<p>Failure modes we hit, watched others hit, or came close enough to hitting to
+have opinions about.</p>
+
+<h3>28.1 The expressiveness spiral</h3>
+<p>Every extension is individually justified; each adds a little power for a
+little syntax. Twenty extensions later, only the designers can read the
+language, and the readability that was the original selling point is gone —
+lost in increments, none of which was the wrong call in isolation. <strong>The
+defence is a written test that a proposal must pass, applied by someone who did
+not propose it.</strong> A rejection log makes the accumulated cost visible.</p>
+
+<h3>28.2 Building the DSP first</h3>
+<p>Synthesis is the fun part and the least important. A beautiful engine with a
+badly designed document format is a dead end, because the format is what
+everything else reads. Design the IR, write five songs by hand in it, then build
+the engine. If hand-writing five songs is miserable, you have learned something
+enormously valuable for the price of an afternoon.</p>
+
+<h3>28.3 The one true representation</h3>
+<p>Trying to make one text form serve humans, machines, diffs and the renderer.
+You get a JSON blob nobody can write or a command log tools must simulate to
+understand. Two forms with an explicit, one-directional relationship is
+correct.</p>
+
+<h3>28.4 Seeded chaos</h3>
+<p>A global PRNG "for reproducibility." (<a href="#s8">§8.1</a>) It is
+reproducible only if nothing upstream ever changes, which is a guarantee no
+living project can make. Symptom: users report that editing one thing changed
+another, and you cannot reproduce it.</p>
+
+<h3>28.5 The account wall</h3>
+<p>"Sign in to try it." Every step before the first sound loses a large
+fraction of arrivals, and the fractions multiply. If storage requires an
+account, let people work without storage — local state until they want it
+kept.</p>
+
+<h3>28.6 Plugin hosting</h3>
+<p>The most seductive one, because it seems to buy unlimited timbre for free.
+It costs determinism, portability, the second runtime, self-containment and
+preservation — five of the nine laws — in exchange for something a well-chosen
+synthesis set mostly provides. Refusing plugins is the highest-leverage "no" in
+the design.</p>
+
+<h3>28.7 Optimizing bytes at the expense of clarity</h3>
+<p>Delta-encoded sections, packed binary fields, clever shared references. At
+kilobyte scale you are optimizing something free and paying in readability,
+diffability and mental model — all of which are the product. Instincts formed
+when storage was expensive systematically mis-rank this.</p>
+
+<h3>28.8 Testing the mock</h3>
+<p>A comprehensive suite over a static copy of the app, while the real server —
+where the routing, the injection and the share pages live — is exercised by
+nothing. Forty-three green tests and a blank page in production. Test the thing
+you ship, in the shape you ship it.</p>
+
+<h3>28.9 Treating the AI as a separate product</h3>
+<p>Bolting a generator onto the side, with its own output format and its own
+mode. The result is a two-class system where generated songs are not quite
+editable and edited songs are not quite regenerable. Generation must emit the
+same document a human edits, or it is a different product wearing your
+logo.</p>
+
+<h3>28.10 Silence as an error message</h3>
+<p>The specific worst outcome: something is wrong, and the tool responds by
+making no sound and saying nothing. The user concludes the software is broken —
+or worse, that they are. Every silence must be explained.</p>
+
+<h2 id="s29"><span class="num">29</span>Open problems</h2>
+
+<p>What we have not solved, stated precisely enough to be worked on. This is the
+research agenda, and contributions to any of it are more valuable than
+contributions to the instrument.</p>
+
+<h3>29.1 Semantic merge</h3>
+<p>Two people edit the same pattern. Text merge conflicts; musical merge should
+often succeed. A hit added at step 3 and a hit added at step 11 are trivially
+unifiable. A pattern rewritten at a different length by both is not. <em>What is
+the correct merge algebra for patterns, notes, and automation curves?</em> This
+is the highest-value unsolved problem in the space, because collaboration at
+scale depends on it, and it is genuinely tractable — the objects are small,
+discrete and well-typed. Adjacent prior art: operational transformation, CRDTs,
+and structured-document merge (3DM, GumTree).</p>
+
+<h3>29.2 Structural diff that reads like a review</h3>
+<p>We can diff text and we can diff resolved states. Neither produces the
+sentence a person would write: "the build is now eight bars longer and the bass
+enters earlier." <em>What is the right edit-distance metric over song structure,
+and how do you render it in musical English?</em> Tree edit distance over the
+section graph is the obvious start; the hard part is ranking which of many valid
+edit scripts is the one a musician would describe.</p>
+
+<h3>29.3 Perceptual equality testing</h3>
+<p>Golden renders assert byte-identity, which is too strict: a legitimate
+refactor that changes the last bit fails, and blessing it by hand erodes the
+gate's authority. Audio similarity metrics are too loose and are not stable
+under the changes we care about. <em>What is the right equivalence relation for
+"this is the same song" that is strict enough to catch drift and loose enough to
+permit refactoring?</em></p>
+
+<h3>29.4 Sub-bar structure without losing guessability</h3>
+<p>Subdivision groups — <code>[xx][x.]</code> — are the most requested
+extension and pass the guessability test on their own. They interact badly with
+the "any pattern length divides the bar" rule that gives us free polymeter.
+<em>Is there a formulation that keeps both?</em> A wrong answer here costs the
+most elegant property in the notation.</p>
+
+<h3>29.5 Microtiming as data</h3>
+<p>Swing is one number; real groove is a per-step timing profile that varies by
+genre, by drummer, by machine. <em>Can a groove be a small, readable,
+transferable object</em> — a "feel" you apply to a pattern, extractable from a
+performance and legible as text? MPC-style swing templates and MIDI groove
+quantize are the industrial prior art; none of it is readable.</p>
+
+<h3>29.6 Structural similarity search at scale</h3>
+<p>Given a corpus of source documents, find structurally similar tracks — not by
+audio embedding, but over the actual structure. <em>What is the right feature
+representation and index?</em> This is a well-shaped machine-learning problem
+with unusually clean ground truth, and nobody has had the corpus to attempt
+it.</p>
+
+<h3>29.7 Notation for timbre</h3>
+<p>Patterns are beautifully readable. Sound design is a list of parameters, and
+a list of parameters is not notation — you cannot look at it and hear it. <em>Is
+there an iconic notation for timbre</em> with the property that
+<code>x...x...</code> has for rhythm? This may be impossible; the negative
+result would itself be interesting, and would tell us where the readable
+boundary of the format actually lies.</p>
+
+<h3>29.8 A package registry for music</h3>
+<p>If a pattern, a groove, or a sound design is a value, it should be
+distributable, versioned, and depended upon. <em>What does npm for musical
+material look like, and what are the semantics of a dependency you can
+hear?</em> The version-resolution question is genuinely novel: a "patch release"
+of a bassline that sounds slightly different is a breaking change to every song
+that uses it.</p>
+
+<h3>29.9 Formal semantics</h3>
+<p>The model in <a href="#s6">§6</a> is stated in prose and code. <em>A formal
+denotational semantics for the language</em> would make conformance provable
+rather than testable, and would let a third implementation be verified rather
+than compared. Nyquist's behavioural abstraction and Tidal's pattern algebra are
+the closest existing work.</p>
+
+<h3>29.10 Cross-language notation</h3>
+<p>The pattern characters are language-neutral; the command words are English.
+<em>Can the command vocabulary be localized without fragmenting the corpus?</em>
+Compare the failure of localized spreadsheet formulas and the success of
+localized keyboard layouts — the difference appears to be whether the artifact
+crosses borders, and songs do.</p>
+
+<div class="part" id="part6">
+<span class="n">Part VI</span>
+<h2>Appendices</h2>
+<p>Grammar, schema, the hash, glossary, bibliography, and the terms on which all
+of this may be reused.</p>
+</div>
+
+<h2 id="a1"><span class="num">A</span>Grammar</h2>
+
+<p>The command log, as EBNF. This is the human-facing surface in full; it is
+deliberately small enough to fit on this screen.</p>
+
+<pre><code>document    = { line } ;
+line        = comment | command | blank ;
+comment     = "#" , { any } ;
+command     = word , { WS , arg } ;
+
+<span class="c">(* patterns *)</span>
+pattern     = step , { step } , [ WS , "*" , integer ] ;
+step        = "x"        <span class="c">(* hit *)</span>
+            | "X"        <span class="c">(* accented hit *)</span>
+            | "."        <span class="c">(* rest *)</span>
+            | "-"        <span class="c">(* tie: hold the previous hit *)</span>
+            | "?"        <span class="c">(* maybe: 70%, hashed on track|bar|step *)</span> ;
+
+<span class="c">(* pitched tracks *)</span>
+notes       = note , { WS , note } ;
+note        = ( pitch , [ accidental ] , octave | "." ) , { modifier } ;
+pitch       = "a".."g" ;
+accidental  = "#" | "b" ;
+octave      = digit ;
+modifier    = "~"        <span class="c">(* slide into this note from the previous *)</span>
+            | "!"        <span class="c">(* accent *)</span> ;
+
+<span class="c">(* the commands that matter *)</span>
+command     = "bpm"       , number
+            | "swing"     , number                        <span class="c">(* percent of a step *)</span>
+            | track       , pattern
+            | track       , notes
+            | "filter"    , track , mode , number , [ "res" , number ]
+            | "sidechain" , track , number                <span class="c">(* 0..1 *)</span>
+            | "gain"      , track , number
+            | "pan"       , track , number                <span class="c">(* -1..1 *)</span>
+            | "fx"        , track , name , { param , number }
+            | "section"   , name , integer
+            | "order"     , { name }
+            | ... ;
+
+track       = "kick" | "hat" | "oh" | "clap" | "snare" | "perc"
+            | "bass" | "stab" ;
+mode        = "lp" | "hp" | "bp" ;</code></pre>
+
+<h4>Semantics not captured by the grammar</h4>
+<ul class="tight">
+<li>A pattern of length <em>L</em> divides the bar into <em>L</em> equal steps.
+Any <em>L</em> is legal; unequal lengths across tracks produce polymeter.</li>
+<li><code>*N</code> repeats the pattern <em>N</em> times, capped at 64
+steps.</li>
+<li>Swing delays odd-indexed steps by <code>swing%</code> of one step.</li>
+<li>For pitched tracks the <em>n</em>th note token corresponds to the
+<em>n</em>th step of the pattern; <code>.</code> holds no pitch.</li>
+<li>Unknown commands and unknown effects are skipped with a message, never
+fatal (Law 8).</li>
+</ul>
+
+<h2 id="a2"><span class="num">B</span>The document schema</h2>
+
+<pre><code>{
+  <span class="s">"format"</span>: <span class="s">"oontz-song-1"</span>,
+  <span class="s">"name"</span>: <span class="s">"warehouse"</span>, <span class="s">"bpm"</span>: 138, <span class="s">"swing"</span>: 8,
+  <span class="s">"key"</span>: <span class="s">"a"</span>, <span class="s">"scale"</span>: <span class="s">"minor"</span>,
+  <span class="s">"order"</span>: [<span class="s">"intro"</span>, <span class="s">"build"</span>, <span class="s">"drop"</span>, <span class="s">"break"</span>, <span class="s">"drop2"</span>, <span class="s">"outro"</span>],
+  <span class="s">"sections"</span>: {
+    <span class="s">"drop"</span>: {
+      <span class="s">"bars"</span>: 32, <span class="s">"role"</span>: <span class="s">"drop"</span>, <span class="s">"energy"</span>: 1.0,
+      <span class="s">"order"</span>: [<span class="s">"kick"</span>, <span class="s">"hat"</span>, <span class="s">"bass"</span>],
+      <span class="s">"tracks"</span>: {
+        <span class="s">"bass"</span>: { <span class="s">"voice"</span>: <span class="s">"reese"</span>, <span class="s">"pat"</span>: <span class="s">"x.x.x.x.x.x.x.x."</span>,
+                  <span class="s">"notes"</span>: [<span class="s">"a1"</span>, <span class="s">"."</span>, <span class="s">"a1"</span>, <span class="s">"c2"</span>], <span class="s">"gain"</span>: 1.0,
+                  <span class="s">"filt"</span>: <span class="s">"lp"</span>, <span class="s">"fc"</span>: 340, <span class="s">"res"</span>: 0.94,
+                  <span class="s">"sc"</span>: 0.7, <span class="s">"pan"</span>: 0, <span class="s">"tune"</span>: 0, <span class="s">"fx"</span>: [] }
+      },
+      <span class="s">"automation"</span>: [], <span class="s">"master_fx"</span>: []
+    }
+  },
+  <span class="s">"meta"</span>: { <span class="s">"style"</span>: <span class="s">"hardtechno"</span>, <span class="s">"curve"</span>: <span class="s">"classic"</span> },
+  <span class="s">"viz"</span>:  { <span class="s">"theme"</span>: <span class="s">"acid"</span>, <span class="s">"mode"</span>: <span class="s">"auto"</span> },
+  <span class="s">"remix_of"</span>: <span class="s">"a1b2c3d4e5f6"</span>
+}</code></pre>
+
+<div class="tbl">
+<table>
+<tr><th>Field</th><th>Meaning</th><th>Note</th></tr>
+<tr><td><code>format</code></td><td>Schema identifier</td><td>Unknown value: refuse loudly</td></tr>
+<tr><td><code>order</code> (song)</td><td>Section names in playback order</td><td>Material and arrangement stay separate</td></tr>
+<tr><td><code>sections</code></td><td>Name → full snapshot</td><td>Snapshots, not deltas (<a href="#s6">§6.2</a>)</td></tr>
+<tr><td><code>role</code>, <code>energy</code></td><td>What this section is for, 0–1</td><td>What generation walks along a curve</td></tr>
+<tr><td><code>order</code> (section)</td><td>Track render order</td><td>Explicit; render order affects nothing musical but must be stable</td></tr>
+<tr><td><code>pat</code> / <code>notes</code></td><td>The pattern and its pitches</td><td>Any length; index is time</td></tr>
+<tr><td><code>sc</code></td><td>Sidechain amount, 0–1</td><td>The genre's signature move, as one field (<a href="#s15">§15.1</a>)</td></tr>
+<tr><td><code>automation</code></td><td>Parameter ramps within the section</td><td>Interpolated inside <code>state_at</code></td></tr>
+<tr><td><code>viz</code></td><td>The song's own look</td><td>A custom palette embeds whole — a track brings its colours with it</td></tr>
+<tr><td><code>remix_of</code></td><td>Parent song id</td><td>Provenance travels in the source</td></tr>
+</table>
+</div>
+
+<h2 id="a3"><span class="num">C</span>The determinism hash</h2>
+
+<p>Reproduced in both languages, because a spec that describes an algorithm in
+prose is a spec with two behaviours. Any conforming runtime must produce
+identical results from this function.</p>
+
+<pre><code><span class="c"># Python</span>
+<span class="k">def</span> maybe(name, bar, i):
+    s = <span class="s">"%s|%d|%d"</span> % (name, bar, i)
+    h = 0
+    <span class="k">for</span> ch <span class="k">in</span> s:
+        h = (h * 31 + ord(ch)) &amp; 0xFFFFFFFF
+    h ^= h &gt;&gt; 15
+    <span class="k">return</span> (h % 1000) &lt; 700</code></pre>
+
+<pre><code><span class="c">// JavaScript</span>
+<span class="k">function</span> maybe(name, bar, i) {
+  <span class="k">var</span> s = name + <span class="s">"|"</span> + bar + <span class="s">"|"</span> + i, h = 0;
+  <span class="k">for</span> (<span class="k">var</span> k = 0; k &lt; s.length; k++)
+    h = (h * 31 + s.charCodeAt(k)) &gt;&gt;&gt; 0;
+  h ^= h &gt;&gt;&gt; 15;
+  <span class="k">return</span> (h % 1000) &lt; 700;
+}</code></pre>
+
+<p>Design notes, each deliberate: 32-bit unsigned integer arithmetic only, so
+no float behaviour can differ between platforms; character codes rather than
+string hashing, so no locale or Unicode normalization is involved; the
+multiply-add is the classic Java/Bernstein-style construction, chosen for being
+the one every programmer can reimplement from memory; the xor-shift decorrelates
+the low bits, which matters because the decision reads them; and the threshold
+is expressed in parts per thousand rather than as a float comparison.</p>
+
+<p><em>Do not improve this function.</em> Its only virtue is that two
+independent implementations agree, and every improvement is a compatibility
+break for every song ever written.</p>
+
+<h2 id="a4"><span class="num">D</span>Glossary</h2>
+
+<div class="tbl">
+<table>
+<tr><th>Term</th><th>Meaning</th></tr>
+<tr><td><strong>Bar</strong></td><td>One musical measure; the atomic unit of rendering and of edit quantization</td></tr>
+<tr><td><strong>Step</strong></td><td>One character of a pattern; one bar divided by the pattern's length</td></tr>
+<tr><td><strong>Pattern</strong></td><td>A string of steps; index is time, character is what happens</td></tr>
+<tr><td><strong>Track</strong></td><td>One voice plus its pattern, notes, and parameters</td></tr>
+<tr><td><strong>Voice</strong></td><td>A synthesis function that renders one hit</td></tr>
+<tr><td><strong>Section</strong></td><td>A named span of bars holding a full snapshot of every track</td></tr>
+<tr><td><strong>Role</strong></td><td>What a section is for — intro, build, drop, break — carrying a nominal energy</td></tr>
+<tr><td><strong>Energy curve</strong></td><td>The intended arc of intensity across a song; what generation walks</td></tr>
+<tr><td><strong>Automation</strong></td><td>A parameter ramp within a section, interpolated inside <code>state_at</code></td></tr>
+<tr><td><strong>Sidechain</strong></td><td>Ducking a track out of the kick's way; the pump. One token here</td></tr>
+<tr><td><strong>Swing</strong></td><td>A systematic delay on odd steps, as a percentage of a step</td></tr>
+<tr><td><strong>Humanize</strong></td><td>Per-track timing jitter in milliseconds</td></tr>
+<tr><td><strong>Maybe step</strong></td><td><code>?</code> — a hit that happens 70% of the time, decided by coordinate hash</td></tr>
+<tr><td><strong>Polymeter</strong></td><td>Patterns of different lengths cycling against each other</td></tr>
+<tr><td><strong>IR</strong></td><td>Intermediate representation — the compiled timeline document</td></tr>
+<tr><td><strong>Command log</strong></td><td>The canonical human source: the commands that make the song</td></tr>
+<tr><td><strong>Golden render</strong></td><td>A byte-hashed reference output that must not change without a deliberate blessing</td></tr>
+<tr><td><strong>Parity gate</strong></td><td>An automated test that two runtimes make identical musical decisions</td></tr>
+<tr><td><strong>Guessability test</strong></td><td>Can a non-programmer, shown one example, guess what it does?</td></tr>
+<tr><td><strong>Fail open</strong></td><td>Keep playing, say what went wrong; never stop, never conceal</td></tr>
+</table>
+</div>
+
+<h2 id="a5"><span class="num">E</span>Bibliography</h2>
+
+<h4>Systems</h4>
+<ul class="tight">
+<li><strong>MUSIC I–V</strong> — Max Mathews, Bell Labs, 1957–1968. The unit
+generator; the orchestra/score split.</li>
+<li><strong>Csound</strong> — Barry Vercoe, 1986. Music-N with forty years of
+momentum. <em>csound.com</em></li>
+<li><strong>MIDI 1.0</strong> — 1983. The interchange standard that
+standardized events rather than documents.</li>
+<li><strong>Ultimate Soundtracker / MOD, XM, IT</strong> — Karsten Obarski,
+1987, and successors. Whole-song files; the grid as interface; the order
+list.</li>
+<li><strong>MML</strong> — Microsoft BASIC, late 1970s, and the Japanese
+home-computer and chiptune lineage. Patterns as terse strings.</li>
+<li><strong>ABC notation</strong> — Chris Walshaw, 1991. The preservation
+case study. <em>abcnotation.com</em></li>
+<li><strong>SuperCollider</strong> — James McCartney, 1996. Language/server
+split over OSC. <em>supercollider.github.io</em></li>
+<li><strong>Max/MSP</strong> — Miller Puckette / Cycling '74, and
+<strong>Pure Data</strong>, 1996. Dataflow patching; the visual counterpoint to
+all of this.</li>
+<li><strong>Nyquist</strong> — Roger Dannenberg. Functional synthesis;
+behavioural abstraction; sound as a first-class value.</li>
+<li><strong>ChucK</strong> — Ge Wang and Perry Cook, 2003. Strongly-timed
+programming; time as a first-class type.</li>
+<li><strong>TidalCycles</strong> — Alex McLean, from 2009. Patterns as
+functions of time; mini-notation. <em>tidalcycles.org</em></li>
+<li><strong>Sonic Pi</strong> — Sam Aaron, 2012. Time-to-first-sound as the
+governing design constraint. <em>sonic-pi.net</em></li>
+<li><strong>Faust</strong> — GRAME. Functional DSP compiled to C++/WASM; the
+right tool for the synthesis layer. <em>faust.grame.fr</em></li>
+<li><strong>Extempore / Impromptu</strong> — Andrew Sorensen. Temporal
+recursion; live-coded systems programming.</li>
+<li><strong>Overtone</strong> — Clojure over SuperCollider.</li>
+<li><strong>ORCA</strong> — Devine Lu Linvega. A two-dimensional esolang for
+live sequencing; the most radical recent rethink of the notation
+surface.</li>
+<li><strong>Alda</strong> — a deliberately unglamorous text score language.
+<em>alda.io</em></li>
+<li><strong>Strudel</strong> — 2022–. Tidal semantics in the browser; parser →
+AST → interchangeable outputs. <em>strudel.cc</em></li>
+<li><strong>bytebeat</strong> — Viznut, 2011. One C expression over a sample
+counter; the extreme point of the compression axis.</li>
+</ul>
+
+<h4>Ideas</h4>
+<ul class="tight">
+<li><strong>TOPLAP manifesto</strong>, 2004, and the <strong>algorave</strong>
+movement, 2012–. Evidence that audiences will read code.</li>
+<li><strong>Denotational semantics</strong> — Strachey and Scott. Define what a
+program means; let the implementation compute it.</li>
+<li><strong>Conal Elliott, functional reactive programming.</strong> Behaviours
+as functions of time — the intellectual root of the cycle model.</li>
+<li><strong>Charles Sanders Peirce</strong>, icon vs. symbol. Why
+<code>x...x...</code> is different in kind from <code>euclid(5,16)</code>.</li>
+<li><strong>Donald Norman</strong>, <em>The Design of Everyday Things</em>. The
+gulf of execution; why one keystroke matters.</li>
+<li><strong>Bret Victor</strong>, <em>Inventing on Principle</em>, 2012.
+Immediate connection between a change and its effect.</li>
+<li><strong>Godfried Toussaint</strong>, <em>The Geometry of Musical
+Rhythm</em>. Euclidean rhythms and why they recur across cultures.</li>
+<li><strong>Curtis Roads</strong>, <em>The Computer Music Tutorial</em>. The
+standing reference for the synthesis layer.</li>
+<li><strong>Fred Brooks</strong>, <em>No Silver Bullet</em>. Essential versus
+accidental complexity — the frame for most of Part V.</li>
+</ul>
+
+<h4>This project</h4>
+<ul class="tight">
+<li><a href="https://github.com/charley-forey/oontz">github.com/charley-forey/oontz</a>
+— the whole implementation, both engines, the gates, the songs.</li>
+<li><code>docs/OONTZ-FORMAT.md</code> — the format specification.</li>
+<li><code>docs/PRIOR-ART.md</code> — the audit: what was taken from each system
+and what was declined.</li>
+<li><code>docs/THE-LANGUAGE.md</code> — the outline of this article.</li>
+<li><a href="https://oontz.sh">oontz.sh</a> — the instrument.
+<a href="https://oontz.music">oontz.music</a> — this site.</li>
+</ul>
+
+<h2 id="a6"><span class="num">F</span>Reuse and citation</h2>
+
+<p>This document exists to be used. Fork it, argue with it, take the parts that
+are right and publish a correction to the parts that are not. The most useful
+possible outcome is a better language that cites this one as the thing it
+improved on.</p>
+
+<p>If you build something from this, we would like to know — an issue or a pull
+request on the repository is enough. If you find an error, the same. If you
+disagree with a design decision, the rejection log in
+<a href="#s26">§26</a> is where the argument should happen, because that is
+where the reasoning is written down and therefore where it can be shown
+wrong.</p>
+
+<pre><code>The Song Is the Source: Notes Toward an Audio Programming Language.
+oontz, 2026. https://oontz.music/language</code></pre>
+
+<p class="sig">Written alongside the implementation, which is the only reason
+any of it is specific. Everything claimed here is running at
+<a href="https://oontz.sh">oontz.sh</a>; where something is unsolved, it is in
+<a href="#s29">§29</a> rather than described as though it works.</p>
+
+<footer>
+<p><a href="/">← oontz.music</a> &nbsp;·&nbsp;
+<a href="https://oontz.sh">the instrument →</a> &nbsp;·&nbsp;
+<a href="https://github.com/charley-forey/oontz">source →</a></p>
+<p>A living document. Last substantive revision: 2026-08-25.</p>
+</footer>
+
+</main>
+</div>
+
+<script>
+(function () {
+  "use strict";
+  var doc = document.documentElement, prog = document.getElementById("prog");
+  function onScroll() {
+    var h = doc.scrollHeight - doc.clientHeight;
+    prog.style.width = (h > 0 ? (doc.scrollTop / h) * 100 : 0) + "%";
+  }
+  addEventListener("scroll", onScroll, { passive: true });
+  addEventListener("resize", onScroll);
+  onScroll();
+
+  /* Fold the contents on phones, where a 40-item list before the article is a
+     wall. Desktop gets the sticky rail and never folds. */
+  var toc = document.getElementById("toc"), tog = document.getElementById("toctoggle");
+  function fold(on) {
+    toc.classList.toggle("folded", on);
+    tog.setAttribute("aria-expanded", on ? "false" : "true");
+  }
+  fold(!matchMedia("(min-width:1080px)").matches);
+  tog.addEventListener("click", function () { fold(!toc.classList.contains("folded")); });
+  tog.addEventListener("keydown", function (e) {
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault(); fold(!toc.classList.contains("folded"));
+    }
+  });
+
+  /* Mark the section you are reading.
+
+     This was an IntersectionObserver and it was wrong: with only the h2s
+     observed, most scroll positions have NO heading inside the observed band,
+     so the rail sat blank or stuck on whichever heading happened to report
+     first. The honest version is the arithmetic - the current section is the
+     last heading whose top is above the reading line - and it reuses the scroll
+     listener the progress bar already needs. */
+  var links = {}, marks = [], current = null;
+  [].forEach.call(toc.querySelectorAll("a[href^='#']"), function (a) {
+    links[a.getAttribute("href").slice(1)] = a;
+  });
+
+  function measure() {
+    marks = [];
+    [].forEach.call(document.querySelectorAll("main [id]"), function (el) {
+      if (links[el.id]) marks.push({ id: el.id, top: el.getBoundingClientRect().top + doc.scrollTop });
+    });
+    marks.sort(function (a, b) { return a.top - b.top; });
+  }
+
+  function spy() {
+    var line = doc.scrollTop + 140, id = marks.length ? marks[0].id : null;
+    for (var i = 0; i < marks.length && marks[i].top <= line; i++) id = marks[i].id;
+    if (id === current || !links[id]) return;
+    if (current && links[current]) links[current].classList.remove("here");
+    current = id;
+    links[id].classList.add("here");
+    /* Keep the rail on the section you are in - forty items do not fit. Only
+       where the rail is its own scrollport: on a phone the nav scrolls with the
+       page, and "nearest" would yank the document you are reading. */
+    if (toc.scrollHeight > toc.clientHeight && links[id].scrollIntoView)
+      links[id].scrollIntoView({ block: "nearest" });
+  }
+
+  addEventListener("scroll", spy, { passive: true });
+  addEventListener("resize", function () { measure(); spy(); });
+  addEventListener("load", function () { measure(); spy(); });
+  measure();
+  spy();
+})();
+</script>
+</body>
+</html>

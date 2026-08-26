@@ -31,6 +31,9 @@ if os.environ.get("OONTZ_API"):                  # a local run pointed at a loca
     INDEX = INDEX.replace(API, os.environ["OONTZ_API"])
     API = os.environ["OONTZ_API"]
 
+with open(os.path.join(ROOT, "language.html"), encoding="utf-8") as f:
+    LANGUAGE = f.read()          # the research article, served whole at /language
+
 # Every social tag must be an ABSOLUTE url; crawlers do not resolve relative ones.
 SITE_URL = os.environ.get("OONTZ_SITE_URL", "https://oontz.music").rstrip("/")
 
@@ -226,6 +229,11 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         m = SHARE_RE.match(path)
         if m:
             return self.send_html(share(*m.groups(), watch=("watch=1" in query)))
+        # The article is its own document, not the terminal booted into a command:
+        # it is meant to be linked, read, cited and printed, so it carries its own
+        # <head> and social tags and inject() does not touch it.
+        if path.strip("/") == "language":
+            return self.send_html(LANGUAGE)
         if path == "/" or "." not in os.path.basename(path):
             return self.send_html(INDEX)            # single page, any route
         return super().do_GET()
@@ -255,6 +263,18 @@ if sys.argv[1:] == ["check"]:
     wout = inject(INDEX, "t", "d", "play x", watch=True)
     assert "window.OONTZ_WATCH=true" in wout, "watch flag set"
     assert SHARE_RE.match("/t/abc-1") and not SHARE_RE.match("/t/a/b") and not SHARE_RE.match("/t/<x>"), "share ids"
+    # /language is a standalone document: it must bring its own head, and every
+    # anchor it points at must exist, or a 21,000-word article has dead contents.
+    assert LANGUAGE.count("<title>") == 1 and 'property="og:url" content="https://' in LANGUAGE, "article head"
+    _all = re.findall(r'id="([^"]+)"', LANGUAGE)
+    _ids = set(_all)
+    _dead = sorted(set(re.findall(r'href="#([^"]+)"', LANGUAGE)) - _ids)
+    assert not _dead, ("dead anchors in language.html", _dead)
+    # An <svg> marker id="a3" and the appendix anchor #a3 are the same id, and the
+    # contents rail then tracks a <marker> in a <defs> block. Duplicates, not just
+    # missing ones.
+    _dupe = sorted(i for i in _ids if _all.count(i) > 1)
+    assert not _dupe, ("duplicate ids in language.html", _dupe)
     print("server.py: inject escapes, boot hook set, share ids validated")
     sys.exit(0)
 

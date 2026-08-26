@@ -669,6 +669,15 @@ var CMDS = {
              : '▸ tracking back on. reload and it resumes.', off ? 'ok' : 'dim');
     line('  do not track is honoured too, and `notrack` again flips this back.','dim');
   },
+  /* The long form lives on the other site, where you can scroll. This is the
+     pointer, not a copy of it. */
+  language: function(){ line();
+    w('<span class="b">  The Song Is the Source</span>');
+    w('<span class="dim">  notes toward an audio programming language. history, theory,</span>');
+    w('<span class="dim">  semantics, architecture, metaphors, and a checklist you can build</span>');
+    w('<span class="dim">  your own from. ~21,000 words, written to be forked.</span>');
+    w('  <a href="https://oontz.music/language" target="_blank" rel="noopener">oontz.music/language →</a>');
+    line(); },
   repo: function(){ line();
     w('<span class="dim">  every line of this, including the synth:</span>');
     w('  <a href="https://github.com/charley-forey/oontz" target="_blank" rel="noopener">github.com/charley-forey/oontz →</a>');

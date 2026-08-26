@@ -49,10 +49,13 @@ C.groups = [
     ["what",      "what this is, in sixty seconds"],
     ["spec",      "why a song here is source code, and what that buys"],
     ["why",       "why a command line and not, you know, a real interface"],
-    ["theory",    "what the machine knows about music"]]},
+    ["theory",    "what the machine knows about music"],
+    ["language",  "the research article. 21,000 words on why this works"]]},
   {h: "MAKE", items: [
     ["open",      "oontz.sh - the actual instrument, whole, in a tab"],
-    ["help",      "every command, including the sharp ones"]]}
+    ["help",      "every command, including the sharp ones"],
+      ["repo",     "the source. all of it, including the synth"],
+      ["terms",    "the deal, and `privacy`, in plain english"]]}
 ];
 C.first_visit = "type `tour` and the site walks you through itself.";
 C.tour_off = "wandering off - the tour will be here.";
@@ -95,6 +98,7 @@ C.help = [
   ["gallery top",           "most played · also: gallery bpm 140-150 · gallery key 8a"],
   ["playlists",             "what people bundled together, playable start to finish"],
   ["spec",                  "why a song here is source code, and what that buys you"],
+  ["language",              "the whole reasoning, at length: history, theory, architecture"],
   ["gallery pat x...x...x...x...", "search the actual music: every track playing that pattern"],
   ["gallery like <id>",     "more like this one, scored on structure, reasons included"],
   ["tree <id>",             "the remix family tree: who flipped what"],
@@ -221,6 +225,20 @@ C.spec = [
   {},
   {s: "The recording is just a compiled artifact, like a PDF from a document."},
   {s: "The format is documented: github.com/charley-forey/oontz - docs/OONTZ-FORMAT.md"}
+];
+/* The article is a page, not a terminal command - so this is the trailer for it,
+   and the link does the rest. Long-form belongs somewhere you can scroll. */
+C.language = [
+  {t: "The Song Is the Source", cls: "b"},
+  {s: "Notes toward an audio programming language. ~21,000 words."},
+  {},
+  {s: "Everything behind this: six thousand years of notation, sixty-five years"},
+  {s: "of computer music and what each system got right, the nine laws, the"},
+  {s: "semantics, why a seeded PRNG breaks a song, the architecture with its"},
+  {s: "numbers, the metaphors, the economics - and a conformance checklist you"},
+  {s: "can build a rival implementation from."},
+  {},
+  {s: "Written to be studied, forked and superseded."}
 ];
 C.play_note = "that was the recipe, not a recording — a few KB of text, rendered here. take it apart:";
 C.gallery_hint = "each id plays right here: play <the id>. every track is its own source code.";

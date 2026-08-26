@@ -329,6 +329,9 @@ const CMDS = {
              : '▸ tracking back on. reload and it resumes.', off ? 'ok' : 'dim');
     line('  do not track is honoured too, and notrack again flips this back.','dim');
   },
+  language(){ block(CP.language);
+    w('  <a href="/language">oontz.music/language →</a>');
+    line(); },
   repo(){ line();
     w('  <span class="dim">every line of this, including the synth:</span>');
     w('  <a href="https://github.com/charley-forey/oontz" target="_blank" rel="noopener">github.com/charley-forey/oontz →</a>');

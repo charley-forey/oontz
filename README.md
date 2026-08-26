@@ -103,6 +103,11 @@ The full argument and spec: [`docs/OONTZ-FORMAT.md`](docs/OONTZ-FORMAT.md).
 The honest audit of Tidal / Strudel / Sonic Pi / SuperCollider / ABC notation —
 what we borrow and what we refuse — is in [`docs/PRIOR-ART.md`](docs/PRIOR-ART.md).
 
+📚 **The whole reasoning, at length** — history, theory, semantics,
+architecture, metaphors, economics, and a conformance checklist you can build
+your own language from: [**The Song Is the Source**](https://oontz.music/language)
+(~21,000 words). Outline: [`docs/THE-LANGUAGE.md`](docs/THE-LANGUAGE.md).
+
 ---
 
 ## 👥 Who it's for
@@ -632,7 +637,7 @@ That is what keeps the terminal readable without hiding the art behind a slab.
 ```
 songs/            the songbook — one commented .oontz per style, plus .song timelines
 tests/golden.json 12 render hashes. If the sound changes, this fails.
-docs/             the format spec and the prior-art audit
+docs/             the format spec, the prior-art audit, the research article
 scripts/          pack_oontz.py, browsergate.py, seed_gallery.py
 web/app/          oontz.sh — the instrument in the browser
 web/landing/      oontz.music — the story and the gallery
@@ -879,7 +884,8 @@ decide for yourself. That's a 232-byte file. 🔊
 **🔊 oontz** · v3.0
 
 [oontz.sh](https://oontz.sh) — make it · [oontz.music](https://oontz.music) — hear it ·
-[the format](docs/OONTZ-FORMAT.md) — read it
+[the format](docs/OONTZ-FORMAT.md) — read it ·
+[the article](https://oontz.music/language) — study it
 
 *You share the recipe, not the cake.* 🍰
 
