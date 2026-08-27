@@ -572,7 +572,16 @@ var flash = 0, pulse = 0;                       // a drop lights the room; a kic
 var ROLE_HUE = {drop: 330, break: 175, build: 40, intro: 210, outro: 210, verse: 130};
 /* The same hidden gate viz.js uses. The idle drift stays - that ambience is the
    point - it is just not painted for a tab nobody is looking at. */
-function frame(){ requestAnimationFrame(frame); if(reduce || document.hidden) return;
+/* The second full-screen canvas on the page. Same bill as viz.js: six stroked
+   rings and a full-viewport fill, sixty times a second, whether or not anything is
+   playing. The ambient drift is the point and it stays - at a sixth of the frames
+   when the room is quiet, which no eye can tell apart on a slow drift. */
+var bgLast = 0;
+/* Idle ambience does not need sixty frames a second. Nothing here moves to a beat
+   when there is no beat, so a drift at ~13fps is the same picture for a sixth of
+   the work - and idle is the state a first-time visitor judges the app in. */
+function frame(ts){ requestAnimationFrame(frame); if(reduce || document.hidden) return;
+  if(!E.playing){ if((ts || 0) - bgLast < 75) return; bgLast = ts || 0; }
   var spec = E.spectrum();
   var at = song && E.playing ? OZ.sectionAt(song, E.songbar) : null;
   var en = at ? (at.sec.energy || 0.5) : 0.3, role = at ? at.sec.role : '';
