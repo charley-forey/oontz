@@ -21,6 +21,7 @@ import shutil
 import socket
 import subprocess
 import sys
+import tempfile
 import threading
 import time
 
@@ -98,7 +99,11 @@ def main(argv):
     httpd = http.server.ThreadingHTTPServer(("127.0.0.1", port), Handler)
     threading.Thread(target=httpd.serve_forever, daemon=True).start()
 
-    profile = os.path.join(ROOT, ".browsergate-profile")
+    # The port was already per-run; the profile was not. Two sessions running the
+    # gate at once shared one ROOT/.browsergate-profile, and whichever finished
+    # first rmtree'd it out from under the other. mkdtemp is per-process by
+    # construction, so concurrent gates no longer see each other at all.
+    profile = tempfile.mkdtemp(prefix="browsergate-")
     proc = subprocess.Popen(
         [exe, "--headless=new", "--disable-gpu", "--no-sandbox", "--mute-audio",
          "--autoplay-policy=no-user-gesture-required",
