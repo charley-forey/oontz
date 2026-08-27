@@ -68,16 +68,21 @@ Delete this section to resume.
       truth table for `looksLikeProse`; the flow itself was verified by driving a real
       headless page. Belongs in browsergate proper once test.html is free.
 
-### Known-red, not mine (2026-08-26)
+### Resolved: the fader red (2026-08-26 → 27)
 
-- [ ] **browsergate: "a fader moves a real AudioParam" fails on clean `main`** — it
-      arrived with `76442b9` and fails at `826bcd1` with every change of mine stashed,
-      so it is not a launch regression. It is very likely the GATE, not the mixer:
-      probed in-page, `d.lvl` takes the value, it is the same node on the same ctx,
-      the clock advances 0.251s - and `fader.gain.value` stays exactly 1. Chrome
-      headless with `--mute-audio` does not appear to compute AudioParam automations,
-      and playing the deck first did not change it. Confirm in one second by moving a
-      level fader on the real site before spending more gate runs on it.
+- [x] **browsergate: "a fader moves a real AudioParam"** — CONFIRMED 2026-08-27, and
+      it was never a mixer bug. `--mute-audio` never renders a quantum, so
+      `AudioParam.value` is frozen at its construction value while `currentTime`
+      advances normally — a correctly wired fader is simply unobservable through
+      `.value` in the gate. Verified by hand in Chrome with a live audio thread by the
+      mobile-deck session: level 0.25 → `fader.gain` 0.25, low kill → `lo.gain` −40 dB,
+      crossfader hard right → deck A gain 0. The test now spies `setTargetAtTime` and
+      asserts WHICH param each control writes and what it asks for, which needs no
+      audio thread at all. **Do not re-add `gain.value` reads.** browsergate is 68/68.
+
+      Worth keeping as a hit rather than a scar: the instinct that solved this was
+      "suspect the harness before the code" — the same instinct that stopped a phone
+      perf fix being built on `--disable-gpu` software rasterisation the same day.
 
 ---
 
