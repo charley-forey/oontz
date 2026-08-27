@@ -153,14 +153,16 @@ def main():
         print("using the provided session token")
         _publish(req, docs, token); return
 
-    req("POST", "/auth/request", {"email": HOUSE_EMAIL})
+    # ONE request. Asking twice used to warm a cold deploy; now the second lands
+    # inside MAIL_COOLDOWN, which answers {"sent": true} with no link at all -
+    # and the script then blamed mail for its own second call.
     st, j = req("POST", "/auth/request", {"email": HOUSE_EMAIL})
     link = j.get("link")
     if not link:
-        print("The API mailed the sign-in link instead of returning it, so this "
-              "script can't complete auth on its own.\nCheck %s for a link to "
-              "%s, then paste its ?token=... below is not wired — rerun once mail "
-              "is off, or seed from a signed-in browser." % (HOUSE_EMAIL, HOUSE_EMAIL))
+        print("No link in the response (%s). Either mail works now - in which "
+              "case seed with --token <session> from a signed-in browser - or a "
+              "previous run is still inside the 60s per-address cooldown, in "
+              "which case wait a minute and rerun." % j)
         sys.exit(2)
 
     # The link is built from OONTZ_API_URL (the custom domain), which may be
