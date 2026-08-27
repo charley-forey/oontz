@@ -590,6 +590,7 @@ var LOGO = ["  ▄▄▄   ▄▄▄  ▄▄▄▄▄ ▄▄▄▄▄ ▄▄▄�
 
 function loadSong(sg, why){
   REMIX_OF = null;                               /* a fresh song owes nobody, until `remix` says so */
+  SHARED_ID = '';                                /* nor is it the song the last link points at */
   /* play() reports the context state now. Printing the banner regardless of it is
      what made `go` look like it had worked while nothing reached the speakers. */
   song = sg; E.loadSong(sg); var live = E.play() === 'running';
@@ -637,12 +638,14 @@ var CMDS = {
       if(token) hdr.authorization = 'Bearer ' + token;
       var r = await fetch(API+'/songs',{method:'POST', headers:hdr,
         body:JSON.stringify({title:song.name, data:Object.assign({format:'oontz-song-1'}, song),
-                             public:true, remix_of:REMIX_OF||undefined})});
+                             public:true, remix_of:REMIX_OF||undefined,
+                             id:SHARED_ID||undefined})});
       var j = await r.json(); d.remove();
       if(!j.id) return line('▸ '+((j.detail && j.detail[0] && j.detail[0].msg) || j.error ||
                                   j.detail || 'could not share'),'w');
       if(j.claim) keepClaim(j.claim);
       SHARED_URL = String(j.url||'').replace(/^https?:\/\//,'');
+      SHARED_ID = j.id || '';            /* share again and it edits this one, not a namesake */
       ev('share_mint', {kind:'server', anon: token ? 0 : 1});
       offerShare(j.url, song.name,
         'anyone who opens it hears it and can flip it. <span class="a">clip</span> makes a video of it.' +
@@ -1629,6 +1632,7 @@ function deckKey(k){
 var REC = null, PENDING = null, UNDO = [], EARLAST = null, UNDO_LAST = null, UNDO_AT = 0;
 var CLIP = false;              /* one clip at a time - two recorders fight over the canvas */
 var SHARED_URL = '';           /* the last link minted this session, burned into a clip */
+var SHARED_ID  = '';           /* which song that link IS, so re-sharing updates it instead of minting a twin */
 var REMIX_OF = null;                             /* set by `remix`, carried by `publish` */
 var PRODUCING = false;                           /* produce owns the AI while it runs; jam waits */
 async function askAI(prompt, extraState){

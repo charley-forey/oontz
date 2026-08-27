@@ -22,10 +22,10 @@ import threading
 import urllib.request
 from contextlib import closing
 
-from fastapi import (FastAPI, HTTPException, Depends, Header, Request,
+from fastapi import (FastAPI, HTTPException, Depends, Header, Request, Form,
                      WebSocket, WebSocketDisconnect)
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse, RedirectResponse
+from fastapi.responses import JSONResponse, RedirectResponse, HTMLResponse
 from pydantic import BaseModel, Field
 
 DB = os.environ.get("OONTZ_DB", "/data/oontz.db")
@@ -266,6 +266,11 @@ class SongIn(BaseModel):
     data: dict
     public: bool = False
     remix_of: str | None = Field(default=None, max_length=32)
+    # Which song this IS, when re-sharing one you already own. Identity used to be
+    # the title, which meant two tracks called "warehouse" were one track, and the
+    # second share silently replaced the first - including under links already
+    # handed out. Omit it and you get a new song, which is the safe default.
+    id: str | None = Field(default=None, max_length=32)
 
 
 class MeIn(BaseModel):
@@ -563,6 +568,14 @@ def admin_summary(window: int = 30, x_admin_key: str = Header(default="")):
                         FROM events WHERE ts>=? AND name='cmd_result'
                         GROUP BY verb ORDER BY n DESC LIMIT 50""")
         funnel = [{"stage": s, "sessions": _in(c, names, since)} for s, names in FUNNEL]
+        # "did they type a SECOND thing" is the only stage the name list cannot
+        # express - it is not a new event, it is the same event happening twice in
+        # one session. It is also the stage that matters most: one command is
+        # curiosity, two is the product working.
+        repeat = c.execute("""SELECT COUNT(*) FROM (SELECT sid FROM events
+                              WHERE ts>=? AND name='prompt_submit'
+                              GROUP BY sid HAVING COUNT(*)>1)""", (since,)).fetchone()[0]
+        funnel.insert(2, {"stage": "explore", "sessions": repeat})
         top_ips = q("""SELECT ip, COUNT(*) n, COUNT(DISTINCT sid) sessions
                        FROM events WHERE ts>=? AND ip IS NOT NULL AND ip!=''
                        GROUP BY ip ORDER BY n DESC LIMIT 50""")
@@ -571,6 +584,13 @@ def admin_summary(window: int = 30, x_admin_key: str = Header(default="")):
                       ORDER BY ts DESC LIMIT 50""")
     for r in commands:
         r["error_rate"] = round((r["errors"] or 0) / r["n"], 3) if r["n"] else 0.0
+    # Counts do not show a drop-off; shares of the people who arrived do. Only
+    # "of everyone who landed" is quoted - the stages are not nested (reaching
+    # `audio` does not require `explore`), so a step-over-step ratio would read as
+    # 300% conversion and mean nothing.
+    landed = funnel[0]["sessions"] if funnel else 0
+    for r in funnel:
+        r["pct"] = round(100.0 * r["sessions"] / landed, 1) if landed else None
     return {"window_days": days, "since": since, "totals": dict(totals),
             "top_prompts": top_prompts, "prompt_outcomes": outcomes,
             "dau": dau, "wau": wau, "sessions_per_device": per_device,
@@ -621,8 +641,47 @@ def auth_request(body: EmailIn, request: Request):
     return out
 
 
+# secrets.token_urlsafe's alphabet, and nothing else, ever reaches the page below.
+LINK_TOKEN_RE = re.compile(r"^[A-Za-z0-9_-]{16,64}$")
+
+VERIFY_PAGE = """<!doctype html><meta charset=utf-8>
+<meta name=viewport content="width=device-width,initial-scale=1">
+<meta name=robots content=noindex>
+<title>sign in to oontz</title>
+<style>
+ body{background:#0b0b0c;color:#e8e8ea;font:16px/1.6 ui-monospace,SFMono-Regular,Menlo,monospace;
+      display:grid;place-items:center;min-height:100vh;margin:0;padding:24px}
+ main{max-width:30rem;text-align:center}
+ h1{font-size:1.4rem;letter-spacing:.02em;margin:0 0 .6rem}
+ p{color:#9a9aa2;margin:0 0 1.6rem}
+ button{font:inherit;background:#e8e8ea;color:#0b0b0c;border:0;border-radius:.4rem;
+        padding:.7rem 1.6rem;cursor:pointer}
+ button:hover{background:#fff}
+</style>
+<main>
+ <h1>&#9658; sign in to oontz</h1>
+ <p>One click and you are in. This link is good for 15 minutes.</p>
+ <form method=post action="/auth/verify">
+  <input type=hidden name=token value="%s">
+  <button type=submit autofocus>sign me in</button>
+ </form>
+</main>"""
+
+
 @app.get("/auth/verify")
-def auth_verify(token: str, request: Request):
+def auth_verify_page(token: str = ""):
+    """A GET only ASKS. Corporate mail scanners, link previewers and antivirus
+    proxies fetch every URL in an email before the human sees it - and a GET that
+    consumed the token meant the SCANNER signed in (and had a session handed to it
+    in a redirect) while the human got "that link has expired". Nothing automated
+    submits a form, so the token is spent by the POST below and only by it."""
+    if not LINK_TOKEN_RE.match(token or ""):
+        raise HTTPException(400, "that is not a sign-in link")
+    return HTMLResponse(VERIFY_PAGE % token)     # the regex above is what makes this safe
+
+
+@app.post("/auth/verify")
+def auth_verify(request: Request, token: str = Form(default="")):
     limit(request, "verify", 20)                 # 256-bit tokens, but no free guessing either
     with closing(db()) as c:
         row = c.execute("SELECT * FROM links WHERE token=?", (token,)).fetchone()
@@ -640,7 +699,7 @@ def auth_verify(token: str, request: Request):
             c.execute("UPDATE users SET verified=? WHERE id=?", (time.time(), uid))
         c.commit()
     session = sign({"uid": uid, "exp": time.time() + SESSION_TTL})
-    return RedirectResponse("%s/#token=%s" % (APP_URL, session), status_code=302)
+    return RedirectResponse("%s/#token=%s" % (APP_URL, session), status_code=303)  # POST -> GET
 
 
 @app.get("/me")
@@ -707,16 +766,16 @@ def save_song(body: SongIn, request: Request, user=Depends(optional_user)):
                             (body.remix_of,)).fetchone()
             if not src or (not src["public"] and src["user_id"] != uid):
                 raise HTTPException(400, "remix_of must name a public track (or one of yours)")
-        # Same title updates the same song - but ONLY for a real account. Anonymous
-        # saves all share one uid, so honouring it there would let anybody overwrite a
-        # stranger's track by guessing its title.
-        row = c.execute("SELECT id FROM songs WHERE user_id=? AND title=?",
-                        (uid, title)).fetchone() if user else None
-        if row:                                  # same title from the same user updates
+        # An explicit id updates that song - but ONLY for a real account. Anonymous
+        # saves all share one uid and their id is public in the share link, so
+        # honouring it there would let anyone who has the link overwrite the track.
+        row = c.execute("SELECT id FROM songs WHERE id=? AND user_id=?",
+                        (body.id, uid)).fetchone() if (user and body.id) else None
+        if row:                                  # the same song, saved again
             sid = row["id"]
-            c.execute("""UPDATE songs SET data=?,bpm=?,kkey=?,seconds=?,sections=?,
+            c.execute("""UPDATE songs SET title=?,data=?,bpm=?,kkey=?,seconds=?,sections=?,
                          public=?,remix_of=?,updated=? WHERE id=?""",
-                      (blob, bpm, kkey, seconds, nsec, public, body.remix_of, now, sid))
+                      (title, blob, bpm, kkey, seconds, nsec, public, body.remix_of, now, sid))
         else:
             c.execute("""INSERT INTO songs(id,user_id,title,data,bpm,kkey,seconds,
                          sections,public,remix_of,claim,created,updated)

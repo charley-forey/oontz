@@ -16,6 +16,7 @@ import sqlite3
 import tempfile
 import subprocess
 import urllib.error
+import urllib.parse
 import urllib.request
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -54,7 +55,11 @@ def call(method, path, body=None, token=None, headers=None):
     req = urllib.request.Request(BASE + path, data=data, method=method, headers=h)
     try:
         with OPEN(req, timeout=45) as r:
-            return r.status, json.loads(r.read() or b"{}"), dict(r.headers)
+            raw = r.read()
+            try:                                  # not every 200 is JSON: /auth/verify is a page
+                return r.status, json.loads(raw or b"{}"), dict(r.headers)
+            except ValueError:
+                return r.status, {"raw": raw.decode(errors="replace")}, dict(r.headers)
     except urllib.error.HTTPError as e:
         raw = e.read()
         try:
@@ -64,14 +69,37 @@ def call(method, path, body=None, token=None, headers=None):
         return e.code, j, dict(e.headers)
 
 
+def post_form(path, fields):
+    """The one form post in the API: signing in. `call` only speaks JSON."""
+    data = urllib.parse.urlencode(fields).encode()
+    req = urllib.request.Request(BASE + path, data=data, method="POST",
+                                 headers={"content-type": "application/x-www-form-urlencoded"})
+    try:
+        with OPEN(req, timeout=45) as r:
+            return r.status, {}, dict(r.headers)
+    except urllib.error.HTTPError as e:
+        raw = e.read()
+        try:
+            return e.code, json.loads(raw or b"{}"), dict(e.headers)
+        except ValueError:
+            return e.code, {"raw": raw.decode(errors="replace")}, dict(e.headers)
+
+
 def sign_in(email):
     st, j, _ = call("POST", "/auth/request", {"email": email})
     assert st == 200 and j["sent"] is False and "link" in j, ("request link", st, j)
     with sqlite3.connect(DB) as c:
         tok = c.execute("SELECT token FROM links WHERE email=?", (email,)).fetchone()[0]
+    # A GET must only ASK. Mail scanners fetch every link in an email, so if this
+    # ever hands back a session again, every scanned sign-in link is a stolen one.
     st, j, h = call("GET", "/auth/verify?token=" + tok)
+    assert st == 200, ("verify page", st, j)
+    body = j.get("raw", "")
+    assert "#token=" not in body and "<form" in body and tok in body, ("verify page leaked or lost the token", body[:200])
+    assert not (h.get("Location") or h.get("location")), ("a GET must not redirect into a session", h)
+    st, j, h = post_form("/auth/verify", {"token": tok})
     loc = h.get("Location") or h.get("location") or ""
-    assert st == 302 and "#token=" in loc, ("verify", st, j, h)
+    assert st == 303 and "#token=" in loc, ("verify", st, j, h)
     return loc.split("#token=")[1]
 
 
@@ -113,6 +141,20 @@ def main():
         st, pub, _ = call("POST", "/songs", {"title": "public one", "data": song,
                                              "public": True}, token=tok)
         assert st == 200 and pub["url"] == "https://oontz.music/t/" + pub["id"], pub
+        # Identity is the id, never the title. Everyone's first track is called
+        # "untitled" and everyone's second one is too; when title WAS identity, the
+        # second save silently replaced the first - under links already handed out.
+        st, t1, _ = call("POST", "/songs", {"title": "warehouse", "data": song}, token=tok)
+        st, t2, _ = call("POST", "/songs", {"title": "warehouse", "data": song}, token=tok)
+        assert t1["id"] != t2["id"], ("a namesake overwrote an earlier track", t1, t2)
+        # ...but re-saving the SAME song edits it in place, which is what the id is for
+        st, t3, _ = call("POST", "/songs", {"title": "warehouse mk2", "data": song,
+                                            "id": t1["id"]}, token=tok)
+        assert t3["id"] == t1["id"], ("an explicit id minted a twin", t1, t3)
+        assert call("GET", "/songs/" + t1["id"], token=tok)[1]["title"] == "warehouse mk2"
+        # someone else's id is not an edit permit
+        assert call("POST", "/songs", {"title": "hijack", "data": song,
+                                       "id": t1["id"]})[1]["id"] != t1["id"], "anon edited an owned song"
         assert call("GET", "/songs/" + sid)[0] == 403, "private song must be 403 to strangers"
         st, g, _ = call("GET", "/songs/" + sid, token=tok)
         assert st == 200 and g["bpm"] == 140 and g["sections"] == 2 and g["seconds"] == round(48 * 240 / 140, 1), g
@@ -306,8 +348,8 @@ def main():
         st, sm, _ = call("GET", "/admin/summary?window=30", headers=AK)
         assert st == 200 and sm["window_days"] == 30, ("summary", st, sm)
         assert any(p["text"] == "kick harder" for p in sm["top_prompts"]), sm["top_prompts"]
-        assert {f["stage"] for f in sm["funnel"]} == {"land", "command", "audio", "save",
-                                                      "signin", "publish"}, sm["funnel"]
+        assert {f["stage"] for f in sm["funnel"]} == {"land", "command", "explore", "audio",
+                                                      "save", "signin", "publish"}, sm["funnel"]
         assert dict((f["stage"], f["sessions"]) for f in sm["funnel"])["command"] >= 1, sm["funnel"]
         assert any(e["name"] == "api_error" for e in sm["recent_errors"]), sm["recent_errors"]
         assert call("GET", "/admin/summary?window=99999", headers=AK)[1]["window_days"] == 365, \

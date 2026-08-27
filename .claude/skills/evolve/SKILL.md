@@ -10,7 +10,9 @@ then stop. Do not start a second cycle in the same run.
 
 ## The cycle
 
-1. **Read `ROADMAP.md`.** Take the topmost unchecked item under "Now". If "Now" is
+1. **Read `ROADMAP.md`.** If it carries a `## ⏸ PAUSED` section, STOP: run no
+   cycle, change nothing, and report that the loop is paused and why. Otherwise
+   take the topmost unchecked item under "Now". If "Now" is
    empty, promote the best two items from "Next" into "Now" and take the first.
    **Idea intake:** whenever you promote, also re-read `IDEAS.md` and the cycle log
    and append ONE new item to "Next" with a one-line reason - a gap between what

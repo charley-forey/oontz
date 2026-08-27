@@ -10,6 +10,52 @@ no loop.
 
 ---
 
+## ⏸ PAUSED — 2026-08-26
+
+**The evolution loop is paused. Do not start a cycle.** If you are the `evolve`
+skill, stop here and say so.
+
+Why: the funnel says 36 sessions landed, 7 typed a command, 0 saved, 0 signed in,
+0 published. Every open item below is a feature. None of them is why nobody is
+using oontz. The work is launch work — blockers, a seeded gallery, distribution —
+and it is tracked outside this file until it ships.
+
+Delete this section to resume.
+
+### Launch punchlist (2026-08-26)
+
+- [x] **Song identity is the id, not the title** — everyone's first track is called
+      `untitled` and so is their second; a same-title save used to replace the earlier
+      song under links already handed out. `POST /songs` takes an optional `id` now.
+- [x] **A sign-in link survives a mail scanner** — `GET /auth/verify` shows a form,
+      `POST` spends the token. A scanner that prefetched the GET was signing in *and*
+      being handed the session in the redirect; the human got "that link has expired".
+- [x] **The funnel has an `explore` stage and percentages** — sessions that typed a
+      SECOND command. One command is curiosity, two is the product working.
+- [x] **The gallery is 30 tracks, best-of-five** — `scripts/seed_gallery.py` composes
+      every brief at five seeds and publishes only what the grader likes best.
+- [ ] **Verify the oontz.sh sending domain** — the domain is registered in Resend and
+      the three DNS records are in `docs/runbook-mail.md`; they need adding at
+      Namecheap. Until then mail only reaches the account owner, so **nobody else can
+      make an account.** `python scripts/mailcheck.py --verify` reports status.
+- [ ] **Open oontz.sh on a phone.** Half of any launch traffic is mobile and nobody
+      has checked. Not a build - a look.
+- [ ] **A `feedback <text>` command** that logs an event through the existing `POST /e`.
+      The only channel where someone says why they left.
+
+### Known-red, not mine (2026-08-26)
+
+- [ ] **browsergate: "a fader moves a real AudioParam" fails on clean `main`** — it
+      arrived with `76442b9` and fails at `826bcd1` with every change of mine stashed,
+      so it is not a launch regression. It is very likely the GATE, not the mixer:
+      probed in-page, `d.lvl` takes the value, it is the same node on the same ctx,
+      the clock advances 0.251s - and `fader.gain.value` stays exactly 1. Chrome
+      headless with `--mute-audio` does not appear to compute AudioParam automations,
+      and playing the deck first did not change it. Confirm in one second by moving a
+      level fader on the real site before spending more gate runs on it.
+
+---
+
 ## Now
 
 - [x] **Per-track spectra** — done. `core.band_energy` measures each track's real band
