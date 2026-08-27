@@ -26,7 +26,11 @@
     /* Text sits over moving graphics, so every glyph carries its own dark halo.
        This is what makes it readable without hiding the art behind a slab. */
     --halo:0 0 3px rgba(4,6,8,.98), 0 0 9px rgba(4,6,8,.85), 0 1px 2px rgba(0,0,0,.95);
-    --plate:rgba(6,9,12,.62);          /* dense panels get a plate as well as a halo */
+    --plate:rgba(6,9,12,.78);          /* dense panels get a plate as well as a halo */
+    /* .62 plus backdrop-filter:blur(7px) was the old recipe on #hud, #rack and #bar.
+       A blur re-runs whenever its backdrop changes, and the backdrop here is a canvas
+       repainting every frame - three full re-blurs per frame, forever, on the same
+       thread as your keystrokes. The denser plate reads the same over a soft glow. */
     --size:15px;
   }
   *{box-sizing:border-box}
@@ -43,8 +47,11 @@
      under #wrap. They used to be above it, multiplying 30% black through every
      glyph and dropping 80% black over the HUD and the prompt. */
   #scan{position:fixed;inset:0;z-index:2;pointer-events:none;
-    background:repeating-linear-gradient(180deg,rgba(0,0,0,0) 0 2px,rgba(0,0,0,.22) 2px 4px);
-    mix-blend-mode:multiply}
+    background:repeating-linear-gradient(180deg,rgba(0,0,0,0) 0 2px,rgba(0,0,0,.22) 2px 4px)}
+  /* was mix-blend-mode:multiply. Over a near-black backdrop multiply and plain
+     alpha are the same picture, but the blend made every canvas frame re-composite
+     the entire page underneath it - which is what scroll and typing were queueing
+     behind. */
   /* A light corner falloff, not a spotlight. At 72% over an ellipse this was the
      single biggest reason the art looked boxed in: on a wide screen the ellipse
      darkens exactly the left and right edges. */
@@ -53,8 +60,7 @@
   #wrap{position:relative;z-index:4;height:100%;display:flex;flex-direction:column;
     max-width:1180px;margin:0 auto;padding:14px 18px;text-shadow:var(--halo)}
   #hud{padding:5px 9px;margin-bottom:8px;font-size:.92em;min-height:1.5em;
-    background:var(--plate);border:1px solid var(--line);border-radius:5px;
-    backdrop-filter:blur(7px);-webkit-backdrop-filter:blur(7px)}
+    background:var(--plate);border:1px solid var(--line);border-radius:5px}
   /* The map used to pick its cell count from innerWidth/14 - a guess at how wide a
      character is. The guess ran ~40% short, so the song map stopped well before the
      right edge and left the panel black out there. Flex makes the cells share the
@@ -73,7 +79,7 @@
   /* The rack is STATIC: the live grid used to live inside the scrollback, which
      meant it scrolled away and every 16th note yanked you back to the bottom. */
   #rack{margin-top:6px;padding:6px 9px;background:var(--plate);border:1px solid var(--line);
-    border-radius:5px;backdrop-filter:blur(7px);-webkit-backdrop-filter:blur(7px);
+    border-radius:5px;
     max-height:34vh;overflow-y:auto;scrollbar-width:thin;display:none}
   #rack.on{display:block}
   /* the palette: everything you can do, one fuzzy search away */
@@ -107,8 +113,7 @@
   #sug div.sel,#sug div:hover{background:rgba(63,240,224,.12)}
   @media (pointer: coarse){ #sug div{padding:11px 12px} }
   #bar{position:relative;display:flex;align-items:center;gap:8px;margin-top:6px;padding:8px 9px;
-    background:var(--plate);border:1px solid var(--line);border-radius:5px;
-    backdrop-filter:blur(7px);-webkit-backdrop-filter:blur(7px)}
+    background:var(--plate);border:1px solid var(--line);border-radius:5px}
   #ps1{color:var(--accent2);white-space:nowrap}
   #in{flex:1;background:none;border:0;outline:0;color:var(--bright);font:inherit;
     caret-color:var(--accent2)}
@@ -248,9 +253,16 @@ var esc = function(s){ return String(s).replace(/[&<>"']/g, function(c){
    you read what just went by; the log must not fight you for it. */
 function atBottom(){ return OUT.scrollHeight - OUT.scrollTop - OUT.clientHeight < 24; }
 function tail(){ OUT.scrollTop = OUT.scrollHeight; TAIL.classList.remove('on'); }
+/* The scrollback had no ceiling. Every command, every jam turn and every render
+   left a div behind for the session's lifetime, and #wrap paints all of them with
+   a three-layer text-shadow halo - so an hour in, scrolling and typing were
+   repainting thousands of glyphs that nobody was ever going to read again. */
+var SCROLLBACK = 500;
 function w(html, cls){ var stick = atBottom();
   var d=document.createElement('div'); if(cls)d.className=cls;
   d.innerHTML=html; OUT.appendChild(d);
+  while(OUT.childElementCount > SCROLLBACK + 1)   /* +1: #slack, the top spacer, stays */
+    OUT.removeChild(OUT.firstElementChild.id === 'slack' ? OUT.children[1] : OUT.firstElementChild);
   if(stick) tail(); else TAIL.classList.add('on');
   return d; }
 function line(s, cls){ return w(esc(s===undefined?'':s), cls); }
@@ -412,6 +424,14 @@ function deckLine(d, name){
     '<span class="a">'+meter+'</span><span class="dim"> '+(d.playing?'▸':'■')+(d.loop?' loop':'')+
     ' kill '+['low','mid','high'].filter(function(b){ return d.kill[b]; }).join(' ')+'</span>';
 }
+/* draw() rebuilds the whole rack with innerHTML, and the clock called it on every
+   16th note - ~9 full reparse+layout passes a second at 140bpm, landing on the same
+   thread as your keystrokes and your scroll. drawSoon() coalesces the flood into one
+   per frame. draw() itself stays synchronous: the thirty command handlers that call
+   it once and then read the DOM back are not the problem and must not become one. */
+var DRAWQ = 0;
+function drawSoon(){ if(DRAWQ) return;
+  DRAWQ = requestAnimationFrame(function(){ DRAWQ = 0; draw(); }); }
 function draw(){
   var i = E.stepNow || 0, foc = E.focus || (E.order||[])[0];
   if(MODE === 'deck'){
@@ -539,14 +559,20 @@ var cv=document.getElementById('bg'), cx=cv.getContext('2d'), W=0,H=0,tt=0;
    canvas viewport-sized through every keyboard and fullscreen transition on its own;
    reading innerHeight once and pinning it in px is what left a black strip under the
    picture in watch mode. */
+/* ponytail: DPR clamped to 1 for the background only. It is six blurred rings -
+   nothing in it is a crisp edge - and at dpr 3 the full-viewport fill every frame
+   costs 9x the pixels for a picture nobody can tell apart. Raise it if the bg ever
+   grows text or a hairline. */
 function size(){ var w=cv.clientWidth||innerWidth, h=cv.clientHeight||innerHeight;
-  W=cv.width=Math.floor(w*devicePixelRatio); H=cv.height=Math.floor(h*devicePixelRatio); }
+  W=cv.width=Math.floor(w); H=cv.height=Math.floor(h); }
 size(); addEventListener('resize', function(){ size(); draw(); });
 try{ if(window.ResizeObserver) new ResizeObserver(function(){ size(); draw(); }).observe(cv); }catch(e){}
 var reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
 var flash = 0, pulse = 0;                       // a drop lights the room; a kick pushes it
 var ROLE_HUE = {drop: 330, break: 175, build: 40, intro: 210, outro: 210, verse: 130};
-function frame(){ requestAnimationFrame(frame); if(reduce) return;
+/* The same hidden gate viz.js uses. The idle drift stays - that ambience is the
+   point - it is just not painted for a tab nobody is looking at. */
+function frame(){ requestAnimationFrame(frame); if(reduce || document.hidden) return;
   var spec = E.spectrum();
   var at = song && E.playing ? OZ.sectionAt(song, E.songbar) : null;
   var en = at ? (at.sec.energy || 0.5) : 0.3, role = at ? at.sec.role : '';
@@ -572,14 +598,14 @@ function frame(){ requestAnimationFrame(frame); if(reduce) return;
     cx.closePath();
     cx.strokeStyle='hsla('+((hue0+tt*20+r*38)%360)+',85%,'+(55+bass*20)+'%,'+
       ((1-p)*(.12+en*.1+bass*.35))+')';
-    cx.lineWidth=(1+en*1.5+bass*4)*devicePixelRatio; cx.stroke();
+    cx.lineWidth=(1+en*1.5+bass*4); cx.stroke();
   }
 }
 frame();
-E.onbar = function(bar, st){ if(st && st.role === 'drop' && st.within === 0) flash = 1; draw(); };
+E.onbar = function(bar, st){ if(st && st.role === 'drop' && st.within === 0) flash = 1; drawSoon(); };
 E.onstep = function(i, tracks){ var k = tracks && tracks.kick;
   if(k && k.pat && !k.mute){ var ch = k.pat[OZ.patIndex(k.pat, E.songbar, i)]; if(ch && ch !== '.' && ch !== '-') pulse = 1; }
-  draw(); };
+  drawSoon(); };
 
 /* ------------------------------------------------------------- commands */
 var LOGO = ["  ▄▄▄   ▄▄▄  ▄▄▄▄▄ ▄▄▄▄▄ ▄▄▄▄▄▄     ▄▄▄▄ █    ",
@@ -623,7 +649,11 @@ var CMDS = {
   bands: function(){ var T = window.OONTZ_THEORY; line();
     Object.keys(T.freq_roles).forEach(function(k){ var v = T.freq_roles[k];
       w('  <span class="k">'+esc(k+'  '+v.hz[0]+'-'+v.hz[1]+' Hz')+'</span><span class="dim">'+esc(v.note)+'</span>'); }); line(); },
-  decks: function(){ block(CP.decks); },
+  /* `decks` used to print an essay whose first line was "Press M" - which is the
+     one instruction a phone cannot follow. It is a verb now, like `share`; the
+     essay is one word away at `decks why`. */
+  decks: function(a){ if(a && a[0] === 'why') return block(CP.decks);
+    return CMDS.mode([MODE === 'deck' ? 'studio' : 'deck']); },
   keys: function(){ block(CP.keys); },
   ai: function(){ block(CP.ai); },
   /* `share` used to print an essay about sharing. It is a verb now; the essay is
@@ -1428,7 +1458,7 @@ var CMDS = {
          throttles to nothing in a background tab, and the HUD's one text line keeps a
          plain interval so it is still right when you come back to it. */
       if(window.OONTZ_MIXER) OONTZ_MIXER.show();
-      if(!DECKTIMER) DECKTIMER = setInterval(function(){ if(MODE==='deck') draw(); }, 100);
+      if(!DECKTIMER) DECKTIMER = setInterval(function(){ if(MODE==='deck') drawSoon(); }, 100);
       line('▸ DECK. tap a track below to load it · M or ✕ to go back','dim'); }
     else { MODE = m; document.body.classList.remove('deck');
       if(window.OONTZ_MIXER) OONTZ_MIXER.hide();
@@ -1918,6 +1948,7 @@ var ALIAS = {'?':'help','ls':'help','start':'go','make':'go','song':'go','q':'st
   'send':'share','post':'share','video':'clip','github':'repo','source-code':'repo',
   'tos':'terms','legal':'terms',
   'exit':'stop','quit':'stop','cls':'clear','about':'what','dj':'decks','keymap':'keys',
+  'm':'decks','deck':'decks',
   'critique':'grade','score':'grade','signin':'login','account':'login'};
 
 /* Every typed line, every AI-proposed line and every egg goes through here, so

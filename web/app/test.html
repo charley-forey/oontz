@@ -91,6 +91,30 @@ async function until(fn, ms, what){
     W.run("stop"); ok(!W.E.playing, "did not stop");
   });
 
+  /* draw() rebuilds the rack with innerHTML, and every 16th note calls it. If it
+     ever stops coalescing, the grid lands on the same thread as your keystrokes
+     nine times a second again. */
+  await t("drawSoon coalesces the clock's many calls into one frame", async function(){
+    W.run("kick x...x...x...x...");
+    var rack = W.document.getElementById("rack"), n = 0;
+    var obs = new W.MutationObserver(function(){ n++; });
+    obs.observe(rack, {childList: true, subtree: true, characterData: true});
+    for(var i = 0; i < 50; i++) W.drawSoon();
+    await new Promise(function(r){ W.requestAnimationFrame(function(){ W.requestAnimationFrame(r); }); });
+    obs.disconnect();
+    ok(n > 0, "50 drawSoon() calls repainted the rack zero times");
+    ok(n <= 4, "50 drawSoon() calls repainted the rack " + n + " times - it is not coalescing");
+  });
+
+  await t("the scrollback is capped and keeps its spacer", function(){
+    for(var i = 0; i < 700; i++) W.line("scrollback " + i);
+    var out = W.document.getElementById("out");
+    ok(out.childElementCount <= 501, "scrollback grew to " + out.childElementCount + " lines");
+    ok(out.firstElementChild.id === "slack", "the top spacer was evicted with the old lines");
+    ok(/scrollback 699/.test(out.lastElementChild.textContent), "the newest line was dropped, not the oldest");
+    W.run("clear");
+  });
+
   await t("the mixer verbs exist and apply", function(){
     W.run("hat ..x...x...x...x.");
     W.run("sidechain hat 0.7");
