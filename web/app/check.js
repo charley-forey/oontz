@@ -753,5 +753,14 @@ A.ok(/else \{ MODE = m;[\s\S]{0,400}mixStop\(\)/.test(pageSrc),
   "leaving deck mode must stop a running mix - mixTick bails on MODE and the set never ends");
 A.ok(/function closePal\(\)[\s\S]{0,160}MODE === 'deck'/.test(pageSrc),
   "closing the palette must not hand focus back to the prompt in deck mode");
+/* ...and the way IN. `decks` used to print an essay whose first line was "Press M",
+ * the one instruction a phone cannot follow, with no typed route in at all. It is a
+ * verb now (the essay moved to `decks why`, same shape as `share` / `share why`). */
+A.ok(/decks: function\(a\)\{ if\(a && a\[0\] === 'why'\) return block\(CP\.decks\);/.test(pageSrc),
+  "`decks` must enter deck mode, not print an essay telling a phone to press a key it has not got");
+A.ok(/'m':'decks','deck':'decks'/.test(pageSrc),
+  "typing M - the key the copy names - must reach deck mode too");
+A.ok(!/\{t: "Press M\./.test(fs2.readFileSync(path2.join(__dirname, "copy.js"), "utf8")),
+  "the decks copy must not open with a keyboard-only instruction");
 
 console.log("web checks pass  ·  write-through · pads · viz · touch · midi · voices+4 · viz-auto · themes · stage · pwa · notes · roll · jumps · decks · diff · pat2 · midi · paint · tilt · rooms · theory (" + checked + " plans in window) · legible · ear · track · " + OZ.KEYS.length + " keys listed");

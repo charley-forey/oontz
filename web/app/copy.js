@@ -100,7 +100,7 @@ C.theory = [
 
 /* -- decks --------------------------------------------------------------- */
 C.decks = [
-  {t: "Press M. Now you're a DJ. 🎧", cls: "b"},
+  {t: "Type decks — or press M. Now you're a DJ. 🎧", cls: "b"},
   {},
   {s: "Two decks. A crossfader. EQ kills. Beat loops. A spinback on the"},
   {s: "backslash key, because of course it is. dload a this, dload b acid,"},
@@ -240,8 +240,8 @@ C.help = [
   ["playlist new warehouse","start a playlist; add <id> <song>, public <id> to share"],
   ["rec",                   "record what you hear. rec screen for video"],
   ["export",                "the whole song as a WAV"],
-  ["M",                     "deck mode: dload a this · deck a sync · xf 0.5"],
-  ["decks",                 "the DJ half"],
+  ["decks",                 "deck mode: dload a this · deck a sync · xf 0.5. M does it too"],
+  ["decks why",             "the DJ half, explained"],
   ["keys",                  "every key, drawn on a keyboard"],
   ["ai",                    "the thing that isn't a chatbot"],
   ["share",                 "why 15KB matters more than it sounds"],

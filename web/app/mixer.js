@@ -523,6 +523,12 @@ function build(){
   master.appendChild(el("span", "tag", "DECK"));
   var drift = el("span", "drift", "");           /* the beatmatch readout, where there is room for it */
   master.appendChild(drift);
+  /* Deck mode hides #touch, so on a phone the backslash spinback - the one flourish
+     the copy actually sells - had no route at all. Same call the key makes. */
+  var spin = el("button", null, "↺ spin");
+  spin.setAttribute("aria-label", "spinback");
+  spin.addEventListener("click", function(){ E().key("\\", true); });
+  master.appendChild(spin);
   DECKS._master = {pane: master, drift: drift};
 
   var A = buildDeck("a"), B = buildDeck("b");
