@@ -2,8 +2,8 @@
  * slow one — and the cache is the parachute: everything ever fetched from this
  * origin serves offline, which is the whole app, because the engine is
  * client-side and the API was never load-bearing for making music. */
-var V = "oontz-v4";        // v2: ?song= now redirects, so the cached "/" must go; v4: mixer.js joined CORE
-var CORE = ["/", "/copy.js", "/legal.js", "/oontz.js", "/theory.js", "/compose.js",
+var V = "oontz-v5";        // v2: ?song= now redirects, so the cached "/" must go; v4: mixer.js joined CORE; v5: app.js split out of index.html
+var CORE = ["/", "/app.js", "/copy.js", "/legal.js", "/oontz.js", "/theory.js", "/compose.js",
             "/viz.js", "/account.js", "/touch.js", "/mixer.js", "/midi.js", "/track.js", "/icon.svg",
             "/manifest.webmanifest"];
 

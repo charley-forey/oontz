@@ -182,7 +182,10 @@ A.ok(TD.ROW_FX.filter(function(k){ return k[2]; }).length === 3, "exactly [ ] / 
    black through every glyph and dropping 80% black over the HUD and prompt.
    And .dim carries most of the prose, so its contrast is not decoration. */
 var fs = require("fs"), path = require("path");
-var html = fs.readFileSync(path.join(__dirname, "index.html"), "utf8");
+/* The page is index.html + app.js since the script block moved out to let the
+   shell paint. Assertions here are about the page, not about which file holds it. */
+var html = fs.readFileSync(path.join(__dirname, "index.html"), "utf8") + "\n" +
+           fs.readFileSync(path.join(__dirname, "app.js"), "utf8");
 function blockFor(sel){
   var i = html.indexOf(sel + "{");
   A.ok(i >= 0, "no CSS rule for " + sel);
@@ -332,7 +335,10 @@ A.ok(/IP address/i.test(legal), "the notice must say IP addresses are logged");
 A.ok(/Google Analytics/.test(legal), "the notice must disclose Google Analytics");
 A.ok(/Anthropic/.test(legal), "the notice must disclose the AI processor");
 A.ok(!/we (also )?collect nothing|no data/i.test(legal), "the notice must not overclaim");
-var idx = fs.readFileSync(require("path").join(here, "index.html"), "utf8");
+/* index.html plus app.js: the page script moved out so the shell can paint first,
+   and these assertions are about the page, not about which file holds it. */
+var idx = fs.readFileSync(require("path").join(here, "index.html"), "utf8") + "\n" +
+          fs.readFileSync(require("path").join(here, "app.js"), "utf8");
 A.ok(idx.indexOf('src="legal.js"') >= 0, "index.html must load legal.js");
 A.ok(idx.indexOf("github.com/charley-forey/oontz") >= 0, "the app must link its source");
 /* substance, not wording: the notice must disclose that prompts are logged, however
@@ -560,7 +566,8 @@ A.strictEqual(V.autoFor("break"), "particles", "a break drifts");
 A.strictEqual(V.autoFor("nosuchrole"), "tunnel", "unknown roles still draw");
 
 /* -- layout: the stage is one block, the deck folds -------------------------- */
-var page = fs2.readFileSync(path2.join(__dirname, "index.html"), "utf8");
+var page = fs2.readFileSync(path2.join(__dirname, "index.html"), "utf8") + "\n" +
+           fs2.readFileSync(path2.join(__dirname, "app.js"), "utf8");
 A.ok(page.indexOf('id="rack"') < page.indexOf('id="out"'), "the rack belongs to the stage, above the log");
 A.ok(page.indexOf("sugPick") >= 0 && page.indexOf("#sug") >= 0, "the command dropdown exists and is pickable");
 var touchSrc = fs2.readFileSync(path2.join(__dirname, "touch.js"), "utf8");
@@ -588,7 +595,11 @@ A.ok(dd.some(function(l){ return l.indexOf("+ section break2") === 0; }), "diff 
 A.deepStrictEqual(OZ.songDiff(d1, JSON.parse(JSON.stringify(d1))), ["identical, note for note"], "no-change is said plainly");
 
 /* -- rooms: what broadcasts is exactly what is musical ------------------------ */
-var pageSrc = fs2.readFileSync(path2.join(__dirname, "index.html"), "utf8");
+/* The page IS index.html plus app.js now: the 127KB script block moved out so the
+   terminal shell could paint before it runs. Every assertion below is about the
+   page as a whole, so read it as a whole rather than rewriting each one. */
+var pageSrc = fs2.readFileSync(path2.join(__dirname, "index.html"), "utf8") + "\n" +
+              fs2.readFileSync(path2.join(__dirname, "app.js"), "utf8");
 A.ok(pageSrc.indexOf("function roomWire") >= 0 && pageSrc.indexOf("ws/room/") >= 0, "the room client exists");
 A.ok(pageSrc.indexOf("ROOM.remote = true") >= 0, "remote commands must not re-broadcast");
 
@@ -666,7 +677,8 @@ A.strictEqual(badQ.length, 0, "an event name that violates ^[a-z][a-z0-9_]{0,39}
 A.ok(TR.valid("prompt_submit") && TR.valid("a") && TR.valid("x".repeat(40)), "legal names must pass");
 
 /* The wiring, checked in the markup rather than trusted. */
-A.ok(pageSrc.indexOf('<script src="track.js"></script>') >= 0, "index.html must load track.js");
+A.ok(/<script src="track.js" defer><\/script>/.test(pageSrc),
+  "index.html must load track.js, deferred - a blocking script here stops the shell painting");
 A.ok(/function ev\(n, p\)[\s\S]{0,200}OONTZ_TRACK/.test(pageSrc), "ev() must bridge to OONTZ_TRACK");
 A.ok(pageSrc.indexOf("ev('prompt_submit'") >= 0 && /prompt_submit'[\s\S]{0,120}text:/.test(pageSrc),
   "prompt_submit must carry the typed text - it is the whole point");
@@ -682,6 +694,23 @@ A.ok(/feedback: function\(a\)[\s\S]{0,400}slice\(0, 500\)/.test(pageSrc),
   "feedback text must be capped before it is sent");
 A.ok(/\["feedback /.test(fs2.readFileSync(path2.join(__dirname, "copy.js"), "utf8")),
   "feedback is missing from copy.js's help table, so nobody will ever find it");
+
+/* Nothing may block first paint. The shell above the scripts is a complete styled
+   prompt; a single non-deferred script tag is all it takes to hide it again. */
+var tags = pageSrc.match(/<script src="[^"]+"[^>]*><\/script>/g) || [];
+tags.forEach(function(t){
+  if(t.indexOf("googletagmanager") >= 0) return;
+  A.ok(/ (defer|async)>/.test(t), "this script blocks the first paint: " + t);
+});
+A.ok(tags.length >= 13, "expected every app script to still be listed, saw " + tags.length);
+/* Each inline block on its own: a greedy match runs from the gtag snippet in the
+   head to the last </script> in the file and calls the whole document one script. */
+var inlineBlocks = (fs2.readFileSync(path2.join(__dirname, "index.html"), "utf8")
+  .match(/<script>[\s\S]*?<\/script>/g) || []);
+var biggestInline = inlineBlocks.reduce(function(m, t){ return Math.max(m, t.length); }, 0);
+A.ok(biggestInline < 5000,
+  "a large inline script is back in index.html (" + biggestInline +
+  " chars) - it cannot be deferred, so it blocks the shell from painting");
 
 var swSrc = fs2.readFileSync(path2.join(__dirname, "sw.js"), "utf8");
 A.ok(/CORE[\s\S]{0,300}"\/track\.js"/.test(swSrc), "sw.js CORE must cache /track.js, or the PWA loads without it");
@@ -737,7 +766,8 @@ Object.keys(MX.AREAS).forEach(function(k){
 });
 A.deepStrictEqual(MX.LOOPS, [1,2,4,8,16], "loop lengths");
 A.ok(MX.JUMPS.indexOf(-8) >= 0 && MX.JUMPS.indexOf(8) >= 0, "beat jump needs both directions");
-A.ok(pageSrc.indexOf('<script src="mixer.js"></script>') >= 0, "index.html must load mixer.js");
+A.ok(/<script src="mixer.js" defer><\/script>/.test(pageSrc),
+  "index.html must load mixer.js, deferred - a blocking script here stops the shell painting");
 A.ok(/OONTZ_MIXER\.show\(\)/.test(pageSrc) && /OONTZ_MIXER\.hide\(\)/.test(pageSrc),
   "mode deck|studio must show and hide the mixer");
 A.ok(/CORE[\s\S]{0,300}"\/mixer\.js"/.test(swSrc), "sw.js CORE must cache /mixer.js");

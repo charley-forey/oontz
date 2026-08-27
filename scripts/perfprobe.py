@@ -138,6 +138,13 @@ setTimeout(function(){
       var n = performance.getEntriesByType("navigation")[0];
       if(n) nav = {dom: Math.round(n.domContentLoadedEventEnd), load: Math.round(n.loadEventEnd),
                    ttfb: Math.round(n.responseStart)};
+      /* The number that matters for "it loads slowly". defer still runs every script
+         BEFORE domContentLoaded fires, so dCL cannot show the win; first paint is
+         when the terminal shell actually appears on the glass. */
+      performance.getEntriesByType("paint").forEach(function(e){
+        if(e.name === "first-contentful-paint") nav.fcp = Math.round(e.startTime);
+        if(e.name === "first-paint") nav.fp = Math.round(e.startTime);
+      });
     } catch(e){}
     var rows = Object.keys(acc).map(function(k){
       var a = acc[k];
@@ -303,7 +310,9 @@ def main():
     r = RESULT[0]
     print("\noontz.sh main thread  ·  %dx CPU throttle%s  ·  390x844  ·  %d scripts  ·  playing=%s"
           % (a.throttle, "" if ok else " (NOT APPLIED)", r["scripts"], r["playing"]))
-    print("boot: ttfb %(ttfb)sms  domContentLoaded %(dom)sms  load %(load)sms" % r["nav"])
+    n = r["nav"]
+    print("boot: ttfb %sms  FIRST PAINT %sms  domContentLoaded %sms  load %sms"
+          % (n.get("ttfb"), n.get("fcp", n.get("fp")), n.get("dom"), n.get("load")))
     print("\nsampled %dms  ·  animation work %dms (%d%% of the thread)"
           % (r["span"], r["busy"], r["busyPct"]))
     print("  %-22s %7s %6s %6s %8s" % ("loop", "ms", "frames", "fps", "worst"))
