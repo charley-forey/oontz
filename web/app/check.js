@@ -788,6 +788,19 @@ Object.keys(MX.AREAS).forEach(function(k){
       "layout " + k + " places `" + area + "` but no rule assigns grid-area:" + area);
   });
 });
+/* ...and the reverse, which is the one that actually bit: a pane whose area is NOT
+   named by a template does not hide. Grid auto-places it into an IMPLICIT column
+   beside the explicit one, and that column eats the width out of the minmax(0,1fr)
+   tracks - `master` was missing from both phone templates, so the whole deck squeezed
+   into a ~50px strip on a phone. Every pane, in every template, or it is a bug. */
+var PANES = (mixSrc.match(/grid-area:([a-z]+)/g) || []).map(function(m){ return m.split(":")[1]; });
+A.ok(PANES.length >= 6, "expected every mixer pane to declare a grid-area");
+Object.keys(MX.AREAS).forEach(function(k){
+  PANES.forEach(function(area){
+    A.ok((MX.AREAS[k].match(/[a-z]+/g) || []).indexOf(area) >= 0,
+      "layout " + k + " never places `" + area + "` - it will auto-place into an implicit track and squash the grid");
+  });
+});
 A.deepStrictEqual(MX.LOOPS, [1,2,4,8,16], "loop lengths");
 A.ok(MX.JUMPS.indexOf(-8) >= 0 && MX.JUMPS.indexOf(8) >= 0, "beat jump needs both directions");
 A.ok(/<script src="mixer.js" defer><\/script>/.test(pageSrc),

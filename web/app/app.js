@@ -1618,7 +1618,7 @@ function palRender(){
       esc(it[0])+'</span><span class="pd">'+esc(it[1])+'</span></div>'; }).join('');
   var sel = PALLIST.querySelector('.sel'); if(sel) sel.scrollIntoView({block:'nearest'});
 }
-function openPal(){ PAL.classList.add('on'); document.body.classList.add('palout'); PALIN.value=''; PALSEL=0; palRender(); PALIN.focus(); }
+function openPal(){ PAL.classList.add('on'); PAL.dataset.from = ''; document.body.classList.add('palout'); PALIN.value=''; PALSEL=0; palRender(); PALIN.focus(); }
 function closePal(){ PAL.classList.remove('on'); document.body.classList.remove('palout');
   if(MODE === 'deck') IN.blur(); else IN.focus(); }   /* focusing the prompt would re-deafen the deck keys */
 function palRun(){ var it = PALROWS[PALSEL]; if(!it) return; closePal(); run(it[2]); }
@@ -1634,7 +1634,15 @@ PALLIST.addEventListener('click', function(e){
   var row = e.target.closest('.pi'); if(!row) return;
   PALSEL = +row.dataset.i; palRun();
 });
-PAL.addEventListener('click', function(e){ if(e.target === PAL) closePal(); });
+/* Dismiss only if the press STARTED on the backdrop. A tap is one gesture, but the
+   click it produces is hit-tested where the finger LIFTS - and ⌘ opens the palette on
+   pointerdown, so by the time the finger comes up the overlay is already covering the
+   button. The click then landed on #pal and shut the palette in the same tap: on a
+   phone the command button simply did not work. (Mouse users never saw it: a click
+   whose down and up have different targets is dispatched on their common ancestor.)
+   It also stops a drag that starts in the input and ends on the backdrop from closing. */
+PAL.addEventListener('pointerdown', function(e){ PAL.dataset.from = e.target === PAL ? '1' : ''; });
+PAL.addEventListener('click', function(e){ if(e.target === PAL && PAL.dataset.from === '1') closePal(); });
 var EAR = window.OONTZ_EAR;
 function sev(k){ return {good:'<span class="ok">  ✓ ', warn:'<span class="w">  ! ',
                          bad:'<span class="hot">  ✗ '}[k] || '<span class="dim">  '; }
