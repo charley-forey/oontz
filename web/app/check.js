@@ -671,8 +671,18 @@ A.ok(/function ev\(n, p\)[\s\S]{0,200}OONTZ_TRACK/.test(pageSrc), "ev() must bri
 A.ok(pageSrc.indexOf("ev('prompt_submit'") >= 0 && /prompt_submit'[\s\S]{0,120}text:/.test(pageSrc),
   "prompt_submit must carry the typed text - it is the whole point");
 ["cmd_result", "ai_ask", "ai_result", "ai_accept", "ai_reject", "ai_undo", "play", "stop",
- "audio_blocked", "song_save", "song_publish", "signin_request", "signin_done", "claim"].forEach(function(n){
+ "audio_blocked", "song_save", "song_publish", "signin_request", "signin_done", "claim",
+ "feedback"].forEach(function(n){
   A.ok(pageSrc.indexOf("ev('" + n + "'") >= 0, "index.html never fires ev('" + n + "')"); });
+/* `feedback` is only worth having if it is findable and it answers. An event
+   nobody can discover and a command that says nothing back both collect silence. */
+A.ok(/feedback: function\(a\)[\s\S]{0,400}ev\('feedback'/.test(pageSrc),
+  "the feedback command must fire ev('feedback')");
+A.ok(/feedback: function\(a\)[\s\S]{0,400}slice\(0, 500\)/.test(pageSrc),
+  "feedback text must be capped before it is sent");
+A.ok(/\["feedback /.test(fs2.readFileSync(path2.join(__dirname, "copy.js"), "utf8")),
+  "feedback is missing from copy.js's help table, so nobody will ever find it");
+
 var swSrc = fs2.readFileSync(path2.join(__dirname, "sw.js"), "utf8");
 A.ok(/CORE[\s\S]{0,300}"\/track\.js"/.test(swSrc), "sw.js CORE must cache /track.js, or the PWA loads without it");
 

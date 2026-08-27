@@ -40,8 +40,11 @@ Delete this section to resume.
       make an account.** `python scripts/mailcheck.py --verify` reports status.
 - [ ] **Open oontz.sh on a phone.** Half of any launch traffic is mobile and nobody
       has checked. Not a build - a look.
-- [ ] **A `feedback <text>` command** that logs an event through the existing `POST /e`.
-      The only channel where someone says why they left.
+- [x] **A `feedback <text>` command** — done. Fires `ev('feedback')` through the
+      existing `POST /e`, and `/admin/summary` carries a `feedback` list so reading it
+      needs no SQL. Typing anything already landed in `prompt_submit`; what this adds
+      is a findable name and an answer back, which is the half that makes someone
+      bother saying anything.
 
 ### Known-red, not mine (2026-08-26)
 

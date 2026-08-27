@@ -218,6 +218,7 @@ C.help = [
   ["share",                  "a link anyone can open and flip. no account needed"],
   ["link",                   "the whole song IN the url. no server involved at all"],
   ["clip",                   "ten seconds of it as a video, visuals and sound"],
+  ["feedback it broke on my phone", "what you think. good, bad, broken. no account needed"],
   ["repo",                   "the source. all of it, including the synth"],
   ["language",               "the research article: why any of this works. 21,000 words"],
   ["terms",                  "the deal, in plain english. `privacy` is the other half"],

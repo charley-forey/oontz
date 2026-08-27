@@ -579,6 +579,13 @@ def admin_summary(window: int = 30, x_admin_key: str = Header(default="")):
         top_ips = q("""SELECT ip, COUNT(*) n, COUNT(DISTINCT sid) sessions
                        FROM events WHERE ts>=? AND ip IS NOT NULL AND ip!=''
                        GROUP BY ip ORDER BY n DESC LIMIT 50""")
+        # Free text somebody typed on purpose. The events table has carried it since
+        # `feedback` shipped; a summary nobody has to write SQL against is the whole
+        # difference between collecting it and reading it.
+        feedback = q("""SELECT ts, sid, site, json_extract(props,'$.text') text
+                        FROM events WHERE ts>=? AND name='feedback'
+                          AND json_extract(props,'$.text') IS NOT NULL
+                        ORDER BY ts DESC LIMIT 50""")
         errors = q("""SELECT id,ts,sid,site,name,props,path FROM events
                       WHERE ts>=? AND name IN ('error','api_error')
                       ORDER BY ts DESC LIMIT 50""")
@@ -596,7 +603,7 @@ def admin_summary(window: int = 30, x_admin_key: str = Header(default="")):
             "dau": dau, "wau": wau, "sessions_per_device": per_device,
             "median_session_sec": round(median["d"], 1) if median else None,
             "commands": commands, "funnel": funnel, "top_ips": top_ips,
-            "recent_errors": errors}
+            "feedback": feedback, "recent_errors": errors}
 
 
 # ------------------------------------------------------------------- routes

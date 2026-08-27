@@ -705,6 +705,16 @@ var CMDS = {
   privacy: function(){ block(OONTZ_LEGAL.privacy); },
   /* track.js reads the flag once at load, so this cannot stop a tracker that is
      already running - say so instead of pretending. */
+  /* Typing anything already lands in prompt_submit, so this is not a new pipe -
+     it is a findable name for the one that exists, and an acknowledgement, which
+     is the half that makes someone bother saying anything at all. Honours notrack
+     and DNT like everything else, because ev() does. */
+  feedback: function(a){
+    var t = a.join(' ').trim().slice(0, 500);
+    if(!t) return line('feedback <what you think> · good, bad, what broke. no account needed.','w');
+    ev('feedback', {text: t, chars: t.length});
+    line('▸ got it. thank you — these get read.','ok');
+  },
   notrack: function(){
     var off;
     try{
