@@ -165,7 +165,27 @@ addEventListener('pointerdown', function ab(){
    without a gesture, so do not pretend: say what it is, then ask for the one tap.
    The alternative - what the share page used to do - is a timer that "plays" into
    a suspended context, and a visitor who concludes it is broken. */
-function armPlay(title, meta, id){
+/* The track a first-time visitor arrives holding. Hardcoded, not composed: this
+   runs on the boot path we just spent a refactor clearing, and CO.compose is real
+   CPU. It is also the exact song the README opens with, which is the point - ten
+   lines of text that are a whole track, on screen, before anything is explained. */
+function starterSong(){
+  return {name: 'warehouse', bpm: 132, swing: 6, key: 'a', scale: 'minor',
+    order: ['loop'],
+    sections: {loop: {bars: 16, role: 'drop', energy: 0.8,
+      order: ['kick', 'hat', 'oh', 'clap', 'bass'],
+      tracks: {
+        kick: {voice: 'kick', pat: 'X...x...X...x..x', gain: 1},
+        hat:  {voice: 'hat',  pat: '..x...x...x.x.x.', gain: 0.8},
+        oh:   {voice: 'oh',   pat: '......x.......x.', gain: 0.7},
+        clap: {voice: 'clap', pat: '....x.......x...', gain: 0.9},
+        bass: {voice: 'bass', pat: 'X.x.x.x.X.x.x.x.', gain: 1,
+               notes: ['a1!', '.', 'a1~', '.', 'c2', '.', 'a1', '.',
+                       'g1!', '.', 'a1~', '.', 'c2', '.', 'd2', '.']}
+      }}}};
+}
+
+function armPlay(title, meta, id, then){
   NOWID = id || '';
   w('<span class="b">▸ '+esc(title||'a track')+'</span>' +
     (meta ? ' <span class="dim">'+esc(meta)+'</span>' : ''));
@@ -176,9 +196,10 @@ function armPlay(title, meta, id){
     document.removeEventListener('keydown', go, true);
     E.start(); run('play'); ev('share_play', {id: id || ''});
     if(id) fetch(API+'/songs/'+encodeURIComponent(id)+'/play',{method:'POST'}).catch(function(){});
+    if(then) then();                             /* the tap is step one; `then` asks for step two */
   };
   if(E.ctx && E.ctx.state === 'running') return go();
-  w('<span class="a">  ▶ tap anywhere to hear it</span>');
+  w('<span class="a">  ▶ ' + esc(CP.first_tap || 'tap anywhere to hear it') + '</span>');
   document.addEventListener('pointerdown', go, true);
   document.addEventListener('keydown', go, true);
 }
@@ -399,7 +420,12 @@ var LOGO = ["  ▄▄▄   ▄▄▄  ▄▄▄▄▄ ▄▄▄▄▄ ▄▄▄�
             " █   █ █   █ █   █   █   ▄▀        ▄    █ █   █",
             "  ▀▀▀   ▀▀▀  ▀   ▀   ▀   ▀▀▀▀▀▀   ▀ ▀▀▀▀ ▀   ▀"];
 
-function loadSong(sg, why){
+/* `nograde` exists for exactly one caller: the first-run arrival. The grader marks
+   ARRANGEMENTS - sections, energy curve, where the drop lands - and the starter is
+   deliberately a sixteen-bar loop, which it scores 12/100. Telling a stranger the
+   track they have not yet heard is 12/100 is a bad five seconds and, worse, it is
+   not even the question being asked. `grade` still answers honestly on demand. */
+function loadSong(sg, why, nograde){
   REMIX_OF = null;                               /* a fresh song owes nobody, until `remix` says so */
   SHARED_ID = '';                                /* nor is it the song the last link points at */
   /* play() reports the context state now. Printing the banner regardless of it is
@@ -412,8 +438,9 @@ function loadSong(sg, why){
     OZ.totalBars(sg)+' bars · '+mmss(songSeconds(sg))+' · '+Math.round(sg.bpm)+
     ' BPM · '+esc(sg.key+' '+sg.scale)+' · '+sg.order.length+' sections</span>');
   w('<span class="dim">  '+esc(sg.order.join(' → '))+'</span>');
-  w('<span class="'+(sc>75?'ok':(sc>45?'w':'hot'))+'">  theory says '+sc+'/100</span>'+
-    '<span class="dim">   type <span class="a">grade</span> for the full verdict</span>');
+  if(!nograde)
+    w('<span class="'+(sc>75?'ok':(sc>45?'w':'hot'))+'">  theory says '+sc+'/100</span>'+
+      '<span class="dim">   type <span class="a">grade</span> for the full verdict</span>');
   if(why) w('<span class="dim">  '+esc(why)+'</span>');
   if(!live) w('<span class="a">  ▶ tap anywhere to hear it</span>');
   line();
@@ -1504,6 +1531,10 @@ function musical(cmd){
   return MUSICAL.indexOf(v) >= 0 || !!(E.tracks && E.tracks[v]) || !!OZ.VOICES[v];
 }
 var TEACH = false, TOLD = {}, LESSON_AT = -1;
+/* Set for a first-time visitor's very first pattern edit, and cleared by it: the
+   moment they change a character and hear it, they have done the whole idea, and
+   that is the one moment worth naming. */
+var FIRSTEDIT = false;
 
 /* ---------------------------------------------------------- teaching by doing */
 /* One line, the first time you touch a thing. Never twice - a tutor that repeats
@@ -1781,7 +1812,14 @@ function runCmd(raw){
       if(!/^[xXoO.\-?]+$/.test(pat)) return line(CP.err_pattern,'w');
       E.setTrack(v,{pat:pat}); }
     if(!E.playing) E.play(); draw();
-    line('▸ '+v+' '+args.join(' '),'dim'); teach(v); setTimeout(lessonCheck, 60); return; }
+    line('▸ '+v+' '+args.join(' '),'dim');
+    if(FIRSTEDIT){                               /* they just did the whole idea; say so once */
+      FIRSTEDIT = false;
+      line();
+      w('<span class="ok">  ' + esc(CP.first_after || 'you just edited music by typing.') + '</span>');
+      ev('first_run', {step: 'edited', verb: v});
+    }
+    teach(v); setTimeout(lessonCheck, 60); return; }
   if(v === 'bpm' && args[0] === '420'){ var rr = CMDS.bpm(['420']); line('medicinal.','dim'); return rr; }
   if(CMDS[v]){ var r = CMDS[v](args); teach(v); setTimeout(lessonCheck, 60); return r; }
   if(s.toLowerCase().indexOf('boots and cats') === 0){
@@ -1792,8 +1830,31 @@ function runCmd(raw){
   if(v === 'sudo') return line(CP.egg_sudo || 'this incident will be reported to the groove authorities.','w');
   var dym = didYouMean(v, Object.keys(CMDS).concat(Object.keys(E.tracks || {})));
   if(dym) return w('<span class="w">no `'+esc(v0)+'`. did you mean <span class="k">'+esc(dym)+'</span>?</span>');
+  /* Plenty of people arrive assuming this is a chatbot and type a sentence. That
+     used to resolve to a verb like `how`, miss the typo table above, and print
+     "how: no" - a dead end, with the AI that could have answered it one invisible
+     word away. A greeting gets a greeting; anything sentence-shaped gets asked. */
+  if(GREETING.test(v)) return w('<span class="dim">  '+esc(CP.nl_hello ? CP.nl_hello(v0)
+    : 'this is an instrument, not a chatbot — try `go`.')+'</span>');
+  if(looksLikeProse(s, parts)){
+    line(CP.nl_route || 'not a command — passing it to the AI.','dim');
+    ev('nl_fallback', {words: parts.length, q: s.slice(0, 120)});
+    return CMDS.ask(parts);
+  }
   line(CP.err_cmd?CP.err_cmd(v0):v0+': no', 'w');
 }
+var GREETING = /^(hi|hey|hello|yo|sup|hiya|howdy|thanks|thankyou|ta|cheers|ok|okay|lol|wow|nice|cool)$/;
+/* Sentence-shaped, not command-shaped. Everything the instrument actually takes is
+   a verb plus terse arguments, and every one of those has already been handled by
+   the time this runs - so a question mark, or three-plus words none of which named
+   a track or a verb, is prose. Two words is left alone deliberately: `foo bar` is
+   far more likely a typo'd command than a question, and didYouMean owns that. */
+function looksLikeProse(s, parts){
+  if(/\?\s*$/.test(s)) return true;
+  if(parts.length < 3) return false;
+  return /^[a-z' ]+$/i.test(s.replace(/[.,!?]/g, ''));   /* words, not patterns like x..x */
+}
+
 /* one-typo forgiveness: closest verb within edit distance 1 (2 for long words) */
 function didYouMean(v, verbs){
   if(v.length < 3) return null;
@@ -2190,15 +2251,23 @@ addEventListener('beforeunload', function(){ try{ if(song) localStorage.setItem(
     history.replaceState(null,'',location.pathname+location.search); } })();
 
 (async function boot(){
+  /* Read this BEFORE anything prints: a first-timer gets a track, not a menu.
+     The menu is five verbs to read before you have heard a sound, and the funnel
+     said 77% of arrivals never typed a character. Anyone who has been here keeps
+     the screen they know. */
+  var firstTime = false;
+  try{ firstTime = !localStorage.getItem('oontz_seen'); }catch(e){}
   LOGO.forEach(function(l){ w('<span class="a2">'+esc(l)+'</span>','big'); });
   line();
   await type(CP.tagline||'techno from a command line.','b',13);
   line();
   (CP.boot||[]).forEach(function(t){ w('<span class="dim">  '+esc(t)+'</span>'); });
   line();
-  (CP.menu||[]).forEach(function(kv){
-    w('  <span class="k">'+esc(kv[0])+'</span><span class="dim">'+esc(kv[1])+'</span>'); });
-  line();
+  if(!firstTime){
+    (CP.menu||[]).forEach(function(kv){
+      w('  <span class="k">'+esc(kv[0])+'</span><span class="dim">'+esc(kv[1])+'</span>'); });
+    line();
+  }
   if(token){ w('<span class="dim">  signed in. <span class="a">share</span> puts a track in the gallery.</span>');
     claimAll(); }
   /* A whole song carried in the fragment: no id, no server, nothing to look up. */
@@ -2238,10 +2307,24 @@ addEventListener('beforeunload', function(){ try{ if(song) localStorage.setItem(
   /* A first-time visitor gets taught, once. Anyone who has been here keeps the
      screen they know. */
   try{
-    if(!localStorage.getItem('oontz_seen')){
+    if(firstTime){
       localStorage.setItem('oontz_seen', '1');
       TEACH = true;
-      w('<span class="dim">  first time? <span class="a">learn</span> builds a track with you in about a minute. <span class="a">Ctrl+K</span> finds anything.</span>');
+      /* Arrive holding the track. loadSong puts every pattern in the rack, so the
+         source IS on screen; armPlay makes hearing it one tap; and the only thing
+         asked for is one character back, on a line they can already see. */
+      var FIRST = 'kick x.x.x.x.x.x.x.x.';        // double time: unmistakable, and one edit
+      loadSong(starterSong(), CP.first_hello, true);
+      armPlay(song.name, Math.round(song.bpm) + ' bpm · ' + song.key + ' ' + song.scale,
+              '', function(){
+        line();
+        w('<span class="a">  ' + esc(CP.first_move ? CP.first_move('kick', 'x.x.x.x.x.x.x.x.')
+            : 'now change it: type ' + FIRST) + '</span>');
+        IN.value = ''; IN.focus();
+        FIRSTEDIT = true;
+        ev('first_run', {step: 'played'});
+      });
+      ev('first_run', {step: 'armed'});
     }
   }catch(e){}
   try{ var saved = localStorage.getItem('oontz_song');

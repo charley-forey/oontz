@@ -51,6 +51,23 @@ Delete this section to resume.
       is a findable name and an answer back, which is the half that makes someone
       bother saying anything.
 
+### The first ten seconds (2026-08-27)
+
+- [x] **A first-time visitor arrives holding a track** — was: a blinking prompt, five
+      verbs to read, and no song loaded at all, which is why `go` and `what` were the
+      most-typed things. Now `starterSong()` (the README's warehouse, hardcoded so it
+      costs nothing on the boot path) loads on arrival, every pattern is in the rack,
+      `armPlay` makes hearing it one tap, and the ask is one character back on a line
+      already on screen. The grader is suppressed for that one load: it marks
+      ARRANGEMENTS and scores a 16-bar loop 12/100, which is a bad five seconds and
+      not even the question.
+- [x] **A sentence gets an answer instead of `how: no`** — anything ending in `?`, or
+      three-plus prose words, routes to `CMDS.ask`; greetings get a greeting. The AI
+      ladder existed and was invisible unless you already knew the word `ask`.
+- [ ] **Behavioural first-run test in `test.html`** — the gate asserts on source plus a
+      truth table for `looksLikeProse`; the flow itself was verified by driving a real
+      headless page. Belongs in browsergate proper once test.html is free.
+
 ### Known-red, not mine (2026-08-26)
 
 - [ ] **browsergate: "a fader moves a real AudioParam" fails on clean `main`** — it

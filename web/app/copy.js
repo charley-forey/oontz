@@ -30,6 +30,27 @@ C.boot = [
   "No mouse. No rectangles. No 4GB download. No 'welcome to your journey'."
 ];
 
+/* -- the first ten seconds ------------------------------------------------
+   A first-time visitor used to arrive at a blinking prompt with no song loaded,
+   no sound, and five verbs to read. 77% of arrivals never typed one character.
+   Nothing here explains the idea; the loaded track and one tap do that, and the
+   only thing asked for is a single character back. */
+C.first_hello = "this is a song. not a recording of one — the lines above ARE the track.";
+C.first_tap   = "tap anywhere to hear it";
+C.first_move  = function(track, pat){
+  return "now change it: type " + track + " " + pat + " and press enter.";
+};
+C.first_after = "you just edited music by typing. `what` explains the idea, `go` writes you a whole track, `learn` teaches the rest.";
+
+/* Someone who thinks this is a chatbot types a sentence. It used to resolve to a
+   verb like `how`, miss the typo table, and print "how: no" - a dead end, with the
+   AI that could have answered one invisible word away. */
+C.nl_route   = "not a command — passing it to the AI. (`ask <anything>` does this directly.)";
+C.nl_hello   = function(word){
+  return word + " 👋 this is an instrument, not a chatbot — but it does take plain "
+       + "English: try `ask make me something dark`, or `go` for a whole track.";
+};
+
 C.menu = [
   ["go",      "make a whole song. right now. one command. no notes app required"],
   ["what",    "what is happening to me"],

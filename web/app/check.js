@@ -712,6 +712,30 @@ A.ok(biggestInline < 5000,
   "a large inline script is back in index.html (" + biggestInline +
   " chars) - it cannot be deferred, so it blocks the shell from painting");
 
+/* The first ten seconds. A visitor who has never been here must arrive holding a
+   track, not a menu: the funnel said 77% of arrivals never typed one character. */
+A.ok(/function starterSong\(\)/.test(pageSrc), "there must be a starter song to arrive holding");
+A.ok(/firstTime[\s\S]{0,900}loadSong\(starterSong\(\)/.test(pageSrc),
+  "a first-time visitor must arrive with the starter song loaded");
+A.ok(/firstTime[\s\S]{0,1200}armPlay\(/.test(pageSrc),
+  "the starter song must be one tap from playing - autoplay is blocked without a gesture");
+A.ok(/if\(!firstTime\)\{[\s\S]{0,200}CP\.menu/.test(pageSrc),
+  "the five-verb menu is for people who have been here, not for a first arrival");
+
+/* Sentence in, answer out. This used to print "how: no" and stop. */
+A.ok(/looksLikeProse\(s, parts\)[\s\S]{0,300}CMDS\.ask\(parts\)/.test(pageSrc),
+  "prose must reach the AI instead of dying on the unknown-command line");
+A.ok(pageSrc.indexOf("GREETING.test(v)") >= 0, "a greeting must get a greeting, not `hello: no`");
+var proseSrc = (pageSrc.match(/function looksLikeProse[\s\S]*?\n\}/) || [""])[0];
+A.ok(proseSrc, "looksLikeProse must exist to be checked");
+var looksLikeProse = new Function("return " + proseSrc + "; ")();
+[["how do I make a beat?", true], ["make it darker and faster", true], ["what is this", true],
+ ["kick x...x...x...x...", false], ["bass a1 . a1 . c2 . a1 .", false], ["hat ..x. *4", false],
+ ["helpp", false], ["xyz", false]].forEach(function(t){
+  A.strictEqual(looksLikeProse(t[0], t[0].split(/\s+/)), t[1],
+    JSON.stringify(t[0]) + " should " + (t[1] ? "" : "NOT ") + "be treated as prose");
+});
+
 var swSrc = fs2.readFileSync(path2.join(__dirname, "sw.js"), "utf8");
 A.ok(/CORE[\s\S]{0,300}"\/track\.js"/.test(swSrc), "sw.js CORE must cache /track.js, or the PWA loads without it");
 
