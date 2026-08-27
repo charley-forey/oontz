@@ -383,7 +383,18 @@ var last = 0, lastStep = -1, lastSection = null, pulse = 0, flash = 0, prevBeat 
    whatever the viewport happened to be at that instant: type `watch` on a phone with
    the keyboard up and the canvas kept the keyboard-shrunk height, leaving a black box
    along the bottom once the keyboard went away. Only the backing store needs pixels. */
-function size(){ var d = Math.min(devicePixelRatio || 1, 1.5);
+/* A phone pays for every pixel twice - once to draw it, once to blur it - and this
+   loop was drawing S.symmetry full-screen passes, each under a ~18px shadowBlur,
+   sixty times a second, playing or not. Measured on a 6x-throttled 390x844 page
+   (scripts/perfprobe.py): the main thread was 100% long tasks, worst 912ms, and
+   both animation loops were starved to 1fps. Neutering canvas paint alone took
+   long tasks to zero. So: fewer pixels, fewer passes, and far less blur on a
+   handset - and near-idle when nothing is playing, which is most of the time. */
+var SPEC = null, WAVE = null;      /* reused across frames; see frameFor */
+var SMALL = typeof matchMedia === "function" &&
+  matchMedia("(max-width: 820px), (pointer: coarse)").matches;
+
+function size(){ var d = Math.min(devicePixelRatio || 1, SMALL ? 1 : 1.5);
   var w = cv.clientWidth || innerWidth, h = cv.clientHeight || innerHeight;
   W = cv.width = Math.floor(w * d); H = cv.height = Math.floor(h * d); }
 
@@ -392,8 +403,12 @@ function frameFor(E, now){
            within: 0, bars: 8, left: 8, next: "", energy: 0.3, bands: {sub: 0, bass: 0, mid: 0, high: 0},
            wave: null, spectrum: null, playing: false, kick: false, intensity: S.intensity};
   var c = E.ctx, an = E.analyser;
-  if(an){ f.spectrum = new Uint8Array(an.frequencyBinCount); an.getByteFrequencyData(f.spectrum);
-          f.wave = new Float32Array(an.fftSize); an.getFloatTimeDomainData(f.wave);
+  /* Two typed arrays per frame is two allocations per frame forever; the analyser's
+     sizes never change once it exists, so keep the buffers and refill them. */
+  if(an){ if(!SPEC || SPEC.length !== an.frequencyBinCount) SPEC = new Uint8Array(an.frequencyBinCount);
+          if(!WAVE || WAVE.length !== an.fftSize) WAVE = new Float32Array(an.fftSize);
+          an.getByteFrequencyData(SPEC); an.getFloatTimeDomainData(WAVE);
+          f.spectrum = SPEC; f.wave = WAVE;
           f.bands = bands(f.spectrum, c.sampleRate / an.fftSize); }
   var step = -1;
   if(E.playing && c){
@@ -424,7 +439,12 @@ function frameFor(E, now){
 
 function tick(now){
   raf = requestAnimationFrame(tick);
-  if(now - last < 15) return; last = now;    // ~60fps cap on faster displays
+  /* Idle ambience does not need sixty frames a second. Nothing on screen moves to
+     a beat when there is no beat, so a drift at ~13fps is the same picture for a
+     fraction of the thread - and it is the state the app sits in before anyone
+     presses play, which is exactly when a first-time visitor is judging it. */
+  var live = !!(eng && eng.playing);
+  if(now - last < (live ? 15 : 75)) return; last = now;
   var th = THEMES[S.theme] || THEMES.acid, f = frameFor(eng, now / 1000);
   BREATH.rate = f.playing ? 1 + f.energy * 2.2 : 1;
   if(f.playing !== wantWake) wake(f.playing);
@@ -436,16 +456,22 @@ function tick(now){
   cx.globalCompositeOperation = "lighter";
   /* Every theme has declared a `glow` since the day themes landed and nothing has
      ever read it. It is what separates `mono` from `blacklight` at a glance. */
-  cx.shadowBlur = (th.glow || 0) * 26 * S.intensity;
+  /* shadowBlur is the most expensive call in canvas 2D: it re-blurs the whole path
+     on every stroke. Full strength on a desktop; a token amount on a handset, where
+     it was most of the frame. The look survives - `lighter` compositing is doing
+     most of the glow's work anyway. */
+  cx.shadowBlur = (th.glow || 0) * (SMALL ? 5 : 26) * S.intensity;
   cx.shadowColor = rgba(hex(th.colors[0]), 0.75);
-  for(var k = 0; k < S.symmetry; k++){
+  /* Each pass redraws the entire scene. Four of them is a desktop luxury. */
+  var passes = SMALL ? Math.min(2, S.symmetry) : S.symmetry;
+  for(var k = 0; k < passes; k++){
     f.pass = k; cx.save();
     if(k){
       /* Scale by diagonal/shortest side before rotating. Without it a rotated pass
          maps the wide canvas into a rect that no longer reaches the left and right
          edges - which is why the DEFAULT theme (symmetry 4) letterboxed everything. */
       var cov = Math.hypot(W, H) / Math.max(1, Math.min(W, H));
-      cx.translate(W / 2, H / 2); cx.rotate(k * Math.PI * 2 / S.symmetry);
+      cx.translate(W / 2, H / 2); cx.rotate(k * Math.PI * 2 / passes);
       cx.scale(cov, cov); if(k % 2) cx.scale(1, -1); cx.translate(-W / 2, -H / 2);
     }
     draw(cx, f, th); cx.restore();
