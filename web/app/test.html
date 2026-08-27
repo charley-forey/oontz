@@ -756,6 +756,45 @@ async function until(fn, ms, what){
     W.CMDS.mode(["studio"]);
   });
 
+  /* The first five seconds, counted. This is the test that could not have existed
+     under the harness it runs in: browsergate launches with
+     `--autoplay-policy=no-user-gesture-required`, so E.ctx is ALREADY running,
+     armPlay takes its short-circuit and the arm path never executes. That flag is
+     exactly why a doubled arrival shipped and was "verified". Suspend by hand or you
+     are testing the branch that does not run. */
+  await t("a first arrival is announced once, not twice", async function(){
+    W.CMDS.mode(["studio"]);
+    try { await W.E.ctx.suspend(); } catch(e){}
+    ok(W.E.ctx.state !== "running", "could not suspend the context; this test proves nothing");
+    var out = W.document.getElementById("out");
+    W.run("clear");
+    /* exactly what boot() does on a first arrival */
+    W.loadSong(W.starterSong(), W.CP.first_hello, true);
+    var stepTwo = 0;
+    W.armPlay("", function(){ stepTwo++; });
+    var text = out.textContent;
+    var taps = text.split(W.CP.first_tap).length - 1;
+    eq(taps, 1, "the arrival prompt printed " + taps + " times, not once");
+    var heads = (text.match(/▸ warehouse/g) || []).length;
+    eq(heads, 1, "the track was announced " + heads + " times, not once");
+    ok(text.indexOf("theory says") < 0, "a stranger was graded on a track they have not heard");
+    /* the tap: one gesture, and step two is asked for exactly once */
+    W.document.dispatchEvent(new W.PointerEvent("pointerdown", {bubbles: true}));
+    await sleep(60);
+    eq(stepTwo, 1, "the tap asked for step two " + stepTwo + " times");
+    W.document.dispatchEvent(new W.PointerEvent("pointerdown", {bubbles: true}));
+    await sleep(30);
+    eq(stepTwo, 1, "a second tap re-fired the first-run instruction");
+    /* and when audio is ALREADY unlocked, step two is still owed - the short-circuit
+       path is the one a returning visitor with a live context takes */
+    try { await W.E.ctx.resume(); } catch(e){}
+    var again = 0;
+    W.armPlay("", function(){ again++; });
+    eq(again, 1, "with audio already running, `then` never fired - the instruction is lost");
+    W.E.stop();
+    return "announced once, prompted once, step two asked once on both paths";
+  });
+
   await t("the palette gives the log back, so a typed command is visible", function(){
     W.CMDS.mode(["deck"]);
     W.openPal();

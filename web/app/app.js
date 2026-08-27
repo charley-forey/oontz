@@ -185,10 +185,16 @@ function starterSong(){
       }}}};
 }
 
-function armPlay(title, meta, id, then){
+/* Wires the next gesture; prints NOTHING. It used to print a `▸ title meta` header
+   and "tap anywhere to hear it" - but all three callers run it immediately after
+   loadSong, which already announces the track and already prints that same line, so
+   a first arrival was announced twice and told to tap twice. loadSong's line is the
+   truthful one on every path, not just these three: OZ.armAudio() registers a
+   capture-phase unlock that resumes the context on any gesture and never removes
+   itself. What is left here is the part that was never visible - NOWID, the play
+   count, the share_play event, and `then`. */
+function armPlay(id, then){
   NOWID = id || '';
-  w('<span class="b">▸ '+esc(title||'a track')+'</span>' +
-    (meta ? ' <span class="dim">'+esc(meta)+'</span>' : ''));
   var fired = false;
   var go = function(){
     if(fired) return; fired = true;
@@ -198,8 +204,9 @@ function armPlay(title, meta, id, then){
     if(id) fetch(API+'/songs/'+encodeURIComponent(id)+'/play',{method:'POST'}).catch(function(){});
     if(then) then();                             /* the tap is step one; `then` asks for step two */
   };
+  /* Already running - the tap has effectively happened, so `then` still owes its
+     step two. loadSong prints no prompt in this case either; the two agree. */
   if(E.ctx && E.ctx.state === 'running') return go();
-  w('<span class="a">  ▶ ' + esc(CP.first_tap || 'tap anywhere to hear it') + '</span>');
   document.addEventListener('pointerdown', go, true);
   document.addEventListener('keydown', go, true);
 }
@@ -442,7 +449,7 @@ function loadSong(sg, why, nograde){
     w('<span class="'+(sc>75?'ok':(sc>45?'w':'hot'))+'">  theory says '+sc+'/100</span>'+
       '<span class="dim">   type <span class="a">grade</span> for the full verdict</span>');
   if(why) w('<span class="dim">  '+esc(why)+'</span>');
-  if(!live) w('<span class="a">  ▶ tap anywhere to hear it</span>');
+  if(!live) w('<span class="a">  ▶ ' + esc(CP.first_tap || 'tap anywhere to hear it') + '</span>');
   line();
   draw();
 }
@@ -2283,9 +2290,9 @@ addEventListener('beforeunload', function(){ try{ if(song) localStorage.setItem(
   if(sm){
     try{
       var sg = await OZ.unpackSong(sm[1]);
-      loadSong(sg, 'from a link');
+      loadSong(sg, 'someone sent you this whole song in a URL');
       ev('share_open', {kind:'url'});
-      armPlay(sg.name || 'a track', 'someone sent you this whole song in a URL');
+      armPlay('');
       IN.focus(); return;
     }catch(e){ line('that link is damaged — ask for it again','w'); }
   }
@@ -2298,10 +2305,9 @@ addEventListener('beforeunload', function(){ try{ if(song) localStorage.setItem(
       var dr = await fetch(API+'/songs/'+encodeURIComponent(deep));
       var dj = await dr.json();
       if(dj && dj.data){
-        loadSong(dj.data, 'from the gallery');
+        loadSong(dj.data, 'from the gallery · by ' + (dj.by || '?'));
         ev('share_open', {kind:'id', id: deep});
-        armPlay(dj.title || dj.data.name, [Math.round(dj.bpm||0)+' bpm', dj.key,
-                'by '+(dj.by||'?')].filter(Boolean).join(' · '), deep);
+        armPlay(deep);
         IN.focus(); return;
       }
       /* a dead id used to fall through in silence, which reads as a broken site */
@@ -2323,8 +2329,7 @@ addEventListener('beforeunload', function(){ try{ if(song) localStorage.setItem(
          asked for is one character back, on a line they can already see. */
       var FIRST = 'kick x.x.x.x.x.x.x.x.';        // double time: unmistakable, and one edit
       loadSong(starterSong(), CP.first_hello, true);
-      armPlay(song.name, Math.round(song.bpm) + ' bpm · ' + song.key + ' ' + song.scale,
-              '', function(){
+      armPlay('', function(){
         line();
         w('<span class="a">  ' + esc(CP.first_move ? CP.first_move('kick', 'x.x.x.x.x.x.x.x.')
             : 'now change it: type ' + FIRST) + '</span>');
