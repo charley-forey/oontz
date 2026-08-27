@@ -25,6 +25,26 @@ the Host column is exactly what is written here — no trailing `.oontz.sh`.
 All three sit on subdomains, so **none of them touches the apex ALIAS that points
 oontz.sh at Railway**. The website is unaffected.
 
+## Namecheap hides the MX type
+
+There is no "MX Record" in the Type dropdown until the domain is in **Custom MX**
+mode. Scroll past the Host Records table to **MAIL SETTINGS**; the dropdown there
+starts on *Email Forwarding*, which owns the apex MX records and hides the type.
+
+Switching to Custom MX **deletes the forwarding MX records**. As of 2026-08-26
+oontz.sh had the full Namecheap set live, so re-add these by hand on host `@` if
+anything actually forwards to an address at this domain (`hello@oontz.sh` is the
+seeder's house account):
+
+    eforward1.registrar-servers.com   10
+    eforward2.registrar-servers.com   10
+    eforward3.registrar-servers.com   10
+    eforward4.registrar-servers.com   15
+    eforward5.registrar-servers.com   20
+
+The Resend MX sits on `send`, not the apex, so it does not compete with these -
+they coexist in the same Custom MX table.
+
 The DKIM value is one line with no spaces. Namecheap sometimes wraps it in the
 input box; that is display only. If it rejects the length, paste without any
 surrounding quotes.
