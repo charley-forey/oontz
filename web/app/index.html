@@ -115,7 +115,9 @@
   #bar{position:relative;display:flex;align-items:center;gap:8px;margin-top:6px;padding:8px 9px;
     background:var(--plate);border:1px solid var(--line);border-radius:5px}
   #ps1{color:var(--accent2);white-space:nowrap}
-  #in{flex:1;background:none;border:0;outline:0;color:var(--bright);font:inherit;
+  /* min-width:0 or nothing: a flex item will not shrink below an <input>'s own
+     default ~180px, so on a 320px phone the prompt pushed the page sideways. */
+  #in{flex:1;min-width:0;background:none;border:0;outline:0;color:var(--bright);font:inherit;
     caret-color:var(--accent2)}
   /* "jump to now" - shown only while you are reading history */
   #tail{position:absolute;right:26px;bottom:96px;z-index:5;display:none;cursor:pointer;
@@ -205,6 +207,11 @@
   #gobtn{display:none;font:inherit;color:var(--accent);background:none;
     border:1px solid var(--accent);border-radius:8px;padding:4px 12px;min-height:36px;
     touch-action:manipulation}
+  /* The way out of DECK and the way to every command, in the top corner of a phone -
+     the two hardest pixels on the device to hit, at 28x26. Nothing else in deck mode
+     is smaller than 36. */
+  @media (pointer: coarse){ #deckbar button{min-height:44px;min-width:46px;padding:6px 11px}
+    #deckbar{top:4px;right:6px;gap:6px} }
   @media (pointer: coarse){ #in,#bar{font-size:16px} #out .k{padding:5px 0} #gobtn{display:inline-block} }
   @media (prefers-reduced-motion:reduce){#bg{display:none}#viz{opacity:.35}}
 </style>

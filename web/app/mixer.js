@@ -25,10 +25,15 @@ var JUMPS = [-8, -4, -1, 1, 4, 8];
 
 /* grid-template-areas per breakpoint. Deck panels are minmax(0,1fr) everywhere or
    the canvases refuse to shrink and push the prompt off the screen. */
+/* Every pane MUST appear in every template. A pane whose area is missing does not
+   hide - it auto-places into an IMPLICIT column beside the explicit grid, and that
+   column takes its width out of the 1fr ones. `master` was missing from both phone
+   templates, which is why the whole deck squeezed into a ~50px strip on a phone and
+   spilled off the side in landscape. check.js now asserts the set. */
 var AREAS = {
   desktop: '"wavea master waveb" "decka mixer deckb" "browse browse browse"',
-  portrait: '"wavea" "decka" "mixer" "deckb" "waveb" "browse"',
-  landscape: '"wavea waveb" "decka deckb" "mixer mixer"'
+  portrait: '"master" "wavea" "waveb" "decka" "deckb" "mixer" "browse"',
+  landscape: '"master master" "wavea waveb" "decka deckb" "mixer mixer" "browse browse"'
 };
 
 g.OONTZ_MIXER = {AREAS: AREAS, EQ_BANDS: EQ_BANDS, LOOPS: LOOPS, JUMPS: JUMPS};
@@ -47,17 +52,39 @@ var CSS = [
 "body.deck.palout #mixer{display:none}",
 "body.deck.palout #out{display:flex}",
 "body.deck #wrap{max-width:none;padding:8px}",
+/* ⌘ and ✕ studio move INTO the master pane (see build()). They were absolutely
+   positioned over #stage, which meant they overlapped the HUD's first line on a
+   phone AND pinned the HUD to the screen just to have something to sit on. In the
+   flow of a pane they cannot overlap anything at any width, and #stage becomes free
+   to disappear where there is no room for it. */
+"#mixer .master #deckbar{position:static;display:flex;margin-left:auto}",
+/* Narrow: the actions keep the first line and the beatmatch readout takes its own,
+   instead of `margin-left:auto` eating the slack and wrapping ✕ studio onto a line
+   of its own with a band of empty pane above it. */
+/* The deck HUD goes on a phone. It spent 97px of portrait and 70 of landscape
+   restating two names, two BPMs and a crossfader that the panes below already show;
+   its one unique reading, the section, now sits on the deck it belongs to. This rule
+   lives in the stylesheet mixer.js injects, and build() rehouses ⌘/✕ into the master
+   pane in the same call - so if the mixer ever fails to build, neither happens and
+   the HUD keeps the only way out on screen. */
+"@media (max-width:899px){body.deck #stage{display:none}",
+  "#mixer .master{gap:8px}",
+  "#mixer .drift{order:9;flex:1 0 100%;margin:0}",
+  "#mixer .master #deckbar{margin-left:auto}}",
 "body.deck #touch{display:none}",
 "#mixer .pane{background:var(--plate);border:1px solid var(--line);border-radius:5px;",
-  "backdrop-filter:blur(7px);-webkit-backdrop-filter:blur(7px);padding:6px 8px;min-width:0;min-height:0}",
+  "backdrop-filter:blur(7px);-webkit-backdrop-filter:blur(7px);padding:6px 8px;min-width:0}",
 "#mixer .wave{grid-area:wavea;position:relative;min-height:54px}",
 "#mixer .wave.b{grid-area:waveb}",
-"#mixer canvas{display:block;width:100%;height:100%;min-height:48px;border-radius:3px;touch-action:none;cursor:pointer}",
-"#mixer .deck{grid-area:decka;display:flex;flex-direction:column;gap:4px;overflow:auto;scrollbar-width:thin}",
+/* pan-y, not none. Scrubbing is a HORIZONTAL drag, and on a phone the waveform is a
+   full-width band sitting exactly where a thumb lands to scroll the deck. `none` made
+   every attempt to scroll past it scrub the track instead. Same for the faders. */
+"#mixer canvas{display:block;width:100%;height:100%;min-height:48px;border-radius:3px;touch-action:pan-y;cursor:pointer}",
+"#mixer .deck{grid-area:decka;display:flex;flex-direction:column;gap:4px}",
 "#mixer .deck.b{grid-area:deckb}",
-"#mixer .mix{grid-area:mixer;display:flex;flex-direction:column;gap:4px;align-items:stretch;overflow:auto;scrollbar-width:thin}",
+"#mixer .mix{grid-area:mixer;display:flex;flex-direction:column;gap:4px;align-items:stretch}",
 "#mixer .master{grid-area:master;display:flex;align-items:center;gap:10px;flex-wrap:wrap}",
-"#mixer .browse{grid-area:browse;overflow:auto;min-height:0}",
+"#mixer .browse{grid-area:browse}",
 /* rows of controls */
 "#mixer .row{display:flex;align-items:center;gap:3px;flex-wrap:wrap}",
 "#mixer .ttl{display:flex;align-items:baseline;gap:8px;min-width:0}",
@@ -66,7 +93,7 @@ var CSS = [
 "#mixer .tag{color:var(--accent)} #mixer .deck.b .tag{color:var(--accent2)}",
 /* buttons: same vocabulary as .chip, sized for a thumb */
 "#mixer button{font:inherit;font-size:.78em;line-height:1;color:var(--dim);background:rgba(255,255,255,.04);",
-  "border:1px solid var(--line);border-radius:5px;padding:6px 7px;min-height:32px;min-width:32px;",
+  "border:1px solid var(--line);border-radius:5px;padding:6px 7px;min-height:36px;min-width:36px;",
   "cursor:pointer;touch-action:manipulation}",
 "#mixer button:hover{color:var(--bright);border-color:var(--accent)}",
 "#mixer button.on{background:var(--accent);border-color:var(--accent);color:var(--bg)}",
@@ -76,7 +103,7 @@ var CSS = [
 "#mixer button:disabled{opacity:.35;cursor:default}",
 /* ranges: horizontal by default, vertical where there is height to use */
 "#mixer input[type=range]{-webkit-appearance:none;appearance:none;background:transparent;margin:0;",
-  "width:100%;min-width:44px;height:22px;touch-action:none}",
+  "width:100%;min-width:44px;height:22px;touch-action:pan-y}",
 "#mixer input[type=range]::-webkit-slider-runnable-track{height:4px;border-radius:2px;background:var(--line)}",
 "#mixer input[type=range]::-moz-range-track{height:4px;border-radius:2px;background:var(--line)}",
 "#mixer input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:16px;height:16px;margin-top:-6px;",
@@ -92,6 +119,16 @@ var CSS = [
 "#mixer .ch .row{flex-wrap:nowrap}",
 "#mixer .row input[type=range]{flex:1 1 50px;width:auto;min-width:50px}",
 "#mixer .trow{flex-wrap:nowrap}",
+/* The deck switch. Two full-height panels of jump/loop/cues/tempo is 430px of a
+   phone for controls you can only touch one of at a time - so on a phone portrait
+   ONE is shown and this picks which. It is not a new idea: `DECKFOC` already exists,
+   1 and 2 already move it, and `dload` already points it at whatever just loaded.
+   This is that focus made tappable, so the switch and the keyboard cannot disagree.
+   Hidden wherever both panels fit. */
+"#mixer .dsw{display:none;gap:4px;margin-bottom:2px}",
+"#mixer .dsw button{flex:1 1 0;min-width:0;font-size:.9em}",
+"#mixer .row.pads{flex-wrap:nowrap}",
+"#mixer .row.pads button{flex:1 1 0;min-width:0;padding:6px 2px}",
 "#mixer .xf{display:flex;align-items:center;gap:6px}",
 "#mixer .xf input{flex:1}",
 "#mixer .drift{font-size:.8em;color:var(--dim)}",
@@ -107,16 +144,43 @@ var CSS = [
    Phone portrait scrolls the whole panel instead of trying to fit; on a big screen
    everything fits at once and each pane scrolls on its own. */
 "#mixer{grid-template-areas:" + AREAS.portrait + ";grid-template-columns:minmax(0,1fr);",
-  "grid-template-rows:minmax(44px,12vh) auto auto auto minmax(44px,12vh) auto;overflow-y:auto}",
+  /* 12vh each. The performance surface - master, both waveforms, the focused deck and
+   the mixer - now lands within one 390x844 screen, and `browse` is what you scroll
+   down to. Perform above the fold, pick tracks below it. */
+"grid-template-rows:auto 12vh 12vh auto auto auto auto;align-content:start;",
+  "overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain}",
+/* Portrait only. The base block above is shared with landscape, which shows both
+   decks side by side and would gain nothing by folding. */
+"@media (max-width:899px) and (orientation:portrait){#mixer .dsw{display:flex}",
+  "#mixer.foc-a .deck.b{display:none}#mixer.foc-b .deck:not(.b){display:none}}",
 "@media (min-width:900px){#mixer{grid-template-areas:" + AREAS.desktop + ";",
   "grid-template-columns:minmax(0,1fr) minmax(220px,300px) minmax(0,1fr);",
-  "grid-template-rows:minmax(52px,14vh) minmax(0,1fr) minmax(0,15vh);overflow:hidden}",
-  "#mixer .wave{min-height:52px}}",
+  "grid-template-rows:minmax(52px,14vh) minmax(0,1fr) minmax(0,15vh);align-content:stretch;overflow:hidden}",
+  "#mixer .pane{min-height:0}",
+  "#mixer .wave{min-height:52px}",
+  /* Only where everything fits at once does a pane get its own scrollbar. On a phone
+     an inner `overflow:auto` sets the pane's min-content height to ZERO, which lets an
+     `auto` grid row shrink to a third of its content - the deck row showed three
+     buttons out of twenty-eight and never scrolled, because the GRID had not
+     overflowed. Content-height panes, one scroller: the grid. */
+  "#mixer .deck,#mixer .mix,#mixer .browse{overflow:auto;scrollbar-width:thin}}",
+/* A phone on its side is ~340px of usable height and the deck needs more than that.
+   It scrolls - the old `overflow:hidden` did not hide anything, it CLIPPED the mixer
+   and the browser off the bottom with no way to reach them. Rows are content-sized so
+   nothing is squashed to 13px on the way. */
+/* 520, not 560: a 960x560 desktop window is not a phone on its side, and at 560 it
+   was being handed the two-column scrolling layout. Every phone landscape is <=430
+   tall; the tallest thing this needs to catch is a large Android at ~500. */
 "@media (max-height:520px) and (orientation:landscape){#mixer{grid-template-areas:" + AREAS.landscape + ";",
   "grid-template-columns:minmax(0,1fr) minmax(0,1fr);",
-  "grid-template-rows:minmax(38px,22vh) minmax(0,1fr) auto;gap:4px;overflow:hidden}",
-  "#mixer .browse{display:none}#mixer .wave{min-height:38px}",
-  "#mixer button{min-height:30px;padding:5px 6px}}"
+  "grid-template-rows:auto 20vh auto auto auto;gap:4px;overflow-y:auto}",
+
+  /* A 926x428 handset matches min-width:900 as well, and this query wins the areas -
+     so it has to take back the two desktop rules that only make sense when the whole
+     deck fits: panes that may shrink to nothing, and panes that scroll on their own. */
+  "#mixer .pane{min-height:auto}",
+  "#mixer .deck,#mixer .mix,#mixer .browse{overflow:visible}",
+  "#mixer .wave{min-height:46px}}"
 ].join("");
 
 var EL = null, DECKS = {}, RAF = 0, PEAKS = {}, SRC = "mine", LIST = [], BUSY = false;
@@ -128,6 +192,16 @@ function el(tag, cls, txt){
   return d;
 }
 function mmss(s){ s = Math.max(0, Math.round(s || 0)); return Math.floor(s / 60) + ":" + String(s % 60).padStart(2, "0"); }
+/* Which section the head is in. The deck HUD was the only thing that said this, and
+   it said it for both decks in a panel that costs a phone 97px to restate two names,
+   two BPMs and a crossfader the panes below already show. Said here it costs nothing
+   and it belongs to the deck it describes. */
+function sectionAt(r, t){
+  var m = r && r.marks, name = "";
+  if(!m) return "";
+  for(var i = 0; i < m.length; i++){ if(m[i][0] <= t + 1e-6) name = m[i][1] || ""; else break; }
+  return name;
+}
 function E(){ return g.E; }
 function deck(n){ return E().decks()[n]; }
 
@@ -138,6 +212,15 @@ function buildDeck(name){
   var cv = el("canvas"); wrapC.appendChild(cv);
 
   var p = el("div", "pane deck" + (name === "b" ? " b" : ""));
+  var dsw = el("div", "dsw");
+  var swBtns = {};
+  ["a", "b"].forEach(function(other){
+    var t = el("button", null, other.toUpperCase());
+    t.title = "deck " + other.toUpperCase();
+    t.setAttribute("aria-label", "show deck " + other.toUpperCase());
+    t.addEventListener("click", function(e){ e.preventDefault(); g.DECKFOC = other; paint(); });
+    swBtns[other] = t; dsw.appendChild(t);
+  });
   var ttl = el("div", "ttl");
   var tag = el("span", "tag", name.toUpperCase());
   var nm = el("span", "nm", "empty");
@@ -162,7 +245,7 @@ function buildDeck(name){
   transport.appendChild(play); transport.appendChild(cue); transport.appendChild(sync);
 
   /* beat jump */
-  var jumps = el("div", "row");
+  var jumps = el("div", "row pads");
   jumps.appendChild(el("span", "lab", "jump"));
   JUMPS.forEach(function(n){
     jumps.appendChild(btn((n > 0 ? "+" : "") + n, n + " beats", function(){
@@ -171,7 +254,7 @@ function buildDeck(name){
   });
 
   /* loop */
-  var loops = el("div", "row");
+  var loops = el("div", "row pads");
   loops.appendChild(el("span", "lab", "loop"));
   var loopBtns = {};
   LOOPS.forEach(function(n){
@@ -184,7 +267,7 @@ function buildDeck(name){
   });
 
   /* hot cues, seeded from the section marks so they mean something on load */
-  var hots = el("div", "row");
+  var hots = el("div", "row pads");
   hots.appendChild(el("span", "lab", "cues"));
   var hotBtns = [];
   for(var i = 0; i < 8; i++) (function(i){
@@ -213,11 +296,11 @@ function buildDeck(name){
   });
   tempo.appendChild(rate); tempo.appendChild(reset);
 
-  p.appendChild(ttl); p.appendChild(transport); p.appendChild(jumps);
+  p.appendChild(dsw); p.appendChild(ttl); p.appendChild(transport); p.appendChild(jumps);
   p.appendChild(loops); p.appendChild(hots); p.appendChild(tempo);
 
   DECKS[name] = {pane: p, wave: wrapC, cv: cv, nm: nm, num: num, play: play,
-                 loopBtns: loopBtns, hotBtns: hotBtns, rate: rate};
+                 loopBtns: loopBtns, hotBtns: hotBtns, rate: rate, sw: swBtns};
   return [wrapC, p];
 }
 
@@ -482,16 +565,33 @@ function paint(){
   if(!EL || !document.body.classList.contains("deck")) return;
   ["a", "b"].forEach(function(name){
     var D = DECKS[name], d = deck(name);
-    D.nm.textContent = d.r ? String(d.r.name || "untitled") : "empty";
+    var nm = d.r ? String(d.r.name || "untitled") : "empty";
+    if(D.nm.textContent !== nm) D.nm.textContent = nm;
+    var sec = d.r ? sectionAt(d.r, d.pos()) : "";
     D.num.textContent = d.r
       ? d.bpm().toFixed(1) + " BPM" + (Math.abs(d.rate - 1) > 1e-4 ? "  " + (d.rate > 1 ? "+" : "") + ((d.rate - 1) * 100).toFixed(1) + "%" : "") +
-        "  " + mmss(d.pos()) + " / " + mmss(d.r.seconds)
+        "  " + mmss(d.pos()) + " / " + mmss(d.r.seconds) + (sec ? "  " + sec : "")
       : "";
     D.play.textContent = d.playing ? "❚❚" : "▶";
     D.play.classList.toggle("on", !!d.playing);
     LOOPS.forEach(function(n){ D.loopBtns[n].classList.toggle("on", !!(d.loop && d.loopN === n)); });
     D.hotBtns.forEach(function(b, i){ b.classList.toggle("set", !!(d.hot && d.hot[i] != null)); });
     drawWave(name);
+  });
+  /* The fold follows DECKFOC wherever it moves - the switch, the 1/2 keys, or a
+     `dload` that points it at the deck it just filled. */
+  var foc = g.DECKFOC === "b" ? "b" : "a";
+  if(EL.className !== "foc-" + foc) EL.className = "foc-" + foc;
+  ["a", "b"].forEach(function(name){
+    ["a", "b"].forEach(function(other){
+      var t = DECKS[name].sw[other], od = deck(other);
+      t.classList.toggle("on", other === foc);
+      /* the folded-away deck still says whether it is running. Written only when it
+         changes: paint() is the rAF loop, and assigning textContent replaces the node
+         and dirties layout even when the string is identical. */
+      var lab = other.toUpperCase() + (od.playing ? " ▶" : od.r ? " ·" : "");
+      if(t.textContent !== lab) t.textContent = lab;
+    });
   });
   var M = DECKS._mix, D0 = E().decks();
   if(M){
@@ -531,6 +631,8 @@ function build(){
   master.appendChild(spin);
   DECKS._master = {pane: master, drift: drift};
 
+  var bar = document.getElementById("deckbar");
+  if(bar) master.appendChild(bar);
   var A = buildDeck("a"), B = buildDeck("b");
   EL.appendChild(master);
   EL.appendChild(A[0]); EL.appendChild(A[1]);

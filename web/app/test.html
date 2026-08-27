@@ -515,17 +515,29 @@ async function until(fn, ms, what){
     return mx.querySelectorAll("input[type=range]").length + " faders";
   });
 
+  /* Every one of these setters ends in AudioParam.setTargetAtTime, so the assertion
+     is WHICH param each control writes and what it asks for - not what the param
+     reads back afterwards.
+
+     This test was red for weeks asserting the latter. Under `--mute-audio` the
+     context reports "running" and currentTime advances, but no quantum is ever
+     rendered, so `gain.value` sits at its construction value forever and a perfectly
+     wired fader looks broken. Verified by hand in Chrome with a real audio thread on
+     2026-08-27: level 0.25 -> fader.gain 0.25, low kill -> lo.gain -40dB, crossfader
+     hard right -> deck A gain 0. The graph was never the problem; the harness was.
+     Do not re-add `gain.value` reads here - they cannot work in the gate. */
   await t("a fader moves a real AudioParam", async function(){
     W.CMDS.mode(["deck"]);
     await W.CMDS.dload(["a", "this"]);
     var d = W.E.decks().a;
     d._chain();
-    /* Ask, do not wait: resume() never settles when autoplay is blocked, and awaiting
-       it hangs the gate on a machine with no audio permission. */
-    try { W.E.ctx.resume(); } catch(e){}
-    await sleep(60);
-    var live = W.E.ctx.state === "running";     /* a suspended clock never advances a ramp */
     var mx = W.document.getElementById("mixer");
+    /* Watch one param: every value the code asks it to ramp to, in order. */
+    function spy(param){
+      var seen = [], real = param.setTargetAtTime;
+      param.setTargetAtTime = function(v){ seen.push(v); return real.apply(param, arguments); };
+      return {seen: seen, off: function(){ param.setTargetAtTime = real; }};
+    }
     function fire(sel, v){
       var el = mx.querySelector(sel);
       ok(el, "no control matching " + sel);
@@ -533,25 +545,30 @@ async function until(fn, ms, what){
       return el;
     }
 
-    /* level: the deck records it immediately, the gain node ramps to it */
+    /* level: its OWN node. Sharing one with the crossfader would mean every crossfade
+       wiped whatever the channel fader was set to, which is why this is two nodes. */
+    ok(d.nodes.fader !== d.nodes.gain, "the channel fader and the crossfader share a node");
+    var lvl = spy(d.nodes.fader.gain), xfa = spy(d.nodes.gain.gain);
     fire('input[aria-label="deck a level"]', 0.25);
     near(d.lvl, 0.25, 1e-9, "the level fader did not reach the deck");
-    await sleep(120);
-    if(live) ok(d.nodes.fader.gain.value < 0.9,
-      "the level fader did not reach the gain node (" + d.nodes.fader.gain.value + ")");
-    /* and it must be its OWN node, or the crossfader would wipe it on every move */
-    ok(d.nodes.fader !== d.nodes.gain, "the channel fader and the crossfader share a node");
+    eq(lvl.seen.length, 1, "the level fader did not reach its gain node");
+    near(lvl.seen[0], 0.25, 1e-9, "the level fader asked for " + lvl.seen[0]);
+    eq(xfa.seen.length, 0, "the level fader wrote to the crossfader's node");
+    lvl.off(); xfa.off();
     fire('input[aria-label="deck a level"]', 1);
 
-    /* eq: a kill is recorded on the deck and driven into the shelf */
+    /* eq: a kill is recorded on the deck and driven into the shelf, in dB */
+    var low = spy(d.nodes.lo.gain);
     fire('input[aria-label="deck a low"]', 0);
     eq(d.kill.low, true, "an EQ kill was not recorded on the deck");
-    await sleep(120);
-    if(live) ok(d.nodes.lo.gain.value < -20, "an EQ kill did not reach the shelf (" + d.nodes.lo.gain.value + ")");
+    ok(low.seen.length && low.seen[low.seen.length - 1] <= -40,
+       "an EQ kill did not reach the shelf (" + low.seen + ")");
+    low.off();
     fire('input[aria-label="deck a low"]', 1);
     eq(d.kill.low, false, "the EQ did not come back");
 
     /* filter: the type flips immediately, no ramp involved */
+    var frq = spy(d.nodes.flt.frequency);
     fire('input[aria-label="deck a filter"]', -1);
     eq(d.nodes.flt.type, "lowpass", "filter left should be a low-pass");
     near(d.flt, -1, 1e-9, "the filter value did not reach the deck");
@@ -559,17 +576,19 @@ async function until(fn, ms, what){
     eq(d.nodes.flt.type, "highpass", "filter right should be a high-pass");
     fire('input[aria-label="deck a filter"]', 0);
     eq(d.nodes.flt.type, "lowpass", "the middle should be a wide-open low-pass");
-    await sleep(60);
-    if(live) ok(d.nodes.flt.frequency.value > 15000, "the middle of the filter is not out of the way");
+    ok(frq.seen[frq.seen.length - 1] > 15000,
+       "the middle of the filter is not out of the way (" + frq.seen[frq.seen.length - 1] + ")");
+    frq.off();
 
-    /* crossfader */
+    /* crossfader: hard right shuts deck A's own gain, and only that one */
+    var xfb = spy(d.nodes.gain.gain);
     fire('input[aria-label="crossfader"]', 1);
     eq(W.E.decks().xf, 1, "the crossfader did not move the engine");
-    await sleep(120);
-    if(live) ok(d.nodes.gain.gain.value < 0.2, "hard right should shut deck A (" + d.nodes.gain.gain.value + ")");
+    ok(xfb.seen.length && xfb.seen[xfb.seen.length - 1] < 0.02,
+       "hard right should shut deck A (" + xfb.seen + ")");
+    xfb.off();
     fire('input[aria-label="crossfader"]', 0);
-    await sleep(60);
-    return "level, eq, filter and crossfader all reach the graph" + (live ? "" : " (clock suspended: params checked as state)");
+    return "level, eq, filter and crossfader each write their own AudioParam";
   });
 
   await t("the deck buttons do what they say", async function(){
@@ -631,13 +650,110 @@ async function until(fn, ms, what){
          name + " scrolls sideways at " + w + "px (" + W.document.documentElement.scrollWidth + " > " + W.innerWidth + ")");
       ok(W.document.getElementById("bar").getBoundingClientRect().bottom <= h + 2,
          name + " pushed the prompt off the bottom");
+      /* The two things that were true while this test was green and the phone was
+         unusable. A pane whose area the template forgets does not vanish - grid
+         auto-places it into an IMPLICIT column, and that column takes its width out
+         of the minmax(0,1fr) ones, so every named panel was still "there" at 51px. */
+      var cols = W.getComputedStyle(mx).gridTemplateColumns.split(/\s+/).filter(Boolean).length;
+      var want = (areas.match(/"[^"]*"/) || ['""'])[0].split(/\s+/).length;
+      eq(cols, want, name + " has an implicit column - some pane has no cell in the template");
+      /* ...and a pane the grid squeezed below its own content is a control you
+         cannot reach: on a phone the grid is the scroller, not the pane. */
+      Array.prototype.forEach.call(mx.querySelectorAll(".pane"), function(p){
+        ok(p.scrollHeight <= p.clientHeight + 2 || W.getComputedStyle(p).overflowY === "auto",
+           name + " clips ." + p.className.replace(/\s+/g, ".") + " (" + p.scrollHeight + " into " + p.clientHeight + ")");
+      });
     }
-    await at(380, 780, "portrait", ["wavea", "decka", "mixer", "deckb", "waveb", "browse"]);
-    await at(700, 360, "landscape", ["wavea", "waveb", "decka", "deckb", "mixer"]);
+    await at(380, 780, "portrait", ["master", "wavea", "decka", "mixer", "deckb", "waveb", "browse"]);
+    await at(700, 360, "landscape", ["master", "wavea", "waveb", "decka", "deckb", "mixer", "browse"]);
     await at(1100, 760, "desktop", ["wavea", "master", "waveb", "decka", "mixer", "deckb", "browse"]);
     F2.style.width = was.w || "420px"; F2.style.height = was.h || "280px";
     await sleep(200);
     return "portrait, landscape and desktop all place every panel";
+  });
+
+  /* One deck at a time on a phone, and the switch is the SAME focus the keys move -
+     two ideas of "the current deck" would drift apart the first time you used both. */
+  await t("a phone shows one deck, and the switch is the keyboard's focus", async function(){
+    W.CMDS.mode(["deck"]);
+    var F2 = W.parent.document.getElementById("frame") || document.getElementById("frame");
+    var was = {w: F2.style.width, h: F2.style.height};
+    F2.style.width = "380px"; F2.style.height = "780px";
+    await sleep(260);
+    var mx = W.document.getElementById("mixer");
+    function shown(sel){ var p = mx.querySelector(sel); return p && W.getComputedStyle(p).display !== "none"; }
+    W.DECKFOC = "a"; W.OONTZ_MIXER.paint();
+    ok(shown("#mixer .deck:not(.b)"), "deck A's controls are hidden while A is focused");
+    ok(!shown("#mixer .deck.b"), "both decks' controls are on screen at once on a phone");
+    /* both waveforms stay - you have to be able to see the track you are cueing in */
+    ok(shown("#mixer .wave") && shown("#mixer .wave.b"), "a phone lost one of the waveforms");
+    /* the switch */
+    var tabB = mx.querySelector("#mixer .deck:not(.b) .dsw button:last-child");
+    ok(tabB, "no deck switch on a phone");
+    tabB.click();
+    eq(W.DECKFOC, "b", "the deck switch did not move DECKFOC");
+    ok(shown("#mixer .deck.b") && !shown("#mixer .deck:not(.b)"), "the switch did not fold to deck B");
+    /* ...and the keyboard moves the same one, so the two cannot disagree */
+    W.IN.blur();
+    W.dispatchEvent(new W.KeyboardEvent("keydown", {key: "1", bubbles: true}));
+    eq(W.DECKFOC, "a", "the 1 key did not move the focus");
+    W.OONTZ_MIXER.paint();
+    ok(shown("#mixer .deck:not(.b)"), "the fold did not follow the keyboard");
+    /* and on a desktop nothing folds */
+    F2.style.width = "1100px"; F2.style.height = "760px";
+    await sleep(260);
+    ok(shown("#mixer .deck:not(.b)") && shown("#mixer .deck.b"), "a desktop folded a deck away");
+    F2.style.width = was.w || "420px"; F2.style.height = was.h || "280px";
+    await sleep(200);
+    return "one deck at a time on a phone, both on a desktop, one DECKFOC";
+  });
+
+  /* Rotating the phone re-lays out the grid under whatever finger is already down. */
+  await t("a scrub survives the phone turning over", async function(){
+    W.CMDS.mode(["deck"]);
+    await W.CMDS.dload(["a", "this"]);
+    var F2 = W.parent.document.getElementById("frame") || document.getElementById("frame");
+    var was = {w: F2.style.width, h: F2.style.height};
+    F2.style.width = "380px"; F2.style.height = "780px";
+    await sleep(260);
+    var d = W.E.decks().a, cv = W.document.getElementById("mixer").querySelector(".wave canvas");
+    var r = cv.getBoundingClientRect();
+    cv.dispatchEvent(new W.PointerEvent("pointerdown", {bubbles: true, pointerId: 7,
+      clientX: r.left + r.width * 0.25, clientY: r.top + 6}));
+    near(d.pos(), d.r.seconds * 0.25, d.r.seconds * 0.02, "the press did not seek");
+    F2.style.width = "780px"; F2.style.height = "380px";      /* turned over, mid-drag */
+    await sleep(260);
+    r = cv.getBoundingClientRect();
+    cv.dispatchEvent(new W.PointerEvent("pointermove", {bubbles: true, pointerId: 7,
+      clientX: r.left + r.width * 0.75, clientY: r.top + 6}));
+    near(d.pos(), d.r.seconds * 0.75, d.r.seconds * 0.02,
+      "the scrub lost the track after the grid re-laid out under the finger");
+    W.dispatchEvent(new W.PointerEvent("pointerup", {bubbles: true, pointerId: 7}));
+    var held = d.pos();
+    cv.dispatchEvent(new W.PointerEvent("pointermove", {bubbles: true, pointerId: 7,
+      clientX: r.left + r.width * 0.1, clientY: r.top + 6}));
+    near(d.pos(), held, 1e-9, "the scrub kept seeking after the finger came up");
+    F2.style.width = was.w || "420px"; F2.style.height = was.h || "280px";
+    await sleep(200);
+    return "press, rotate, drag, release - the seek tracks the new rect";
+  });
+
+  /* ⌘ opens on pointerdown, so by the time the finger LIFTS the palette overlay is
+     already covering the button - and a touch click is hit-tested where it lifts. */
+  await t("the command button survives the tap that opened it", function(){
+    W.CMDS.mode(["deck"]);
+    var pal = W.document.getElementById("pal");
+    var btn = W.document.getElementById("deckpal");
+    ok(btn.offsetParent !== null, "deck mode has no visible way to the palette");
+    btn.dispatchEvent(new W.PointerEvent("pointerdown", {bubbles: true}));
+    ok(pal.classList.contains("on"), "the command button did not open the palette");
+    pal.dispatchEvent(new W.MouseEvent("click", {bubbles: true}));   /* what the lift produces */
+    ok(pal.classList.contains("on"), "the tap that opened the palette closed it again");
+    /* a press that really starts on the backdrop still dismisses */
+    pal.dispatchEvent(new W.PointerEvent("pointerdown", {bubbles: true}));
+    pal.dispatchEvent(new W.MouseEvent("click", {bubbles: true}));
+    ok(!pal.classList.contains("on"), "tapping the backdrop no longer closes the palette");
+    W.CMDS.mode(["studio"]);
   });
 
   await t("the palette gives the log back, so a typed command is visible", function(){
