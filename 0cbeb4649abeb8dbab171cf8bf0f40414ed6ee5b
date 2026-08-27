@@ -1,0 +1,15 @@
+CONTENTS DO NOT MATCH THIS MESSAGE.
+
+This commit's message describes the cold-open onboarding rewrite. Its contents are
+the mobile-deck UI work from a different session: web/app/index.html, mixer.js and
+test.html. Two sessions shared one working tree and one index; one staged, the other
+committed, and the index that got committed was not the one the message was written
+for.
+
+  - the onboarding rewrite this message describes is in 73a77cc
+  - the mobile-deck work this commit contains was written for a message that was
+    never used; its follow-up is 93e90b8
+  - a duplicate-arrival bug in the onboarding path is fixed in 4118c78
+
+Not rewritten: it was already pushed and main is shared by several sessions, so
+a force-push would have been a worse trade than a wrong message plus this note.
