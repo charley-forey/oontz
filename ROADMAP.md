@@ -34,12 +34,17 @@ Delete this section to resume.
       SECOND command. One command is curiosity, two is the product working.
 - [x] **The gallery is 30 tracks, best-of-five** — `scripts/seed_gallery.py` composes
       every brief at five seeds and publishes only what the grader likes best.
-- [ ] **Verify the oontz.sh sending domain** — the domain is registered in Resend and
-      the three DNS records are in `docs/runbook-mail.md`; they need adding at
-      Namecheap. Until then mail only reaches the account owner, so **nobody else can
-      make an account.** `python scripts/mailcheck.py --verify` reports status.
-- [ ] **Open oontz.sh on a phone.** Half of any launch traffic is mobile and nobody
-      has checked. Not a build - a look.
+- [ ] **Verify the oontz.sh sending domain** — DNS is DONE: all three records are in
+      at Namecheap and resolve byte-identically to what Resend expects. MX and SPF read
+      `verified`; **DKIM is the last one** and SES allows itself 72h for it. Read status
+      with `python scripts/mailcheck.py` and NOT `--verify`, which restarts the check and
+      resets verified records to pending. Until DKIM lands, mail only reaches the account
+      owner, so no stranger can finish a sign-up.
+- [x] **Open oontz.sh on a phone** — done, and it found a real bug. Both canvas
+      loops repainted at 60fps whether or not anything was playing; idle now drifts at
+      ~13fps and the user confirms the phone is responsive again. `scripts/perfprobe.py`
+      is how it was found. index.html's 127KB inline script also moved to app.js so
+      every script defers and the terminal shell paints before the JS runs.
 - [x] **A `feedback <text>` command** — done. Fires `ev('feedback')` through the
       existing `POST /e`, and `/admin/summary` carries a `feedback` list so reading it
       needs no SQL. Typing anything already landed in `prompt_submit`; what this adds

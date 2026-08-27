@@ -61,7 +61,8 @@ def main():
         print('\nready. now: railway variables --service api '
               '--set "OONTZ_MAIL_FROM=oontz <hello@oontz.sh>"')
     else:
-        print("\nnot yet. add the records in docs/runbook-mail.md, then rerun with --verify")
+        print("\nnot yet. If the records are already in (docs/runbook-mail.md), just wait and\n"
+              "rerun WITHOUT --verify. SES re-checks on its own and DKIM is the slow one.")
 
 
 if __name__ == "__main__":

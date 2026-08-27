@@ -56,6 +56,19 @@ surrounding quotes.
 It asks Resend to re-check and prints the per-record status. Namecheap usually
 resolves inside 30 minutes; Resend re-checks on its own for 72 hours.
 
+### Do not poll with `--verify`
+
+`--verify` asks Resend to start the check again, which resets every record to
+`pending` - including ones already `verified`. Run `python scripts/mailcheck.py`
+with no flags to read the real state; use `--verify` only immediately after
+changing a DNS record. As of 2026-08-27 the MX and SPF read **verified** and only
+DKIM is outstanding, which is normal: SES verifies DKIM on the slowest cycle and
+allows itself up to 72 hours.
+
+oontz.sh is DNSSEC-signed, and all three records resolve correctly through every
+validating resolver tested (Cloudflare, Google, Quad9, OpenDNS - 8 of 8), so
+signing is not the hold-up either.
+
 ## 3. Switch the from address
 
 Only once status reads `verified` — flipping it earlier breaks the mail that does
