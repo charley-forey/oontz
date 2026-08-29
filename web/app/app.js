@@ -43,9 +43,19 @@ function w(html, cls){ var stick = atBottom();
   return d; }
 function line(s, cls){ return w(esc(s===undefined?'':s), cls); }
 var sleep = function(ms){ return new Promise(function(r){ setTimeout(r,ms); }); };
+/* A decorative animation must never gate the boot. boot() AWAITS this for the
+   tagline, and a background tab clamps setTimeout to about once a second - so
+   somebody who middle-clicks a link from Reddit or HN, which opens in a background
+   tab, comes back to a half-typed line, no track loaded and an empty rack. Fifty
+   characters is fifty seconds. Hidden means print it whole and move on; the effect
+   is for people who are actually watching. */
 async function type(s, cls, sp){ var d=w('',cls);
+  if(document.hidden){ d.innerHTML = esc(s); OUT.scrollTop=OUT.scrollHeight; return d; }
   for(var i=0;i<s.length;i++){ d.innerHTML+=esc(s[i]); OUT.scrollTop=OUT.scrollHeight;
-    if(s[i]!==' ') await sleep(sp||9); } return d; }
+    if(s[i]!==' ') await sleep(sp||9);
+    /* and if they switch away mid-line, stop paying per character for it */
+    if(document.hidden){ d.innerHTML = esc(s); break; } }
+  return d; }
 function block(rows){ line();
   (rows||[]).forEach(function(r){
     if(!r || (!r.t && !r.s && !r.c)) return line();
@@ -2435,7 +2445,13 @@ addEventListener('beforeunload', function(){ try{ if(song) localStorage.setItem(
   /* A first-time visitor gets taught, once. Anyone who has been here keeps the
      screen they know. */
   try{
-    if(firstTime){
+    /* `!song` matters: boot is async - it awaits the tagline animation - so by the
+       time it reaches here something else may already have loaded a track, and
+       handing over the starter song would silently replace it. That is not
+       hypothetical: it clobbered a song mid-`improve` in the gate, and the failure
+       read as "improve made it worse 92 -> 68" when improve had in fact rolled back
+       correctly and the score belonged to a different track entirely. */
+    if(firstTime && !song){
       localStorage.setItem('oontz_seen', '1');
       TEACH = true;
       /* Arrive holding the track. loadSong puts every pattern in the rack, so the

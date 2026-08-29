@@ -228,7 +228,11 @@ async function until(fn, ms, what){
     await W.CMDS.improve(["2"]);
     var m1 = await W.OONTZ_EAR.measure(W.song);
     var s1 = W.OONTZ_COMPOSE.score(W.OONTZ_EAR.critiqueMix(m1));
-    ok(s1 >= s0, "improve made it worse: " + s0 + " -> " + s1);
+    /* When this fails, the question is always "did the rollback run?" - so say so
+       here rather than sending the next person on a four-minute round trip. */
+    var tail = W.document.getElementById("out").textContent.split("\n")
+      .filter(function(l){ return l.trim(); }).slice(-6).join(" | ");
+    ok(s1 >= s0, "improve made it worse: " + s0 + " -> " + s1 + "   [" + tail + "]");
     return s0 + " -> " + s1 + "/100";
   });
 

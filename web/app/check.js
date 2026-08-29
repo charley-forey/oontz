@@ -744,6 +744,13 @@ var looksLikeProse = new Function("return " + proseSrc + "; ")();
 
 /* Activation, not sign-up. The first edit has to be reachable with a finger: the
    median session is 21.6s and exactly one person has ever typed a drum pattern. */
+/* boot() awaits type() for the tagline. A background tab clamps setTimeout to ~1/s,
+   so a decorative animation there costs a second per character and holds back the
+   song, the rack and everything else - for exactly the visitor who opened the link
+   in a background tab from a post, which is the traffic we are courting. */
+A.ok(/async function type[\s\S]{0,260}document\.hidden[\s\S]{0,120}return d;/.test(pageSrc),
+  "type() must print instantly in a hidden tab instead of gating boot on an animation");
+
 global.window = global; require("./copy.js");
 var CPY = globalThis.OONTZ_COPY;
 A.ok(/function noteEdit\(verb, how\)/.test(pageSrc), "both edit paths must meet in noteEdit");
