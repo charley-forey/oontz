@@ -975,7 +975,10 @@ addEventListener('click', e=>{
    line(window.OONTZ_WATCH ? '▶ tap anywhere for the light show' : '▶ tap anywhere to hear it','a');
    const go = function(){ removeEventListener('pointerdown', go); removeEventListener('keydown', go);
      run(window.OONTZ_BOOT);
-     IN.focus();                    /* or the first thing they type goes nowhere */
+     /* NOT on a phone: focusing the input throws the keyboard up over the very
+        thing we want them to look at. A shared link is the one page that reaches
+        people who were not looking for us, and most of them open it on a phone. */
+     if(!matchMedia('(pointer: coarse)').matches) IN.focus();
      ev('share_play', {id: m.id || ''});
      if(m.id) fetch(API+'/songs/'+encodeURIComponent(m.id)+'/play',{method:'POST'}).catch(function(){});
      if(window.OONTZ_WATCH) setTimeout(function(){ if(window.OONTZ_VIZ) OONTZ_VIZ.watch(true); }, 800);
@@ -984,9 +987,16 @@ addEventListener('click', e=>{
      else setTimeout(function(){
        line();
        w('<span class="dim">  every track here is TEXT — a few KB you can read and change.</span>');
-       w('<span class="dim">  this one included. try it:</span>');
+       /* SHOW it rather than offering to. `source` was the walk's first step, which
+          meant the claim above sat unproven until someone tapped for it - and the
+          median visitor gives us about twenty seconds in total. The lines are the
+          entire argument; they should be on screen while the track plays, not one
+          interaction away. STEP skips past the step we just performed. */
+       showSource();
+       if(WALK[STEP] && WALK[STEP][0] === 'source') STEP++;
+       w('<span class="dim">  change any of it:</span>');
        nudge();
-       IN.focus();
+       if(!matchMedia('(pointer: coarse)').matches) IN.focus();
      }, 1400);
    };
    addEventListener('pointerdown', go); addEventListener('keydown', go);

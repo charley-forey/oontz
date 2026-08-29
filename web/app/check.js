@@ -742,6 +742,29 @@ var looksLikeProse = new Function("return " + proseSrc + "; ")();
     JSON.stringify(t[0]) + " should " + (t[1] ? "" : "NOT ") + "be treated as prose");
 });
 
+/* Activation, not sign-up. The first edit has to be reachable with a finger: the
+   median session is 21.6s and exactly one person has ever typed a drum pattern. */
+global.window = global; require("./copy.js");
+var CPY = globalThis.OONTZ_COPY;
+A.ok(/function noteEdit\(verb, how\)/.test(pageSrc), "both edit paths must meet in noteEdit");
+A.ok(/noteEdit\(st\.dataset\.t, 'tap'\)/.test(pageSrc),
+  "tapping a step in the rack must count as an edit - it is the no-keyboard path");
+A.ok(/noteEdit\(v, 'type'\)/.test(pageSrc), "typing a pattern must count as an edit too");
+A.ok(/ev\('edit'/.test(pageSrc), "edit is a funnel event now, not a side effect");
+A.ok(/noteEdit[\s\S]{0,700}offerFirstShare\(\)/.test(pageSrc),
+  "the first edit must lead straight to a share offer - that is the growth loop's ignition");
+A.ok(/function offerFirstShare[\s\S]{0,500}run\('share'\)/.test(pageSrc),
+  "the share offer must be a control, not a command someone has to know");
+A.ok(typeof CPY.first_move === "string" && /tap/.test(CPY.first_move),
+  "the first instruction must ask for a tap, not a typed command");
+
+/* The install prompt is earned, never volunteered. */
+A.ok(/addEventListener\('beforeinstallprompt'[\s\S]{0,120}preventDefault/.test(pageSrc),
+  "the browser's own install prompt must be intercepted, not left to fire on arrival");
+A.ok(/offerShare[\s\S]{0,900}offerInstall\(\)/.test(pageSrc),
+  "install is offered after a share and nowhere else");
+A.ok(/INSTALL_ASKED/.test(pageSrc), "the install offer must only ever be made once");
+
 var swSrc = fs2.readFileSync(path2.join(__dirname, "sw.js"), "utf8");
 A.ok(/CORE[\s\S]{0,300}"\/track\.js"/.test(swSrc), "sw.js CORE must cache /track.js, or the PWA loads without it");
 

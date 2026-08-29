@@ -61,6 +61,53 @@ Delete this section to resume.
       is a findable name and an answer back, which is the half that makes someone
       bother saying anything.
 
+### Activation, not sign-up — the 21-second budget (2026-08-29)
+
+The scoreboard was wrong and I built it. Three of the funnel's six stages needed an
+account, which measures a SaaS product; oontz's growth loop needs no login at all —
+`link` puts a whole song in a URL, `share` mints a playable page anonymously, `clip`
+renders a video. Scoring sign-ups made 98% of a healthy audience read as failure.
+
+What 86 sessions actually did: **median 21.6s**, **46 of 50 devices visited once**,
+0 accounts, 0 errors. The commands are navigation — `decks` 15, `play` 11, `help` 10,
+`go` 10, `watch` 9. Across every session on record **one person typed a drum
+pattern**. Nothing is broken; people arrive, poke two verbs to find out what this is,
+listen, and leave.
+
+- [x] **The first edit needs no keyboard.** The rack was always a tappable grid wired
+      to the same `toggleStep` the pad keys use — nothing counted it, celebrated it or
+      led anywhere from it. `noteEdit()` is now where both paths meet, so typing
+      `kick x.x.x…` and tapping a square are the same act. The first-run instruction
+      asks for a tap, and deliberately does NOT focus the input: on a phone that threw
+      the keyboard up over the grid we were pointing at.
+- [x] **The funnel measures the real game.** `edited` and `shared` are first-class
+      stages; every stage carries a `tier`, so `save`/`signin`/`publish` are reported
+      as `account` plumbing rather than led with. The tier is what stops a future
+      reader repeating the mistake.
+- [x] **One tap from first edit to a link.** The second after someone's first edit is
+      the only moment they have felt ownership; the share offer is a control there,
+      not a command they would have to know exists. No account needed.
+- [x] **A shared link shows its source while it plays.** `showSource()` existed and was
+      the walk's FIRST step — gated behind a tap, on the one page that reaches people
+      who were not looking for us. It runs automatically now, and the share page stops
+      focusing the input on a coarse pointer for the same reason as above.
+- [x] **The install prompt is earned.** `beforeinstallprompt` is intercepted and held;
+      the offer appears only after a share, once. A prompt on arrival is exactly the
+      friction a native app would add permanently.
+
+- [ ] **Native mobile app — deliberately NOT doing this yet.** An app store listing is
+      a multiplier of existing demand, not a source of it, and it converts our biggest
+      advantage (nothing to install) into a download prompt. The PWA is already
+      installable. **Revisit when 20% of devices return within a week** — today it is
+      8%, and three of the four returners are us.
+
+- [ ] **Distribution.** Communities that already care (Show HN, Lobsters, r/livecoding,
+      TOPLAP/Algorave, Strudel + TidalCycles Discords, lines.community, demoscene) —
+      `docs/PRIOR-ART.md` is the asset for the inevitable "how is this different from
+      Tidal". Then borrowing one audience (live-coding YouTubers, CDM) by sending a
+      track that plays, not a pitch. Then the clip format: vertical, under 20s,
+      captioned, text changing while the sound changes, ending on a URL.
+
 ### The first ten seconds (2026-08-27)
 
 - [x] **A first-time visitor arrives holding a track** — was: a blinking prompt, five

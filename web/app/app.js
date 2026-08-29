@@ -96,6 +96,35 @@ async function claimAll(){
 /* One link, handed over properly. The clipboard write is attempted and REPORTED,
    never assumed - the await that minted the link may already have spent the
    gesture some browsers demand for it. The send chip carries its own tap. */
+/* Chrome fires this INSTEAD of showing its own install prompt, and only if we do
+   not let it through. Stash it: the honest moment to ask is after someone has made
+   something and shared it, never on arrival - an install prompt to a stranger is
+   exactly the friction a native app would add permanently, and the PWA already
+   gives them the icon, offline play and full screen for none of the cost. */
+var INSTALL = null, INSTALL_ASKED = false;
+addEventListener('beforeinstallprompt', function(e){ e.preventDefault(); INSTALL = e; });
+addEventListener('appinstalled', function(){ INSTALL = null; ev('pwa_installed'); });
+
+function offerInstall(){
+  if(!INSTALL || INSTALL_ASKED) return;
+  INSTALL_ASKED = true;
+  w('<span class="dim">  ' + esc(CP.install_offer || 'keep it on your home screen.') + '</span>');
+  var host = w('<span></span>');
+  var b = document.createElement('button');
+  b.className = 'chip';
+  b.textContent = CP.install_btn || 'add to home screen';
+  b.onclick = function(){
+    b.disabled = true; ev('pwa_prompt');
+    try{
+      INSTALL.prompt();
+      INSTALL.userChoice.then(function(c){
+        ev('pwa_choice', {outcome: (c && c.outcome) || '?'}); INSTALL = null;
+      }).catch(function(){});
+    }catch(e){}
+  };
+  host.appendChild(b);
+}
+
 function offerShare(url, title, note){
   var el = w('<span class="ok">▸ shared.</span> <a href="'+esc(url)+'" target="_blank" rel="noopener">'+
              esc(url)+'</a> <span class="dim cpy"></span>');
@@ -114,6 +143,7 @@ function offerShare(url, title, note){
     el.appendChild(b);
   }
   if(note) w('<span class="dim">  '+note+'</span>');
+  offerInstall();                                /* they have made and shared something now */
   return el;
 }
 
@@ -1590,6 +1620,40 @@ var TEACH = false, TOLD = {}, LESSON_AT = -1;
    that is the one moment worth naming. */
 var FIRSTEDIT = false;
 
+/* Both edit paths meet here. Typing `kick x.x.x...` and tapping a square in the
+   rack are the same act, and until now only the typed one counted, celebrated or
+   led anywhere - which is backwards, because tapping is the one that fits in the
+   21.6s a median visitor gives us and needs no keyboard on a phone.
+   `edit` is a first-class funnel event: it is the activation moment this product
+   actually has, as opposed to the sign-up it does not need. */
+function noteEdit(verb, how){
+  ev('edit', {verb: verb || '', how: how || 'type'});
+  if(!FIRSTEDIT) return;
+  FIRSTEDIT = false;
+  line();
+  w('<span class="ok">  ' + esc(CP.first_after || 'you just changed music by touching it.') + '</span>');
+  ev('first_run', {step: 'edited', how: how || 'type'});
+  offerFirstShare();
+}
+
+/* The second after someone's first edit is the only moment they have ever felt
+   ownership of what is on screen. The share offer belongs there, as a control -
+   not behind a command they would have to already know exists. No account: the
+   link carries the song. */
+function offerFirstShare(){
+  w('<span class="dim">  ' + esc(CP.first_share || 'make a link anyone can open:') + '</span>');
+  var host = w('<span></span>');
+  var b = document.createElement('button');
+  b.className = 'chip hero';
+  b.textContent = CP.first_share_btn || 'get my link';
+  b.onclick = function(){
+    b.disabled = true;
+    ev('first_run', {step: 'share_tapped'});
+    run('share');
+  };
+  host.appendChild(b);
+}
+
 /* ---------------------------------------------------------- teaching by doing */
 /* One line, the first time you touch a thing. Never twice - a tutor that repeats
    itself is a nag, and this is the same table the desktop teaches from. */
@@ -1875,12 +1939,7 @@ function runCmd(raw){
       E.setTrack(v,{pat:pat}); }
     if(!E.playing) E.play(); draw();
     line('▸ '+v+' '+args.join(' '),'dim');
-    if(FIRSTEDIT){                               /* they just did the whole idea; say so once */
-      FIRSTEDIT = false;
-      line();
-      w('<span class="ok">  ' + esc(CP.first_after || 'you just edited music by typing.') + '</span>');
-      ev('first_run', {step: 'edited', verb: v});
-    }
+    noteEdit(v, 'type');
     teach(v); setTimeout(lessonCheck, 60); return; }
   if(v === 'bpm' && args[0] === '420'){ var rr = CMDS.bpm(['420']); line('medicinal.','dim'); return rr; }
   if(CMDS[v]){ var r = CMDS[v](args); teach(v); setTimeout(lessonCheck, 60); return r; }
@@ -2204,7 +2263,10 @@ RACK.addEventListener('click', function(e){
   if(PAINT.moved) return;                        /* a sweep already did the work */
   var st = e.target.closest('.st');
   if(st){ e.stopPropagation(); snapshot('a step');
-    line('▸ ' + E.toggleStep(st.dataset.t, +st.dataset.i), 'dim'); draw(); return; }
+    line('▸ ' + E.toggleStep(st.dataset.t, +st.dataset.i), 'dim'); draw();
+    if(!E.playing) E.play();                     /* a silent edit teaches nothing */
+    noteEdit(st.dataset.t, 'tap');
+    return; }
   var tk = e.target.closest('.trk');
   /* a ghost lane's label names a track that is not playing yet, so it carries no
      data-t - without this it focused `undefined` and the pads edited nothing */
@@ -2379,13 +2441,17 @@ addEventListener('beforeunload', function(){ try{ if(song) localStorage.setItem(
       /* Arrive holding the track. loadSong puts every pattern in the rack, so the
          source IS on screen; armPlay makes hearing it one tap; and the only thing
          asked for is one character back, on a line they can already see. */
-      var FIRST = 'kick x.x.x.x.x.x.x.x.';        // double time: unmistakable, and one edit
       loadSong(starterSong(), CP.first_hello, true, true);
       armPlay('', function(){
         line();
-        w('<span class="a">  ' + esc(CP.first_move ? CP.first_move('kick', 'x.x.x.x.x.x.x.x.')
-            : 'now change it: type ' + FIRST) + '</span>');
-        IN.value = ''; IN.focus();
+        w('<span class="a">  ' + esc(CP.first_move || 'tap any square in the grid above.') + '</span>');
+        /* Typing stays available and stops being the price of entry. */
+        w('<span class="dim">  ' + esc(CP.first_typed ? CP.first_typed('kick', 'x.x.x.x.x.x.x.x.')
+            : 'or type: kick x.x.x.x.x.x.x.x.') + '</span>');
+        /* Deliberately NOT IN.focus(): on a phone that throws the keyboard up over
+           the very grid we just asked them to tap. The instruction and the target
+           have to be visible at the same time. */
+        IN.value = '';
         FIRSTEDIT = true;
         ev('first_run', {step: 'played'});
       });

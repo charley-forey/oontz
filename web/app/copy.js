@@ -40,10 +40,26 @@ C.first_hello = "this is a song. not a recording of one — the lines above ARE 
    control. The tap-anywhere route still works and moved to the hint under it. */
 C.first_tap      = "hear it";
 C.first_tap_hint = "or tap anywhere, or press any key";
-C.first_move  = function(track, pat){
-  return "now change it: type " + track + " " + pat + " and press enter.";
+/* Typing was too much to ask. Median session is 21.6 seconds, and across every
+   session on record exactly one person typed a drum pattern - while `decks`,
+   `play`, `help` and `go` were typed dozens of times. Those are people looking for
+   the door, not making music. The rack is already a tappable grid wired to the same
+   toggleStep the pad keys use, so the first edit costs one finger and no keyboard -
+   which is the only thing that fits in twenty-one seconds on a phone. */
+C.first_move  = "now change it — tap any square in the grid above. the music changes as you touch it.";
+C.first_typed = function(track, pat){
+  return "or type it: " + track + " " + pat;
 };
-C.first_after = "you just edited music by typing. `what` explains the idea, `go` writes you a whole track, `learn` teaches the rest.";
+C.first_after = "that is the whole idea — you just changed music by touching it.";
+/* The one moment they have ever felt ownership. The share offer belongs HERE, not
+   behind a command nobody knows exists. */
+C.first_share = "want it? this makes a link that plays for anyone, no account:";
+C.first_share_btn = "get my link";
+
+/* Offered only after someone has made and shared something. The same prompt on
+   arrival is exactly the friction a native app would add permanently. */
+C.install_offer = "keep it on your home screen — works offline, no store, no account.";
+C.install_btn   = "add to home screen";
 
 /* Someone who thinks this is a chatbot types a sentence. It used to resolve to a
    verb like `how`, miss the typo table, and print "how: no" - a dead end, with the

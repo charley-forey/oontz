@@ -152,6 +152,10 @@ def check_admin_summary():
             if sid == "a":       # exactly one session types a SECOND thing
                 names.append(("prompt_submit", {"text": "hat faster", "verb": "hat"}))
                 names.append(("feedback", {"text": "the decks are great", "chars": 19}))
+                # and exactly one changes a pattern, then hands it to someone -
+                # the two stages that are the actual game
+                names.append(("edit", {"verb": "kick", "how": "tap"}))
+                names.append(("share_mint", {"kind": "server", "anon": 1}))
             rows = main.clean_batch({"sid": sid, "did": did, "site": "app", "path": "/",
                                      "events": [{"n": n, "t": now, "p": p} for n, p in names]},
                                     now, "1.2.3.4", "ua")
@@ -172,24 +176,29 @@ def check_admin_summary():
         main.ADMIN_KEY = old
     assert s["totals"]["sessions"] == 3 and s["totals"]["devices"] == 2, s["totals"]
     assert s["top_prompts"][0] == {"text": "kick harder", "n": 3, "sessions": 3}, s["top_prompts"]
-    assert s["totals"]["events"] == 17, s["totals"]
+    assert s["totals"]["events"] == 19, s["totals"]
     assert [f["text"] for f in s["feedback"]] == ["the decks are great"], s["feedback"]
     verbs = {r["verb"]: r for r in s["commands"]}
     assert verbs["kick"]["n"] == 3 and verbs["kick"]["errors"] == 1 \
         and verbs["kick"]["error_rate"] == 0.333, verbs
     stages = {f["stage"]: f["sessions"] for f in s["funnel"]}
-    assert stages == {"land": 3, "command": 3, "explore": 1, "audio": 3, "save": 0,
-                      "signin": 0, "publish": 0}, stages
+    assert stages == {"land": 3, "command": 3, "explore": 1, "audio": 3, "edited": 1,
+                      "shared": 1, "save": 0, "signin": 0, "publish": 0}, stages
+    # the tier is what stops a future reader treating signin as the goal again
+    tiers = {f["stage"]: f["tier"] for f in s["funnel"]}
+    assert tiers["edited"] == "activation" and tiers["shared"] == "activation", tiers
+    assert tiers["signin"] == "account" and tiers["save"] == "account", tiers
+    assert tiers["explore"] == "activation", tiers
     # explore counts SESSIONS that typed twice, not prompts - three prompts across
     # one session would read as three explorers if this ever went back to COUNT(*).
     assert [f["stage"] for f in s["funnel"]][:3] == ["land", "command", "explore"], s["funnel"]
     pct = {f["stage"]: f["pct"] for f in s["funnel"]}
     assert pct["land"] == 100.0 and pct["explore"] == 33.3 and pct["audio"] == 100.0, pct
-    assert s["top_ips"][0]["ip"] == "1.2.3.4" and s["top_ips"][0]["n"] == 17, s["top_ips"]
+    assert s["top_ips"][0]["ip"] == "1.2.3.4" and s["top_ips"][0]["n"] == 19, s["top_ips"]
     assert len(s["recent_errors"]) == 3, s["recent_errors"]
     assert s["median_session_sec"] is not None, "no session length was measured"
     assert len(ev) == 4 and ev[0]["name"] == "prompt_submit", ev   # 3 sessions, one typed twice
-    return "3 sessions, 2 devices, 1 explorer, funnel + prompts + error rates"
+    return "3 sessions, 2 devices, 1 explorer, 1 editor, 1 sharer, tiered funnel"
 
 
 def main_():

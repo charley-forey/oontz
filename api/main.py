@@ -466,13 +466,26 @@ async def ingest(request: Request, user=Depends(optional_user)):
 
 ADMIN_KEY = os.environ.get("OONTZ_ADMIN_KEY", "")
 
-# stage -> the event names that count as having reached it
-FUNNEL = [("land", ("boot", "session_start")),
-          ("command", ("prompt_submit",)),
-          ("audio", ("play", "play_server")),
-          ("save", ("song_save",)),
-          ("signin", ("signin_request", "signin_done")),
-          ("publish", ("song_publish",))]
+# stage -> the events that count as reaching it, and which game the stage belongs to.
+#
+# The first six stages were land/command/audio/save/signin/publish, and THREE of
+# them needed an account. That measures a SaaS funnel for a product whose growth
+# loop does not involve one: `link` puts an entire song in a URL, `share` mints a
+# playable page anonymously, and `clip` renders a video - none of it needs a login.
+# Scoring sign-ups made 98% of a healthy audience read as failure.
+#
+# `activation` is the game: did they change something and hear it, and did they hand
+# it to anyone. `account` is retention plumbing for the few who get deep enough to
+# want their work kept, and is reported but not led with.
+FUNNEL = [("land", ("boot", "session_start"), "activation"),
+          ("command", ("prompt_submit",), "activation"),
+          ("audio", ("play", "play_server"), "activation"),
+          # the real activation moment: a pattern changed, by keyboard OR by finger
+          ("edited", ("edit",), "activation"),
+          ("shared", ("share_mint", "share_native"), "activation"),
+          ("save", ("song_save",), "account"),
+          ("signin", ("signin_request", "signin_done"), "account"),
+          ("publish", ("song_publish",), "account")]
 OUTCOMES = ("cmd_result", "ai_result", "ai_accept", "ai_reject", "ai_undo")
 
 
@@ -567,7 +580,8 @@ def admin_summary(window: int = 30, x_admin_key: str = Header(default="")):
                         SUM(CASE WHEN json_extract(props,'$.ok') IN (0,'false') THEN 1 ELSE 0 END) errors
                         FROM events WHERE ts>=? AND name='cmd_result'
                         GROUP BY verb ORDER BY n DESC LIMIT 50""")
-        funnel = [{"stage": s, "sessions": _in(c, names, since)} for s, names in FUNNEL]
+        funnel = [{"stage": s, "tier": tier, "sessions": _in(c, names, since)}
+                  for s, names, tier in FUNNEL]
         # "did they type a SECOND thing" is the only stage the name list cannot
         # express - it is not a new event, it is the same event happening twice in
         # one session. It is also the stage that matters most: one command is
@@ -575,7 +589,7 @@ def admin_summary(window: int = 30, x_admin_key: str = Header(default="")):
         repeat = c.execute("""SELECT COUNT(*) FROM (SELECT sid FROM events
                               WHERE ts>=? AND name='prompt_submit'
                               GROUP BY sid HAVING COUNT(*)>1)""", (since,)).fetchone()[0]
-        funnel.insert(2, {"stage": "explore", "sessions": repeat})
+        funnel.insert(2, {"stage": "explore", "tier": "activation", "sessions": repeat})
         top_ips = q("""SELECT ip, COUNT(*) n, COUNT(DISTINCT sid) sessions
                        FROM events WHERE ts>=? AND ip IS NOT NULL AND ip!=''
                        GROUP BY ip ORDER BY n DESC LIMIT 50""")

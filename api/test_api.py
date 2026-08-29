@@ -349,7 +349,11 @@ def main():
         assert st == 200 and sm["window_days"] == 30, ("summary", st, sm)
         assert any(p["text"] == "kick harder" for p in sm["top_prompts"]), sm["top_prompts"]
         assert {f["stage"] for f in sm["funnel"]} == {"land", "command", "explore", "audio",
-                                                      "save", "signin", "publish"}, sm["funnel"]
+                                                      "edited", "shared", "save", "signin",
+                                                      "publish"}, sm["funnel"]
+        # activation is the game; the account stages are reported, not led with
+        assert {f["stage"] for f in sm["funnel"] if f["tier"] == "account"} == \
+            {"save", "signin", "publish"}, sm["funnel"]
         assert dict((f["stage"], f["sessions"]) for f in sm["funnel"])["command"] >= 1, sm["funnel"]
         assert any(e["name"] == "api_error" for e in sm["recent_errors"]), sm["recent_errors"]
         assert call("GET", "/admin/summary?window=99999", headers=AK)[1]["window_days"] == 365, \
