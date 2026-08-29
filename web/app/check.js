@@ -717,6 +717,12 @@ A.ok(biggestInline < 5000,
 A.ok(/function starterSong\(\)/.test(pageSrc), "there must be a starter song to arrive holding");
 A.ok(/firstTime[\s\S]{0,900}loadSong\(starterSong\(\)/.test(pageSrc),
   "a first-time visitor must arrive with the starter song loaded");
+/* The 4th argument is the whole thesis: without it loadSong prints the summary and
+   first_hello's "the lines above ARE the track" points at bars/BPM/key instead of at
+   the track. test.html asserts the rendered lines, but it calls loadSong itself - this
+   is what stops boot() and that test drifting apart. */
+A.ok(/loadSong\(starterSong\(\)[^;]*,\s*true\s*,\s*true\s*\)/.test(pageSrc),
+  "the first arrival must ask loadSong for the track's text lines (4th argument)");
 A.ok(/firstTime[\s\S]{0,1200}armPlay\(/.test(pageSrc),
   "the starter song must be one tap from playing - autoplay is blocked without a gesture");
 A.ok(/if\(!firstTime\)\{[\s\S]{0,200}CP\.menu/.test(pageSrc),

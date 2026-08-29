@@ -432,7 +432,20 @@ var LOGO = ["  ▄▄▄   ▄▄▄  ▄▄▄▄▄ ▄▄▄▄▄ ▄▄▄�
    deliberately a sixteen-bar loop, which it scores 12/100. Telling a stranger the
    track they have not yet heard is 12/100 is a bad five seconds and, worse, it is
    not even the question being asked. `grade` still answers honestly on demand. */
-function loadSong(sg, why, nograde){
+/* The track as the text you would type to make it. The rack shows WHERE you are in
+   the bar; this shows WHAT to change, in the exact syntax the prompt accepts - notes
+   where a track has them, the pattern otherwise. Without it `first_hello`'s "the
+   lines above ARE the track" pointed at a summary and a block grid, and `first_move`
+   asked a stranger to edit a line they had never once seen. */
+function trackLines(sg){
+  var sec = (sg.sections || {})[(sg.order || [])[0]] || {}, tr = sec.tracks || {}, out = [];
+  (sec.order || Object.keys(tr)).forEach(function(n){
+    var t = tr[n]; if(!t) return;
+    out.push([n, t.notes ? t.notes.join(' ') : (t.pat || '')]);
+  });
+  return out;
+}
+function loadSong(sg, why, nograde, showLines){
   REMIX_OF = null;                               /* a fresh song owes nobody, until `remix` says so */
   SHARED_ID = '';                                /* nor is it the song the last link points at */
   /* play() reports the context state now. Printing the banner regardless of it is
@@ -445,11 +458,20 @@ function loadSong(sg, why, nograde){
     OZ.totalBars(sg)+' bars · '+mmss(songSeconds(sg))+' · '+Math.round(sg.bpm)+
     ' BPM · '+esc(sg.key+' '+sg.scale)+' · '+sg.order.length+' sections</span>');
   w('<span class="dim">  '+esc(sg.order.join(' → '))+'</span>');
+  /* Only the first-run arrival asks for these. `go` composing six sections should not
+     dump its whole source every time - same reasoning as nograde, same one caller. */
+  if(showLines) trackLines(sg).forEach(function(kv){
+    /* the space is INSIDE the <b>, not CSS padding: tapping the line copies its
+       textContent into the prompt, and `kickX...x...` is not a command. */
+    w('  <span class="src"><b>'+esc(kv[0])+' </b>'+esc(kv[1])+'</span>'); });
   if(!nograde)
     w('<span class="'+(sc>75?'ok':(sc>45?'w':'hot'))+'">  theory says '+sc+'/100</span>'+
       '<span class="dim">   type <span class="a">grade</span> for the full verdict</span>');
   if(why) w('<span class="dim">  '+esc(why)+'</span>');
-  if(!live) w('<span class="a">  ▶ ' + esc(CP.first_tap || 'tap anywhere to hear it') + '</span>');
+  if(!live){
+    w('  <button class="chip hero">▶ ' + esc(CP.first_tap || 'hear it') + '</button>');
+    w('<span class="dim">  ' + esc(CP.first_tap_hint || 'or tap anywhere, or press any key') + '</span>');
+  }
   line();
   draw();
 }
@@ -2273,6 +2295,11 @@ addEventListener('click', function(e){
   if(e.target.id==='tail') return;
   var k = e.target.closest('.k');                 /* tap a listed command: it runs */
   if(k && OUT.contains(k)){ run(k.textContent.trim()); return; }
+  /* tap a printed track line: it lands in the prompt to be edited, not run. "A change
+     to a line you can already see" only works if seeing and typing are one gesture. */
+  var src = e.target.closest('.src');
+  if(src && OUT.contains(src)){
+    IN.value = src.textContent.trim().replace(/\s+/g, ' '); IN.focus(); return; }
   if(COARSE && !e.target.closest('#bar')) return; /* a phone tap should not summon the keyboard */
   if(MODE === 'deck' && !e.target.closest('#bar')) return;   /* nor should a click re-deafen the deck keys */
   IN.focus(); });
@@ -2353,7 +2380,7 @@ addEventListener('beforeunload', function(){ try{ if(song) localStorage.setItem(
          source IS on screen; armPlay makes hearing it one tap; and the only thing
          asked for is one character back, on a line they can already see. */
       var FIRST = 'kick x.x.x.x.x.x.x.x.';        // double time: unmistakable, and one edit
-      loadSong(starterSong(), CP.first_hello, true);
+      loadSong(starterSong(), CP.first_hello, true, true);
       armPlay('', function(){
         line();
         w('<span class="a">  ' + esc(CP.first_move ? CP.first_move('kick', 'x.x.x.x.x.x.x.x.')
@@ -2365,7 +2392,10 @@ addEventListener('beforeunload', function(){ try{ if(song) localStorage.setItem(
       ev('first_run', {step: 'armed'});
     }
   }catch(e){}
-  try{ var saved = localStorage.getItem('oontz_song');
+  /* not on a first arrival: they were just handed the starter track, and "restored
+     warehouse from last time" contradicts it. A true first visit has nothing saved
+     anyway; this only bites when storage is partly evicted or oontz_seen is cleared. */
+  try{ var saved = firstTime ? null : localStorage.getItem('oontz_song');
     if(saved){ song = JSON.parse(saved); E.loadSong(song); draw();
       w('<span class="dim">  restored <span class="b">'+esc(song.name)+'</span> from last time. <span class="a">play</span> to hear it.</span>'); }
   }catch(e){}

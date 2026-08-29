@@ -36,7 +36,10 @@ C.boot = [
    Nothing here explains the idea; the loaded track and one tap do that, and the
    only thing asked for is a single character back. */
 C.first_hello = "this is a song. not a recording of one — the lines above ARE the track.";
-C.first_tap   = "tap anywhere to hear it";
+/* A button label now, not a sentence - "tap anywhere to hear it" reads wrong on a
+   control. The tap-anywhere route still works and moved to the hint under it. */
+C.first_tap      = "hear it";
+C.first_tap_hint = "or tap anywhere, or press any key";
 C.first_move  = function(track, pat){
   return "now change it: type " + track + " " + pat + " and press enter.";
 };

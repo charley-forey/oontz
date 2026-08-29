@@ -769,7 +769,7 @@ async function until(fn, ms, what){
     var out = W.document.getElementById("out");
     W.run("clear");
     /* exactly what boot() does on a first arrival */
-    W.loadSong(W.starterSong(), W.CP.first_hello, true);
+    W.loadSong(W.starterSong(), W.CP.first_hello, true, true);
     var stepTwo = 0;
     W.armPlay("", function(){ stepTwo++; });
     var text = out.textContent;
@@ -778,6 +778,32 @@ async function until(fn, ms, what){
     var heads = (text.match(/▸ warehouse/g) || []).length;
     eq(heads, 1, "the track was announced " + heads + " times, not once");
     ok(text.indexOf("theory says") < 0, "a stranger was graded on a track they have not heard");
+    /* The thesis, on screen before anything is typed: the track as the text you would
+       type to make it. Without these, first_hello's "the lines above ARE the track"
+       points at a summary and first_move asks for an edit to a line never shown. */
+    var src = Array.prototype.slice.call(out.querySelectorAll(".src"));
+    eq(src.length, 5, "the starter's five tracks are not on screen as text");
+    var byName = {};
+    src.forEach(function(e){ var t = e.textContent.trim(); byName[t.split(/\s+/)[0]] = t; });
+    eq(byName.kick, "kick X...x...X...x..x", "the kick line is not the pattern you would type");
+    ok(/^bass a1! \. /.test(byName.bass), "a track with notes must print its notes: " + byName.bass);
+    /* every printed line has to be a command the prompt actually accepts - it is what
+       lands in the input when you tap it, so a missing space makes it garbage */
+    src.forEach(function(e){
+      var t = e.textContent.trim().replace(/\s+/g, " ");
+      ok(/^[a-z]+ \S/.test(t), "printed line is not runnable as typed: " + JSON.stringify(t));
+    });
+    /* one obvious control, not a sentence describing a gesture */
+    var hero = out.querySelector("button.chip.hero");
+    ok(hero, "the arrival has no control to press");
+    ok(hero.getBoundingClientRect().height >= 40, "the arrival control is smaller than a thumb");
+    /* tap a line: it lands in the prompt ready to change, and does NOT run */
+    var patWas = W.song.sections[W.song.order[0]].tracks.kick.pat;
+    out.querySelector(".src").dispatchEvent(new W.MouseEvent("click", {bubbles: true}));
+    eq(W.IN.value, "kick X...x...X...x..x", "tapping a line did not put it in the prompt");
+    eq(W.song.sections[W.song.order[0]].tracks.kick.pat, patWas,
+       "tapping a line ran it; it should only load it for editing");
+    W.IN.value = "";
     /* the tap: one gesture, and step two is asked for exactly once */
     W.document.dispatchEvent(new W.PointerEvent("pointerdown", {bubbles: true}));
     await sleep(60);

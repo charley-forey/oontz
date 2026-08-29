@@ -204,6 +204,18 @@
     border:1px solid var(--accent);border-radius:6px;padding:2px 10px;margin-left:8px;
     min-height:28px;touch-action:manipulation}
   .chip:hover{color:var(--bright);border-color:var(--bright)}
+  /* The cold open's one control. A stranger arriving should see something to press,
+     not a sentence describing a gesture. */
+  .chip.hero{font-size:1em;padding:9px 20px;min-height:44px;border-width:2px;margin:3px 0 0}
+  /* The track, as the text you would type to make it. Tap one and it lands in the
+     prompt: seeing the line and changing it become one gesture. */
+  #out .src{color:var(--bright);cursor:pointer;display:inline-block;white-space:pre;
+    max-width:100%;overflow-x:auto;vertical-align:top;
+    padding:2px 8px;border-radius:4px;border-left:2px solid var(--accent);
+    background:rgba(63,240,224,.07)}
+  #out .src:hover{background:rgba(63,240,224,.17);color:var(--bright)}
+  #out .src b{color:var(--accent);font-weight:normal;display:inline-block;min-width:6ch}
+  @media (pointer: coarse){ #out .src{padding:6px 8px} }
   #gobtn{display:none;font:inherit;color:var(--accent);background:none;
     border:1px solid var(--accent);border-radius:8px;padding:4px 12px;min-height:36px;
     touch-action:manipulation}
