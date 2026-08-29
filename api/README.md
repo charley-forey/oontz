@@ -40,3 +40,40 @@ Everything except the first two is optional; the service starts and works withou
 
 Run the tests with `python api/test_api.py` — they spawn a real uvicorn against a
 temp database and walk the whole loop, magic link included.
+
+## Changing a variable does not change the running process
+
+Railway bakes a deployment's environment at build time, so a variable you edit
+afterwards reaches the service **only when a new deployment is created**. Editing
+one enqueues that deployment automatically — but if it does not run, the old
+process keeps serving the old value indefinitely, and nothing in the dashboard
+looks broken.
+
+That cost an hour on 2026-08-29. `OONTZ_MAIL_FROM` was set to
+`oontz <hello@oontz.sh>` the moment the sending domain verified. The variable read
+back correctly. The API kept sending from `onboarding@resend.dev`, so Resend
+returned 403 for every recipient except the account owner and no stranger could
+finish a sign-up. The enqueued deployment had been `QUEUED` for over half an hour
+and never started; every later commit deployed `SKIPPED`, because they only touched
+`web/`, so nothing displaced it.
+
+What does NOT fix it:
+
+- **Restart.** `restart-service` re-runs the *existing* deployment with the
+  environment it was created with. The container comes back healthy and wrong.
+- **Redeploy.** Needs a build to copy, and the newest deployment being `SKIPPED`
+  means there is no snapshot. Both the MCP and `railway redeploy` refuse.
+
+What does: a commit that touches `api/`, which is what this file is. The service
+only builds when its own root directory changes, so a `web/`-only push will never
+pick up an API variable change.
+
+**To confirm mail is actually live**, ask for a link with an address that is not
+the Resend account owner's:
+
+    POST /auth/request {"email": "someone-else@example.com"}
+
+`{"sent": true}` with **no** `link` field means it reached a real inbox. A `link`
+in the response means delivery failed and the API handed the link back instead —
+that fallback is deliberate, and it is also why a broken sender can look like a
+working one from the browser.
