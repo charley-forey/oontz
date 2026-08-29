@@ -607,14 +607,27 @@ var CMDS = {
     snapshot('improve'); line();
     w('<span class="b">improving '+esc(song.name)+'</span> <span class="dim">render → measure → fix the worst → again</span>');
     var last = -1, stall = 0, first = null, i;
+    /* `improve` must never hand back a worse mix than it was given, which is what
+       its name promises and what the gate asserts. Two things stopped that being
+       true. First, round one applied a fix unconditionally - `sc <= last` compares
+       against -1, so even a mix with nothing wrong got edited. Second, score() is
+       CLAMPED at 100, so a mix can sit at 100 with real faults still in the
+       critique; comparing clamped scores makes a genuine fix look like a
+       regression and hides progress exactly where it matters. So: stop when the
+       critique has no faults left, and keep the best song seen. */
+    var best = null, bestScore = -1;
     for(i = 1; i <= rounds; i++){
       var pr = w('<span class="dim">  ['+i+'] listening…</span>');
-      var m, sc;
+      var m, sc, crit;
       try{ m = await EAR.measure(song); EARLAST = m;
-        sc = CO.score(EAR.critiqueMix(m)); }
+        crit = EAR.critiqueMix(m); sc = CO.score(crit); }
       catch(e){ pr.remove(); line('  could not render: '+(e.message||e),'w'); break; }
       if(first === null) first = sc;
+      if(sc > bestScore){ bestScore = sc; best = JSON.parse(JSON.stringify(song)); }
       pr.innerHTML = '<span class="dim">  ['+i+'] mix '+sc+'/100</span>';
+      /* The critique, not the clamped score, is what says whether work remains. */
+      if(!crit.filter(function(c){ return c[0] !== 'good'; }).length){
+        w('<span class="ok">  nothing to fix — every check passes.</span>'); break; }
       /* One flat round is normal - a fix can clear a fault without moving the
          score until the next one lands. Two in a row means it is done. */
       if(sc <= last){ if(++stall >= 2){ w('<span class="dim">  no further gain — stopping.</span>'); break; } }
@@ -625,10 +638,22 @@ var CMDS = {
       w('<span class="a">  → '+esc(did)+'</span>');
       E.jump(E.songbar);                       // the live engine picks the edit up
     }
-    try{ var fm = await EAR.measure(song); EARLAST = fm;
-      var fs = CO.score(EAR.critiqueMix(fm));
+    /* The final measure is a REPORT, not the decision. It used to wrap the whole
+       ending in one try, so a throw here - and EAR.measure throws for real, this is
+       what exhausts the browser's OfflineAudioContexts after several renders in a
+       row - skipped the rollback and handed back the degraded song silently. Decide
+       first, report second: an unmeasurable ending still restores the best pass. */
+    var fs = null;
+    try{ var fm = await EAR.measure(song); EARLAST = fm; fs = CO.score(EAR.critiqueMix(fm)); }
+    catch(e){}
+    if(best && (fs === null || fs < bestScore)){
+      song = best; E.loadSong(song); E.jump(E.songbar);
+      w('<span class="dim">  ' + (fs === null ? 'could not measure the last pass'
+          : 'last pass scored ' + fs) + ' — kept the better one instead.</span>');
+      fs = bestScore;
+    }
+    if(fs !== null)
       w('<span class="'+(fs>first?'ok':'dim')+'">  mix '+first+' → '+fs+'/100</span>');
-    }catch(e){}
     line(); w('<span class="dim">  <span class="a">grade</span> for the full verdict · <span class="a">undo</span> puts it back</span>'); line();
     draw();
   },
