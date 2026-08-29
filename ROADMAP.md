@@ -34,12 +34,22 @@ Delete this section to resume.
       SECOND command. One command is curiosity, two is the product working.
 - [x] **The gallery is 30 tracks, best-of-five** — `scripts/seed_gallery.py` composes
       every brief at five seeds and publishes only what the grader likes best.
-- [ ] **Verify the oontz.sh sending domain** — DNS is DONE: all three records are in
-      at Namecheap and resolve byte-identically to what Resend expects. MX and SPF read
-      `verified`; **DKIM is the last one** and SES allows itself 72h for it. Read status
-      with `python scripts/mailcheck.py` and NOT `--verify`, which restarts the check and
-      resets verified records to pending. Until DKIM lands, mail only reaches the account
-      owner, so no stranger can finish a sign-up.
+- [x] **The oontz.sh sending domain is VERIFIED and mail is LIVE (2026-08-29).** All
+      three records verified; `OONTZ_MAIL_FROM` is `oontz <hello@oontz.sh>`. Proved the
+      only way that counts: requested a link for an address that is not the Resend
+      account owner and got `{"sent": true}` with **no** `link` in the response. A
+      stranger can now finish a sign-up, which makes `signin` a real funnel stage for
+      the first time instead of a structural zero.
+
+      Getting there cost two hours to Railway rather than to DNS. A variable change
+      only reaches the service through a NEW deployment, and this service only builds
+      when `api/` changes — so the edit sat unread while the dashboard showed the new
+      value and `/health` reported fine. Then the builder itself wedged: two deploys
+      QUEUED for over an hour, `restart` re-ran the old environment, `redeploy` had no
+      snapshot to copy. `railway up` uploaded, superseded the running container, and
+      **took api.oontz.sh down for several minutes** because nothing built to replace
+      it — recovered by restarting the last known-good deployment BY ID rather than
+      "latest". All of it is written up in `api/README.md` and the deploy memo.
 - [x] **Open oontz.sh on a phone** — done, and it found a real bug. Both canvas
       loops repainted at 60fps whether or not anything was playing; idle now drifts at
       ~13fps and the user confirms the phone is responsive again. `scripts/perfprobe.py`
