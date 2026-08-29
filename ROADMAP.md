@@ -64,9 +64,38 @@ Delete this section to resume.
 - [x] **A sentence gets an answer instead of `how: no`** — anything ending in `?`, or
       three-plus prose words, routes to `CMDS.ask`; greetings get a greeting. The AI
       ladder existed and was invisible unless you already knew the word `ask`.
-- [ ] **Behavioural first-run test in `test.html`** — the gate asserts on source plus a
-      truth table for `looksLikeProse`; the flow itself was verified by driving a real
-      headless page. Belongs in browsergate proper once test.html is free.
+- [x] **The thesis sentence pointed at something never printed** — `first_hello` said
+      "the lines above ARE the track" while the lines above were a summary, and the
+      first instruction asked for an edit to a line never shown in that syntax. Both
+      closed in `3d032ff`: `trackLines()` prints the real text, `▶ hear it` is a button,
+      and tapping a printed line loads it into the prompt. Verified here with the
+      autoplay flag OFF — see the gates memo; with it on, the arm path never runs.
+
+- [x] **Behavioural first-run test in `test.html`** — done in `3d032ff`, including the
+      short-circuit case where a returning visitor's context is already unlocked.
+
+### `improve` was diagnosed as flaky and was not (2026-08-28)
+
+- [x] **`improve` could hand back a worse mix than it was given** — `c55a038`. The red
+      was intermittent (100→68, then 92→68, passing on re-runs) and got recorded as a
+      flaky assertion measuring real audio from an already-perfect baseline. That call
+      was wrong, and it is worth keeping visible because it was made by the person who
+      had spent two days correctly blaming harness flags: an intermittent red pattern-
+      matched to the four artifacts and the looking stopped there.
+
+      Three real defects. Round one applied a fix unconditionally, because `sc <= last`
+      compares against `last = -1`. `score()` is CLAMPED at 100, so a mix can sit at the
+      ceiling with faults still in the critique — the mechanism was written down in the
+      "it's flaky" explanation itself and filed as noise. And the rollback that fixes
+      the rest sat inside the same `try` as the closing `measure()`, which throws for
+      real when OfflineAudioContexts run out, so it never ran.
+
+      `improve` now stops on the critique rather than the clamped score and keeps the
+      best song it has seen. The test reads 68 → 80 instead of a coin flip.
+
+      **The lesson is symmetrical to the harness one.** "Suspect the harness" earned
+      four hits in two days; its failure mode is filing a real bug as noise. An
+      intermittent red is a reason to look harder, not a category.
 
 ### Resolved: the fader red (2026-08-26 → 27)
 
